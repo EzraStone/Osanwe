@@ -14,6 +14,7 @@ package bearer
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -52,6 +53,15 @@ type Config struct {
 
 	// Dialer opens tunnels. Required.
 	Dialer Dialer
+
+	// UpstreamRootCAs overrides the roots used to verify the provider.
+	//
+	// For api.anthropic.com the system roots are correct and this stays nil.
+	// It exists for a self-hosted or enterprise gateway presenting a
+	// privately-issued certificate, which would otherwise be unreachable
+	// without disabling verification -- and there is deliberately no option
+	// to disable verification.
+	UpstreamRootCAs *x509.CertPool
 
 	// AllowNonLoopback permits binding a routable address. Doing so puts
 	// prompts on the network in plaintext between the tool and bearer, so it
@@ -152,6 +162,7 @@ func (s *Server) transport() *http.Transport {
 		TLSClientConfig: &tls.Config{
 			ServerName: hostOnly(s.upstream.Host),
 			MinVersion: tls.VersionTLS12,
+			RootCAs:    s.cfg.UpstreamRootCAs,
 		},
 		ForceAttemptHTTP2:     true,
 		ResponseHeaderTimeout: s.cfg.ResponseHeaderTimeout,
