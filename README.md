@@ -17,6 +17,7 @@ who would rather trust no one at all.
 | **[Design &amp; threat model](docs/index.html)** | The full architecture, threat model and roadmap |
 | [Abuse policy](docs/abuse-policy.md) | What we prohibit, what we can and cannot see, legal obligations |
 | [ADR 0001 — BYOK first](docs/decisions/0001-byok-first.md) | The Terms of Service posture, decided |
+| **[Quickstart](docs/quickstart.md)** | Run a relay and a client — Phase 2 is working code |
 | [Phase 0 results](docs/phase0-results.md) | The gating latency measurement — **not yet run** |
 | [Phase 0 tooling](tools/README.md) | Harness and throwaway relay, ready to run |
 
@@ -110,21 +111,44 @@ Stated up front, deliberately:
 
 ## Status
 
-Pre-implementation. The **Phase 0** tooling is written and tested but **the measurement has not
-been run** — it needs an API key and a VPS in another region, and it takes about twenty minutes.
+**Phase 2 is implemented and tested.** `bearer` (client) and `ranger` (relay) work end to end,
+bring-your-own-key, with no third-party dependencies.
 
 ```bash
+make build
+
 # on a VPS elsewhere
-python3 tools/throwaway_relay.py --port 8080 --secret "$(openssl rand -hex 24)" \
-        --allow api.anthropic.com
+export OSANWE_RANGER_SECRET=$(ranger -gen-secret)
+ranger -allow api.anthropic.com          # prints a pin
 
 # on your machine
-export ANTHROPIC_API_KEY=sk-ant-...
-python3 tools/phase0_latency.py --runs 30 --proxy http://relay:SECRET@vps:8080 --label eu-west-1
+export OSANWE_SECRET='<that secret>'
+bearer -relay relay.example:8443 -pin sha256/...
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8080
 ```
 
-That one number — p95 time-to-first-token overhead — decides whether this is an interactive chat
-product or a batch product. Every later phase depends on the answer, so it is the next thing that
-should happen. Results go in [docs/phase0-results.md](docs/phase0-results.md).
+See the **[quickstart](docs/quickstart.md)** for the full walkthrough.
+
+What that delivers today: the provider no longer learns your IP or location, and no relay operator
+can read your prompts. What it does not deliver: the provider still knows which account is asking,
+because the key is yours. Unlinking the account needs `eregion` and `mithlond`, which are Phase 3
+and not built.
+
+The relay-blindness claim is verified rather than asserted — `internal/integration` captures every
+byte crossing the relay and fails if a prompt, an API key or a response can be recovered from it,
+with a control that fails the test if the capture is not of encrypted traffic.
+
+**Still outstanding: [Phase 0](docs/phase0-results.md).** The latency measurement has tooling but
+has not been run, and it is the number that decides whether this is an interactive product or a
+batch one.
+
+| | |
+|---|---|
+| `cmd/ranger` · `internal/ranger` | Relay: TLS listener, default-deny allowlist, no content logging |
+| `cmd/bearer` · `internal/bearer` | Client: loopback-only, streaming-preserving reverse proxy |
+| `internal/tunnel` | Pinned CONNECT dialer |
+| `internal/certs` | Relay identity, pinned by public key |
+| `internal/policy` · `internal/auth` | Destination allowlist, shared-secret auth |
+| `tools/` | Phase 0 measurement harness (Python) |
 
 See [§13 Build phases](docs/index.html) for the full roadmap.
