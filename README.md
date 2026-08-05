@@ -10,9 +10,15 @@ who would rather trust no one at all.
 
 ---
 
-## Read the design document
+## Documents
 
-**[→ Full design &amp; threat model](docs/index.html)** — `docs/index.html`
+| | |
+|---|---|
+| **[Design &amp; threat model](docs/index.html)** | The full architecture, threat model and roadmap |
+| [Abuse policy](docs/abuse-policy.md) | What we prohibit, what we can and cannot see, legal obligations |
+| [ADR 0001 — BYOK first](docs/decisions/0001-byok-first.md) | The Terms of Service posture, decided |
+| [Phase 0 results](docs/phase0-results.md) | The gating latency measurement — **not yet run** |
+| [Phase 0 tooling](tools/README.md) | Harness and throwaway relay, ready to run |
 
 GitHub displays `.html` files as source rather than rendering them. To read it properly, either:
 
@@ -90,11 +96,35 @@ Stated up front, deliberately:
 - **Evading provider safety systems** — a non-goal by intent, not by limitation. Osanwë provides
   anonymity from identity linkage, not freedom from model safety policy.
 
+## Decisions taken
+
+- **Terms of Service posture: bring-your-own-key first** ([ADR 0001](docs/decisions/0001-byok-first.md)).
+  v1 relays the user's own API key over end-to-end TLS, so no node sees plaintext and no provider
+  terms are violated. Pooled-key anonymity waits for Phase 3 and a cooperative conversation with
+  providers. v1 marketing must describe what BYOK actually delivers — IP and location unlinkability
+  — without implying the provider cannot identify the account.
+- **Abuse posture: the line holds** ([abuse policy](docs/abuse-policy.md)). Anonymity from identity
+  linkage, explicitly not freedom from model safety policy. No content logging, no backdoors, no
+  client-side scanning; anonymous rate limiting, mint-level refusal, and provider safety systems
+  left fully intact.
+
 ## Status
 
-Pre-implementation. Nothing is built yet. The immediate next step is **Phase 0**: a throwaway
-single-hop proxy measuring time-to-first-token against a direct call. That one number decides
-whether this is an interactive chat product or a batch product, and every later phase depends on
-the answer.
+Pre-implementation. The **Phase 0** tooling is written and tested but **the measurement has not
+been run** — it needs an API key and a VPS in another region, and it takes about twenty minutes.
+
+```bash
+# on a VPS elsewhere
+python3 tools/throwaway_relay.py --port 8080 --secret "$(openssl rand -hex 24)" \
+        --allow api.anthropic.com
+
+# on your machine
+export ANTHROPIC_API_KEY=sk-ant-...
+python3 tools/phase0_latency.py --runs 30 --proxy http://relay:SECRET@vps:8080 --label eu-west-1
+```
+
+That one number — p95 time-to-first-token overhead — decides whether this is an interactive chat
+product or a batch product. Every later phase depends on the answer, so it is the next thing that
+should happen. Results go in [docs/phase0-results.md](docs/phase0-results.md).
 
 See [§13 Build phases](docs/index.html) for the full roadmap.

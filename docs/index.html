@@ -698,7 +698,7 @@ coherent postures:</p>
 </div>
 
 <div class="box good">
-  <span class="lbl">Recommended path</span>
+  <span class="lbl">Decided — see <a href="decisions/0001-byok-first.md">ADR 0001</a></span>
   <p>Ship <b>BYOK</b> as v1. It is honest, compliant, immediately useful, and it builds the relay
   network, the operator community and the latency data needed for everything else. Open the
   <b>cooperative</b> conversation with providers in parallel — they have a genuine reputational
@@ -717,6 +717,16 @@ down — deservedly.</p>
 
 <p>Abuse resistance must be designed in from the first commit. It is not a feature to add after
 the first incident, because after the first incident there is no project.</p>
+
+<div class="box good">
+  <span class="lbl">Written up — see the abuse policy</span>
+  <p>The controls below are specified in full in <a href="abuse-policy.md">docs/abuse-policy.md</a>,
+  together with prohibited uses, an honest account of what each component can and cannot see, the
+  deliberately excluded controls (no content logging, no backdoors, no client-side scanning), the
+  in-enclave classification tradeoff, legal obligations for counsel, and incident response. Note
+  that <b>System B is the harder case</b>: open weights on donated hardware have no upstream
+  provider safety layer behind them at all.</p>
+</div>
 
 <div class="tw">
 <table>
@@ -810,9 +820,13 @@ aggregate throughput under concurrency.</p>
   <p>Before any protocol design: a throwaway single-hop TLS <code>CONNECT</code> proxy on a VPS in
   another region. Stream a real provider API call through it. Measure TTFT and inter-token latency
   against a direct call, per the methodology in §9.</p>
-  <p class="exit"><b>Exit criterion:</b> a latency table committed to this repository, and a
-  written go/no-go on whether Osanwë is a chat product or a batch product. <b>Every later phase
-  depends on this answer</b>, so nothing else starts until it exists.</p>
+  <p><b>The tooling for this is written and tested</b> — see
+  <a href="../tools/README.md"><code>tools/README.md</code></a>. It needs an API key and a VPS in
+  another region, and takes about twenty minutes.</p>
+  <p class="exit"><b>Exit criterion:</b> a latency table committed to
+  <a href="phase0-results.md"><code>docs/phase0-results.md</code></a>, and a written go/no-go on
+  whether Osanwë is a chat product or a batch product. <b>Every later phase depends on this
+  answer</b>, so nothing else starts until it exists.</p>
 </div>
 
 <div class="phase">
@@ -895,7 +909,7 @@ skips verification works perfectly until the day it matters.</p>
 <ol>
   <li><b>Trust model for the node network.</b> Volunteer and reputation-based, Tor-style? Crypto-incentivized DePIN? Or federated paid operators with contractual non-collusion? This document assumes <b>federated paid operators</b>, which is the fastest route to a credible non-collusion claim but caps organic growth. A token model solves supply-side growth and imports securities questions.</li>
   <li><b>Is the global-passive-adversary threat model actually required?</b> Assumed <b>no</b>. If yes, §8 forces a different, asynchronous product.</li>
-  <li><b>Which posture on §10?</b> Assumed BYOK first, cooperative in parallel. This is the single highest-leverage decision in the document.</li>
+  <li><s><b>Which posture on §10?</b></s> <b>Resolved:</b> BYOK first, cooperative in parallel, adversarial never — recorded in <a href="decisions/0001-byok-first.md">ADR 0001</a>.</li>
   <li><b>Jurisdiction.</b> Where do the mint and gateway incorporate? This drives the credibility of the non-collusion claim and the exposure of the entity holding money.</li>
   <li><b>Does the mint's KYC obligation leak more than assumed?</b> A payments processor that knows purchase volume and timing may narrow the anonymity set more than the cryptography suggests.</li>
 </ol>
