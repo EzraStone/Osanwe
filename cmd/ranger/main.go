@@ -50,7 +50,9 @@ func (s *stringList) Set(v string) error {
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "ranger: %v\n", err)
+		// Library errors already carry a package prefix; adding another
+		// here would print "cmd: cmd: ...".
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
@@ -122,7 +124,7 @@ func run() error {
 		sec = *secret
 	}
 	if sec == "" {
-		return errors.New("no secret set. Generate one with `ranger -gen-secret` and pass it in OSANWE_RANGER_SECRET")
+		return errors.New("ranger: no secret set. Generate one with `ranger -gen-secret` and pass it in OSANWE_RANGER_SECRET")
 	}
 	authenticator, err := auth.New(sec)
 	if err != nil {
@@ -130,7 +132,7 @@ func run() error {
 	}
 
 	if len(allow) == 0 {
-		return errors.New("no -allow destinations given. A relay must be told what it may carry traffic to; it will not forward to arbitrary hosts")
+		return errors.New("ranger: no -allow destinations given. A relay must be told what it may carry traffic to; it will not forward to arbitrary hosts")
 	}
 	allowlist, err := policy.Parse(allow)
 	if err != nil {

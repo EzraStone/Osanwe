@@ -250,7 +250,7 @@ func requireLoopback(addr string) error {
 	case "", "0.0.0.0", "::":
 		return fmt.Errorf("bearer: refusing to bind %q, which listens on every interface. "+
 			"Traffic between your tools and bearer is plaintext; exposing it would put prompts on the network in the clear. "+
-			"Use 127.0.0.1, or set AllowNonLoopback if you have arranged your own protection", addr)
+			"Use a loopback address, or explicitly opt in to exposed binding if you have arranged your own protection", addr)
 	case "localhost":
 		return nil
 	}
@@ -261,7 +261,7 @@ func requireLoopback(addr string) error {
 	if !ip.IsLoopback() {
 		return fmt.Errorf("bearer: refusing to bind non-loopback address %q. "+
 			"Traffic between your tools and bearer is plaintext; exposing it would put prompts on the network in the clear. "+
-			"Use 127.0.0.1, or set AllowNonLoopback if you have arranged your own protection", host)
+			"Use a loopback address, or explicitly opt in to exposed binding if you have arranged your own protection", host)
 	}
 	return nil
 }
