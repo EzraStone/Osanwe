@@ -18,12 +18,15 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/EzraStone/osanwe/internal/bearer"
+	"github.com/EzraStone/osanwe/internal/directory"
 	"github.com/EzraStone/osanwe/internal/tunnel"
 )
 
@@ -37,11 +40,16 @@ func main() {
 }
 
 func run() error {
+	var dirURLs, authKeys stringList
+
 	fs := flag.NewFlagSet("bearer", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8080", "loopback address to listen on")
 	relay := fs.String("relay", "", "ranger address as host:port. Required")
 	pin := fs.String("pin", "", "the ranger's public-key pin, as printed by `ranger -pin`. Required")
 	secret := fs.String("secret", "", "shared secret for the relay (or set OSANWE_SECRET)")
+	fs.Var(&dirURLs, "directory", "directory URL to fetch a consensus from (repeatable). An alternative to -relay/-pin")
+	fs.Var(&authKeys, "authority", "trusted directory authority key (repeatable)")
+	threshold := fs.Int("threshold", 2, "how many authorities must have signed the consensus")
 	upstream := fs.String("upstream", bearer.DefaultUpstream, "provider base URL")
 	allowExposed := fs.Bool("allow-exposed", false, "permit binding a non-loopback address. Traffic between your tools and bearer is plaintext, so this puts prompts on the network in the clear")
 	verbose := fs.Bool("v", false, "verbose logging")
@@ -59,11 +67,18 @@ func run() error {
 		return err
 	}
 
-	if *relay == "" {
-		return errors.New("bearer: no -relay given. Ask a relay operator for its address and pin")
+	usingDirectory := len(dirURLs) > 0
+	if usingDirectory && (*relay != "" || *pin != "") {
+		return errors.New("bearer: use either -relay/-pin or -directory, not both. " +
+			"A manual pin is the stronger option and silently preferring one would hide which was in force")
 	}
-	if *pin == "" {
-		return errors.New("bearer: no -pin given. The relay operator gets it from `ranger -pin`; without it the relay is unauthenticated and could be substituted")
+	if !usingDirectory {
+		if *relay == "" {
+			return errors.New("bearer: no -relay given. Ask a relay operator for its address and pin, or use -directory")
+		}
+		if *pin == "" {
+			return errors.New("bearer: no -pin given. The relay operator gets it from `ranger -pin`; without it the relay is unauthenticated and could be substituted")
+		}
 	}
 
 	// Environment first: a command line is visible in the process table to
@@ -82,7 +97,48 @@ func run() error {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
-	dialer, err := tunnel.New(tunnel.Config{Relay: *relay, Pin: *pin, Secret: sec})
+	relayAddr, relayPin := *relay, *pin
+	if usingDirectory {
+		if len(authKeys) == 0 {
+			return errors.New("bearer: -directory needs at least one -authority key. " +
+				"Without one, any server answering the URL could hand you a relay it controls")
+		}
+		if *threshold > len(authKeys) {
+			return fmt.Errorf("bearer: -threshold %d exceeds the %d authority keys given, so no consensus could satisfy it",
+				*threshold, len(authKeys))
+		}
+		if *threshold < 2 && len(authKeys) > 1 {
+			log.Warn("threshold is 1 although several authorities are configured; a single compromised authority can choose your relay")
+		}
+		authorities, err := directory.AuthoritySet(authKeys)
+		if err != nil {
+			return err
+		}
+
+		probe, err := bearer.New(bearer.Config{Addr: *addr, Upstream: *upstream, Dialer: noopDialer{}, AllowNonLoopback: *allowExposed})
+		if err != nil {
+			return err
+		}
+		want := probe.UpstreamAddr()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		fetcher := &directory.Fetcher{URLs: dirURLs, Authorities: authorities, Threshold: *threshold}
+		consensus, err := fetcher.Fetch(ctx)
+		cancel()
+		if err != nil {
+			return err
+		}
+
+		chosen, err := directory.Select(consensus.Usable(time.Now(), want))
+		if err != nil {
+			return fmt.Errorf("bearer: %w (looking for a relay serving %s)", err, want)
+		}
+		relayAddr, relayPin = chosen.Address, chosen.TLSPin
+		log.Info("selected relay from the directory",
+			"nickname", chosen.Nickname, "address", relayAddr, "relays_available", len(consensus.Usable(time.Now(), want)))
+	}
+
+	dialer, err := tunnel.New(tunnel.Config{Relay: relayAddr, Pin: relayPin, Secret: sec})
 	if err != nil {
 		return err
 	}
@@ -101,7 +157,7 @@ func run() error {
 		return err
 	}
 
-	log.Info("bearer listening", "addr", srv.Addr().String(), "relay", *relay, "upstream", *upstream)
+	log.Info("bearer listening", "addr", srv.Addr().String(), "relay", relayAddr, "upstream", *upstream)
 	fmt.Fprintf(os.Stderr, "\n  Point your tool at this:\n    export ANTHROPIC_BASE_URL=http://%s\n\n"+
 		"  The relay must allow %s; its operator sets that with -allow.\n\n",
 		srv.Addr().String(), srv.UpstreamAddr())
@@ -125,4 +181,25 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(ctx)
+}
+
+// stringList collects a repeatable, comma-separated flag.
+type stringList []string
+
+func (s *stringList) String() string { return strings.Join(*s, ",") }
+func (s *stringList) Set(v string) error {
+	for _, part := range strings.Split(v, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			*s = append(*s, part)
+		}
+	}
+	return nil
+}
+
+// noopDialer lets a Server be constructed purely to compute the upstream
+// address a relay must serve, before any relay has been chosen.
+type noopDialer struct{}
+
+func (noopDialer) DialContext(context.Context, string, string) (net.Conn, error) {
+	return nil, errors.New("bearer: no relay selected yet")
 }

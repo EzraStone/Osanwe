@@ -27,6 +27,7 @@ import (
 
 	"github.com/EzraStone/osanwe/internal/auth"
 	"github.com/EzraStone/osanwe/internal/certs"
+	"github.com/EzraStone/osanwe/internal/directory"
 	"github.com/EzraStone/osanwe/internal/policy"
 	"github.com/EzraStone/osanwe/internal/ranger"
 )
@@ -70,7 +71,13 @@ func run() error {
 	keyPath := fs.String("key", "", "TLS key path (default <dir>/ranger.key)")
 	logDest := fs.Bool("log-destinations", false, "log which destination each connection requested. Off by default: a relay that records who talked to which provider builds the correlation log this network exists to prevent")
 	verbose := fs.Bool("v", false, "verbose logging")
+	nickname := fs.String("nickname", "", "short name for this relay in the directory. Enables descriptor publication")
+	contact := fs.String("contact", "", "operator contact published in the descriptor (optional)")
+	descOut := fs.String("descriptor", "", "write a signed descriptor to this path and exit")
+	descValid := fs.Duration("descriptor-validity", 24*time.Hour, "how long a published descriptor stays valid")
+	advertise := fs.String("advertise", "", "address clients should dial, if different from -addr")
 	genSecret := fs.Bool("gen-secret", false, "print a fresh random secret and exit")
+	showIdentity := fs.Bool("identity", false, "print this relay's directory identity and exit")
 	showPin := fs.Bool("pin", false, "print the relay's pin and exit")
 
 	fs.Usage = func() {
@@ -100,6 +107,7 @@ func run() error {
 	if *keyPath == "" {
 		*keyPath = filepath.Join(*dir, "ranger.key")
 	}
+	identityPath := filepath.Join(*dir, "ranger.identity")
 
 	level := slog.LevelInfo
 	if *verbose {
@@ -114,6 +122,61 @@ func run() error {
 
 	if *showPin {
 		fmt.Println(pin)
+		return nil
+	}
+
+	// The directory identity is separate from the TLS key: the certificate can
+	// be rotated routinely, but this key is what clients remember.
+	identity, idCreated, err := directory.LoadOrCreateIdentity(identityPath)
+	if err != nil {
+		return err
+	}
+	if *showIdentity {
+		fmt.Println(identity.Fingerprint())
+		return nil
+	}
+	if idCreated {
+		log.Info("generated a new directory identity", "path", identityPath)
+	}
+
+	if *descOut != "" {
+		if len(allow) == 0 {
+			return errors.New("ranger: -descriptor needs -allow, since a descriptor must say what the relay will carry")
+		}
+		if *nickname == "" {
+			return errors.New("ranger: -descriptor needs -nickname")
+		}
+		allowlist, err := policy.Parse(allow)
+		if err != nil {
+			return err
+		}
+		advertised := *advertise
+		if advertised == "" {
+			advertised = displayAddr(*addr)
+		}
+		now := time.Now()
+		d := &directory.Descriptor{
+			Nickname:     *nickname,
+			Address:      advertised,
+			TLSPin:       pin,
+			Identity:     identity.Fingerprint(),
+			Destinations: allowlist.Destinations(),
+			Contact:      *contact,
+			Published:    now,
+			Expires:      now.Add(*descValid),
+		}
+		encoded, err := d.Sign(identity)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(*descOut, encoded, 0o644); err != nil {
+			return fmt.Errorf("ranger: writing descriptor: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "wrote descriptor for %q (%s) to %s\n", d.Nickname, d.Address, *descOut)
+		if strings.Contains(advertised, "<this-host>") {
+			fmt.Fprintf(os.Stderr, "\n  WARNING: the address is a placeholder. Pass -advertise with the address\n"+
+				"  clients should actually dial, or the descriptor is unusable.\n\n")
+		}
 		return nil
 	}
 
