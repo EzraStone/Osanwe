@@ -1,7 +1,17 @@
+# Go
+bin/
+coverage.out
+*.test
+
+# Python (Phase 0 tooling)
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Local artifacts
 results/
 *.pcap
+*.pem
+*.key
 .DS_Store
