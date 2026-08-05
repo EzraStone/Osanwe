@@ -18,6 +18,7 @@ who would rather trust no one at all.
 | [Abuse policy](docs/abuse-policy.md) | What we prohibit, what we can and cannot see, legal obligations |
 | [ADR 0001 — BYOK first](docs/decisions/0001-byok-first.md) | The Terms of Service posture, decided |
 | **[Quickstart](docs/quickstart.md)** | Run a relay and a client — Phase 2 is working code |
+| [The directory](docs/directory.md) | Relay discovery, and the trust trade it makes |
 | [Phase 0 results](docs/phase0-results.md) | The gating latency measurement — **not yet run** |
 | [Phase 0 tooling](tools/README.md) | Harness and throwaway relay, ready to run |
 
@@ -138,6 +139,10 @@ The relay-blindness claim is verified rather than asserted — `internal/integra
 byte crossing the relay and fails if a prompt, an API key or a response can be recovered from it,
 with a control that fails the test if the capture is not of encrypted traffic.
 
+Relay discovery is also implemented: relays publish signed descriptors, authorities publish a
+threshold-signed consensus, and clients select from it. Manual pinning stays supported and is never
+silently overridden — see [the directory](docs/directory.md) for what that trade costs.
+
 **Still outstanding: [Phase 0](docs/phase0-results.md).** The latency measurement has tooling but
 has not been run, and it is the number that decides whether this is an interactive product or a
 batch one.
@@ -146,6 +151,7 @@ batch one.
 |---|---|
 | `cmd/ranger` · `internal/ranger` | Relay: TLS listener, default-deny allowlist, no content logging |
 | `cmd/bearer` · `internal/bearer` | Client: loopback-only, streaming-preserving reverse proxy |
+| `cmd/council` · `internal/directory` | Directory: signed descriptors, M-of-N consensus, relay selection |
 | `internal/tunnel` | Pinned CONNECT dialer |
 | `internal/certs` | Relay identity, pinned by public key |
 | `internal/policy` · `internal/auth` | Destination allowlist, shared-secret auth |
