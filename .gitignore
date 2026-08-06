@@ -15,3 +15,6 @@ results/
 *.pem
 *.key
 .DS_Store
+
+# Demo/local relay identity
+ranger.crt
