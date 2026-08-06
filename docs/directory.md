@@ -1,9 +1,9 @@
 # The directory
 
 Phase 2 makes you get a relay's address and pin from its operator by hand. That
-is the strongest trust story the system has — nobody stands between you and the
-operator you chose — but it does not scale past one relay and gives you nothing
-to fall back on when that relay goes down.
+is the strongest trust story the system has, because nobody stands between you
+and the operator you chose. But it does not scale past one relay, and it gives
+you nothing to fall back on when that relay goes down.
 
 The directory fixes discovery. **It does not remove trust, it moves it.**
 
@@ -38,19 +38,56 @@ expensive: every one of them has to agree to the same edited list.
 ## Running an authority
 
 ```bash
-council -identity ./council.key -descriptors ./descriptors -addr :9000
+council -identity ./council.key -descriptors ./descriptors \
+        -accept ./accept.txt -addr :9000
+
 council -identity ./council.key -key      # print the public key for clients
+```
+
+`-accept` enables `POST /publish`. Without it the endpoint refuses everything.
+The file is one identity per line, with an optional label, re-read on every
+submission so admitting a relay does not need a restart:
+
+```
+# operators this authority carries
+ed25519:AAAA...  north relay, ops@example.com
+ed25519:BBBB...  south relay
 ```
 
 `-lifetime` sets how long each consensus is valid, `-rebuild` how often it is
 regenerated. Rebuild must be shorter than lifetime, or the consensus expires
-before its replacement exists — `council` refuses to start otherwise.
+before its replacement exists, `council` refuses to start otherwise.
 
 A broken descriptor is skipped with a warning rather than aborting the rebuild;
 one operator publishing a malformed file must not take the directory down. A
 failed rebuild keeps serving the previous consensus, which is signed and still
-fresh — returning nothing would take every client offline over a transient disk
+fresh, returning nothing would take every client offline over a transient disk
 error.
+
+### Health checking
+
+Before listing a relay, `council` opens a TLS connection to it and checks that
+the key it presents matches the pin in its descriptor. That catches two things a
+parser cannot: a relay that is simply down, and a relay whose certificate was
+rotated without republishing, which to a client looks exactly like
+impersonation.
+
+The probe is a handshake and nothing more. It needs no credential, because a
+relay presents its certificate before asking who is calling, and it stops short
+of authenticating on purpose: an authority has no business holding relay
+secrets, and a probe that could open a tunnel could carry traffic.
+
+A key mismatch is a failure, never a new observation. The authority will not
+quietly republish a key it just discovered; either the operator rotated it and
+should republish a signed descriptor, or something is impersonating the relay.
+Both are for the operator to resolve.
+
+`-unhealthy-after` (default 3) is how many consecutive failures it takes to drop
+a relay. Networks are unreliable, and a directory that removed a relay the first
+time a probe timed out would flap constantly and take clients with it. A relay
+that is failing but not yet dropped is logged, so trouble is visible before the
+relay disappears. `-probe=false` turns the whole thing off and warns that the
+consensus may then advertise relays that are down.
 
 **One council is not a network.** Whoever holds that key decides which relays
 clients can see. A real deployment runs several, operated by different people in
@@ -63,12 +100,39 @@ ranger -dir . -allow api.anthropic.com \
        -nickname northrelay \
        -advertise relay.example.com:8443 \
        -contact ops@example.com \
-       -descriptor ./northrelay.desc
+       -publish https://council-a.example/publish,https://council-b.example/publish
 ```
 
-Send the file to the authorities. `-advertise` matters: a relay bound to `:8443`
-does not know what address clients should dial, and without it the descriptor
-carries a placeholder and says so.
+`-advertise` is required when the relay binds a wildcard address, because a
+relay listening on `:8443` does not know what address clients should dial and a
+descriptor carrying a placeholder is unusable.
+
+Use `-descriptor ./north.desc` instead of `-publish` to write the file out and
+deliver it some other way. Publishing needs no credential and no transport
+security: the descriptor is signed, so an authority verifies it on arrival, and
+anything that altered it in flight would only produce a document the authority
+rejects. Each endpoint is reported separately, since one authority being down
+must not stop the others hearing about your relay.
+
+### Getting admitted
+
+Submission is **default-deny**. An authority publishes only identities on its
+accept list, so the first step is sending your fingerprint to its operator:
+
+```bash
+ranger -dir . -identity          # prints ed25519:...
+```
+
+The operator adds a line to their accept file and you publish again. This is a
+human decision on purpose. An open endpoint would let anyone register relays,
+and a directory listing a thousand attacker-run relays beside three honest ones
+has handed the attacker almost every client without breaking a signature.
+
+A submission is refused if it is older than or the same age as the one already
+stored (`409`). Otherwise anyone holding a copy of an old descriptor could
+replay it and move your relay back to a previous address or key. That old
+document's signature is still valid, which is precisely why freshness is checked
+separately.
 
 The relay's directory identity (`ranger.identity`) is separate from its TLS key.
 The certificate can be rotated routinely; the identity is what clients remember,
@@ -96,7 +160,7 @@ authority answers first.
 ## Document format
 
 Line-oriented text. **Signatures cover the exact bytes received**, and
-verification never re-serialises a parsed struct to compare — that pattern is
+verification never re-serialises a parsed struct to compare, that pattern is
 behind a whole family of signature-bypass bugs, where any disagreement between
 parser and serialiser becomes a way to change meaning while keeping a valid
 signature.
@@ -108,7 +172,7 @@ Four rules follow from taking that seriously:
 - Duplicate single-valued fields are refused, so meaning never depends on which
   line a reader happens to use.
 - Anything after the signature is refused, since it is unsigned.
-- One authority cannot sign twice — otherwise it could satisfy a threshold meant
+- One authority cannot sign twice, otherwise it could satisfy a threshold meant
   to require several by repeating itself.
 
 Both documents expire. A signature never goes stale on its own, so without
