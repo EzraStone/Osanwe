@@ -53,34 +53,10 @@ anonymous authorization, solved with blind signatures rather than circuits.
 
 Three parties, split so that no single one holds both halves of your identity.
 
-```mermaid
-flowchart LR
-    M(["<b>eregion</b> · the mint<br/><i>knows who paid</i><br/><i>never sees a prompt</i>"])
-
-    subgraph SIDE_A["🔓 your identity is known on this side"]
-        direction LR
-        B(["<b>bearer</b><br/><i>your machine</i>"])
-        R(["<b>ranger</b> · relay<br/><i>sees your address</i><br/><i>never your words</i>"])
-    end
-
-    subgraph SIDE_B["🔒 your prompt is readable on this side"]
-        direction LR
-        G(["<b>mithlond</b> · gateway<br/><i>sees your words</i><br/><i>never who you are</i>"])
-        P(["<b>provider</b><br/><i>Anthropic, OpenAI</i>"])
-    end
-
-    M -. "blind-signed tokens" .-> B
-    B == "encrypted" ==> R
-    R == "encrypted" ==> G
-    G -- "pooled key" --> P
-
-    classDef node fill:#eff1f1,stroke:#8fa0b0,stroke-width:1.5px,color:#0d1217
-    classDef key  fill:#1668c4,stroke:#1668c4,stroke-width:2px,color:#ffffff
-    class M,B,R,G node
-    class P key
-    style SIDE_A fill:#e8f0f9,stroke:#1668c4,stroke-width:1.5px,color:#0d1217
-    style SIDE_B fill:#f3efe6,stroke:#a58a4e,stroke-width:1.5px,color:#0d1217
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/architecture-dark.svg">
+  <img alt="eregion the mint issues blind-signed tokens to bearer. bearer sends encrypted traffic through ranger, the relay, which sees your address but never your words, then to mithlond, the gateway, which sees your words but never who you are, and finally to the provider using a pooled key. Identity is known on the bearer and ranger side only; content is readable only on the gateway and provider side." src="docs/img/architecture-light.svg" width="100%">
+</picture>
 
 **Identity stops at the relay. Content starts at the gateway. Nothing sits on both sides.**
 
@@ -90,27 +66,13 @@ assumptions are concealed is a lie with extra steps.
 
 ### What is actually built today
 
-Phase 2 is the left half of that picture. `eregion` and `mithlond` are Phase 3 and do not exist
-yet, so today the client reaches the provider through the relay using your own API key:
+That is the finished design. Phase 2 is the left half of it: `eregion` and `mithlond` do not exist
+yet, so today the client reaches the provider through the relay using your own API key.
 
-```mermaid
-flowchart LR
-    T(["your tool<br/><i>SDK, editor, agent</i>"])
-    B(["<b>bearer</b><br/>127.0.0.1:8080"])
-    R(["<b>ranger</b><br/><i>a VPS elsewhere</i>"])
-    P(["<b>provider</b><br/>api.anthropic.com"])
-
-    T -- "plain HTTP<br/><i>never leaves your machine</i>" --> B
-    B == "TLS #1 · hides which provider you use" ==> R
-    R == "TLS #2 · the relay holds no key for this" ==> P
-
-    classDef local fill:#eff1f1,stroke:#8fa0b0,stroke-width:1.5px,color:#0d1217
-    classDef hop   fill:#e8f0f9,stroke:#1668c4,stroke-width:2px,color:#0d1217
-    classDef far   fill:#1668c4,stroke:#1668c4,stroke-width:2px,color:#ffffff
-    class T,B local
-    class R hop
-    class P far
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/phase2-dark.svg">
+  <img alt="Your tool talks plain HTTP to bearer on 127.0.0.1:8080, which never leaves your machine. TLS #1 covers bearer to ranger and hides which provider you use. TLS #2 runs end to end from bearer all the way to the provider, so the relay holds no key for it." src="docs/img/phase2-light.svg" width="100%">
+</picture>
 
 Two encryption layers, protecting different things. **TLS #2** runs end to end from `bearer` to the
 provider, so the relay carries ciphertext it has no key for. **TLS #1** wraps that, because a
@@ -119,34 +81,18 @@ would read `CONNECT api.anthropic.com:443` and learn exactly which provider you 
 
 ### Where identity actually leaks
 
-Routing closes one channel out of five. Being honest about the other four is the point:
+Routing closes one channel out of five. Being honest about the other four is the point.
 
-```mermaid
-flowchart TD
-    Q(["<b>every AI request identifies you five ways</b>"])
-    Q --> C1["IP address<br/>and location"]
-    Q --> C2["prompt read<br/>in transit"]
-    Q --> C3["API key<br/>and account"]
-    Q --> C4["payment<br/>method"]
-    Q --> C5["writing style<br/>and content"]
+| What leaks | What actually closes it | Osanwë today |
+|---|---|---|
+| Your IP address and location | A relay between you and the provider | **Closed** |
+| Your prompt, read in transit | End-to-end TLS the relay cannot open | **Closed** |
+| Your API key and account | Blind-signed tokens and pooled access | Phase 3 |
+| Your payment method | Unlinkable issuance at a separate mint | Phase 3 |
+| Your writing style and content | Nothing. No network can fix this | **Never** |
 
-    C1 --> F1["<b>closed today</b><br/>a relay"]
-    C2 --> F2["<b>closed today</b><br/>end-to-end TLS"]
-    C3 --> F3["Phase 3<br/>blind-signed tokens"]
-    C4 --> F4["Phase 3<br/>unlinkable issuance"]
-    C5 --> F5["<b>never</b><br/>no network fixes this"]
-
-    classDef root  fill:#ffffff,stroke:#0d1217,stroke-width:2px,color:#0d1217
-    classDef chan  fill:#eff1f1,stroke:#8fa0b0,stroke-width:1.5px,color:#0d1217
-    classDef done  fill:#1668c4,stroke:#1668c4,stroke-width:2px,color:#ffffff
-    classDef later fill:#e8f0f9,stroke:#1668c4,stroke-width:1.5px,color:#0d1217
-    classDef never fill:#f6e6e2,stroke:#a8564a,stroke-width:2px,color:#5e2a20
-    class Q root
-    class C1,C2,C3,C4,C5 chan
-    class F1,F2 done
-    class F3,F4 later
-    class F5 never
-```
+The diagrams are generated by [`docs/img/generate.py`](docs/img/generate.py), which emits the light
+and dark pair from one definition so the two cannot drift apart.
 
 ## Components
 

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="996" height="506" viewBox="0 0 996 506" role="img">
+  <rect width="100%" height="100%" fill="#fbfaf7"/>
+  <g transform="translate(18,18)">
+  <text x="0" y="16" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" letter-spacing="0.1em" fill="#7a5c2e">the design</text>
+  <rect x="0" y="40" width="168" height="78" rx="7" fill="#f0e7d6" stroke="#7a5c2e" stroke-width="1.5"/>
+  <text x="84.0" y="64" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="650" fill="#1c1a17">eregion · the mint</text>
+  <text x="84.0" y="83" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#6b6459">knows who paid</text>
+  <text x="84.0" y="98" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#6b6459">never sees a prompt</text>
+  <line x1="84.0" y1="118" x2="84.0" y2="183" stroke="#938b7e" stroke-width="1.3" stroke-dasharray="4 3"/><path d="M80.0 176 L84.0 183 L88.0 176 Z" fill="#938b7e"/><text x="98.0" y="155" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="10" letter-spacing="0.06em" fill="#938b7e">blind-signed tokens</text>
+  <rect x="0" y="190" width="168" height="84" rx="7" fill="#ffffff" stroke="#e3ded4" stroke-width="1.5"/>
+  <text x="84.0" y="214" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="650" fill="#1c1a17">bearer</text>
+  <text x="84.0" y="233" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#6b6459">your machine</text>
+  <text x="84.0" y="248" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#6b6459">holds your key</text>
+  <rect x="264" y="190" width="168" height="84" rx="7" fill="#ffffff" stroke="#e3ded4" stroke-width="1.5"/>
+  <text x="348.0" y="214" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="650" fill="#1c1a17">ranger · relay</text>
+  <text x="348.0" y="233" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#6b6459">sees your address</text>
+  <text x="348.0" y="248" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#6b6459">never your words</text>
+  <rect x="528" y="190" width="168" height="84" rx="7" fill="#ffffff" stroke="#e3ded4" stroke-width="1.5"/>
+  <text x="612.0" y="214" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="650" fill="#1c1a17">mithlond · gateway</text>
+  <text x="612.0" y="233" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#6b6459">sees your words</text>
+  <text x="612.0" y="248" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#6b6459">never who you are</text>
+  <rect x="792" y="190" width="168" height="84" rx="7" fill="#f0e7d6" stroke="#7a5c2e" stroke-width="1.5"/>
+  <text x="876.0" y="214" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" font-weight="650" fill="#1c1a17">provider</text>
+  <text x="876.0" y="233" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#6b6459">Anthropic</text>
+  <text x="876.0" y="248" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#6b6459">OpenAI</text>
+  <line x1="168" y1="232.0" x2="257" y2="232.0" stroke="#6b6459" stroke-width="1.5"/>
+  <path d="M257 228.0 L264 232.0 L257 236.0 Z" fill="#6b6459"/>
+  <text x="216.0" y="223.0" text-anchor="middle" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="10" letter-spacing="0.06em" fill="#938b7e">encrypted</text>
+  <line x1="432" y1="232.0" x2="521" y2="232.0" stroke="#6b6459" stroke-width="1.5"/>
+  <path d="M521 228.0 L528 232.0 L521 236.0 Z" fill="#6b6459"/>
+  <text x="480.0" y="223.0" text-anchor="middle" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="10" letter-spacing="0.06em" fill="#938b7e">encrypted</text>
+  <line x1="696" y1="232.0" x2="785" y2="232.0" stroke="#6b6459" stroke-width="1.5"/>
+  <path d="M785 228.0 L792 232.0 L785 236.0 Z" fill="#6b6459"/>
+  <text x="744.0" y="223.0" text-anchor="middle" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="10" letter-spacing="0.06em" fill="#938b7e">pooled key</text>
+  <text x="0" y="322" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" letter-spacing="0.1em" fill="#6b6459">who knows what</text><line x1="0" y1="332" x2="960" y2="332" stroke="#e3ded4" stroke-width="1"/>
+  <rect x="0" y="352" width="432" height="21" rx="4" fill="#f0e7d6" stroke="#7a5c2e" stroke-width="1"/><text x="216.0" y="366.5" text-anchor="middle" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#7a5c2e">identity known here</text>
+  <rect x="528" y="352" width="432" height="21" rx="4" fill="none" stroke="#e3ded4" stroke-dasharray="3 3"/><text x="744.0" y="366.5" text-anchor="middle" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#938b7e">identity unknown from here on</text>
+  <rect x="0" y="386" width="432" height="21" rx="4" fill="none" stroke="#e3ded4" stroke-dasharray="3 3"/><text x="216.0" y="400.5" text-anchor="middle" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#938b7e">content is opaque ciphertext</text>
+  <rect x="528" y="386" width="432" height="21" rx="4" fill="#f0e7d6" stroke="#7a5c2e" stroke-width="1"/><text x="744.0" y="400.5" text-anchor="middle" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#7a5c2e">content readable, hence the TEE</text>
+  <text x="0" y="437" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11.5" fill="#938b7e">No party sits on both sides. The design rests on the mint, relay and gateway not colluding.</text>
+  </g>
+</svg>
