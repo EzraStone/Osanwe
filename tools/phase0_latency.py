@@ -57,10 +57,9 @@ try:
 except ImportError:
     sys.exit("This harness needs `requests`. Install it with:  pip install requests")
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import providers  # noqa: E402  (must follow the sys.path tweak above)
 
-DEFAULT_BASE_URL = "https://api.anthropic.com"
-DEFAULT_MODEL = "claude-sonnet-5"
-API_VERSION = "2023-06-01"
 
 # Held fixed across every trial. Long enough to produce a usable inter-token
 # distribution, short enough that a 30-run interleaved sweep stays cheap.
@@ -94,27 +93,17 @@ def run_trial(
     arm: str,
     session: requests.Session,
     *,
+    provider: "providers.Provider",
     base_url: str,
-    api_key: str,
     model: str,
+    api_key: str | None,
     max_tokens: int,
     proxies: dict | None,
     timeout: float,
 ) -> Trial:
     """Issue one streaming request and time it."""
-    body = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "temperature": 0,
-        "stream": True,
-        "messages": [{"role": "user", "content": FIXED_PROMPT}],
-    }
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": API_VERSION,
-        "content-type": "application/json",
-        "accept": "text/event-stream",
-    }
+    url, headers, body = providers.build_request(
+        provider, base_url, model, FIXED_PROMPT, max_tokens, api_key)
 
     started = time.perf_counter()
     first_token_at: float | None = None
@@ -124,31 +113,25 @@ def run_trial(
 
     try:
         resp = session.post(
-            f"{base_url.rstrip('/')}/v1/messages",
-            headers=headers,
-            json=body,
-            stream=True,
-            proxies=proxies,
-            timeout=timeout,
+            url, headers=headers, json=body, stream=True,
+            proxies=proxies, timeout=timeout,
         )
         if resp.status_code != 200:
             detail = resp.text[:200].replace("\n", " ")
             return Trial(arm, 0.0, 0.0, error=f"HTTP {resp.status_code}: {detail}")
 
         for raw in resp.iter_lines(decode_unicode=True):
-            if not raw or not raw.startswith("data: "):
+            if not raw or not raw.startswith("data:"):
                 continue
-            payload = raw[6:]
-            if payload == "[DONE]":
+            payload = raw[5:].lstrip()
+            if providers.is_done(payload):
                 break
-            try:
-                event = json.loads(payload)
-            except json.JSONDecodeError:
-                continue
 
-            if event.get("type") != "content_block_delta":
-                continue
-            if event.get("delta", {}).get("type") != "text_delta":
+            text = providers.extract_delta(provider, payload)
+            if not text:
+                # Role announcements, usage records and keepalives are not
+                # tokens. Counting them would report a first-token time before
+                # any text arrived, which is the one number this measures.
                 continue
 
             now = time.perf_counter()
@@ -226,7 +209,7 @@ def render_markdown(direct: dict, proxied: dict | None, meta: dict) -> str:
     lines.append("")
     arms_note = "interleaved runs per arm" if proxied else "runs"
     lines.append(
-        f"`{meta['model']}` · {meta['runs']} {arms_note} · "
+        f"`{meta['model']}` via **{meta.get('provider', '?')}** · {meta['runs']} {arms_note} · "
         f"max_tokens={meta['max_tokens']} · "
         f"{'reused connection' if meta['warm'] else 'fresh connection per request'} · "
         f"{meta['timestamp']}"
@@ -294,11 +277,19 @@ def main() -> int:
         description="Phase 0 latency harness — measures relay overhead on streaming LLM requests.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    ap.add_argument("--provider", help="provider preset: " + ", ".join(sorted(providers.PROVIDERS)))
+    ap.add_argument("--list-providers", action="store_true", help="show the provider presets and exit")
+    ap.add_argument("--self-test", action="store_true",
+                    help="verify every stream adapter against recorded fixtures and exit. No key or network needed")
+    ap.add_argument("--api-key", help="credential (default: read the provider's env var)")
+    ap.add_argument("--delay", type=float, default=None,
+                    help="seconds to pause between trials. Free tiers are rate limited; "
+                         "the pause applies to both arms equally so it cannot bias the comparison")
     ap.add_argument("--runs", type=int, default=20, help="trials per arm (default: 20)")
     ap.add_argument("--proxy", help="proxy URL, e.g. http://host:8080. Omitted = baseline only")
     ap.add_argument("--label", default=None, help="label for the results table")
-    ap.add_argument("--model", default=DEFAULT_MODEL, help=f"model id (default: {DEFAULT_MODEL})")
-    ap.add_argument("--base-url", default=DEFAULT_BASE_URL, help="provider base URL")
+    ap.add_argument("--model", help="model id (default: the provider's)")
+    ap.add_argument("--base-url", help="override the provider's base URL")
     ap.add_argument("--max-tokens", type=int, default=128, help="max_tokens (default: 128)")
     ap.add_argument("--timeout", type=float, default=60.0, help="per-request timeout in seconds")
     ap.add_argument("--cold", action="store_true",
@@ -307,9 +298,36 @@ def main() -> int:
     ap.add_argument("--json", dest="json_out", help="also write raw results to this JSON path")
     args = ap.parse_args()
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        return _fail("ANTHROPIC_API_KEY is not set.")
+    if args.self_test:
+        return providers.self_test()
+
+    if args.list_providers:
+        print(f"{'preset':<12} {'format':<9} {'credential':<22} base url")
+        for name, prov in sorted(providers.PROVIDERS.items()):
+            cred = prov.key_env or "(none)"
+            print(f"{name:<12} {prov.fmt:<9} {cred:<22} {prov.base_url}")
+            if prov.notes:
+                print(f"{'':<12} {'':<9} {'':<22} {prov.notes}")
+        return 0
+
+    provider = providers.resolve(args.provider, args.base_url)
+    base_url = args.base_url or provider.base_url
+    model = args.model or provider.model
+
+    api_key = args.api_key
+    if not api_key and provider.key_env:
+        api_key = os.environ.get(provider.key_env)
+    if provider.key_env and not api_key:
+        return _fail(f"{provider.key_env} is not set (provider {provider.name}). "
+                     f"Pass --api-key, or pick another with --provider.")
+
+    delay = args.delay
+    if delay is None:
+        delay = provider.suggested_delay
+        if delay:
+            print(f"  pacing at {delay}s between trials: {provider.name} is rate limited on its free tier",
+                  file=sys.stderr)
+
     if args.runs < 5:
         return _fail("Use at least 5 runs per arm; percentiles are meaningless below that.")
 
@@ -320,7 +338,7 @@ def main() -> int:
     label = args.label or (f"via {args.proxy}" if args.proxy else "baseline, no proxy")
 
     print(f"Osanwë Phase 0 — {label}", file=sys.stderr)
-    print(f"  model={args.model}  runs={args.runs}/arm  "
+    print(f"  provider={provider.name} ({provider.fmt})  model={model}  runs={args.runs}/arm  "
           f"{'warm' if warm else 'cold'} connections", file=sys.stderr)
     if not proxies:
         print("  no --proxy given: establishing the control arm only", file=sys.stderr)
@@ -332,7 +350,7 @@ def main() -> int:
         sess = sessions[arm] if warm else requests.Session()
         return run_trial(
             arm, sess,
-            base_url=args.base_url, api_key=api_key, model=args.model,
+            provider=provider, base_url=base_url, model=model, api_key=api_key,
             max_tokens=args.max_tokens,
             proxies=proxies if arm == "proxied" else None,
             timeout=args.timeout,
@@ -352,6 +370,10 @@ def main() -> int:
             trials.append(t)
             mark = f"{t.ttft_ms:>7,.0f} ms" if t.ok else "  FAILED"
             print(f"  [{i + 1:>3}/{args.runs}] {arm:<8} {mark}", file=sys.stderr)
+            if not t.ok:
+                print(f"           {t.error[:110]}", file=sys.stderr)
+            if delay:
+                time.sleep(delay)
 
     print(file=sys.stderr)
 
@@ -360,7 +382,10 @@ def main() -> int:
 
     meta = {
         "label": label,
-        "model": args.model,
+        "provider": provider.name,
+        "format": provider.fmt,
+        "base_url": base_url,
+        "model": model,
         "runs": args.runs,
         "max_tokens": args.max_tokens,
         "warm": warm,

@@ -12,6 +12,49 @@ code should survive into Phase 2.
 |---|---|
 | `throwaway_relay.py` | Minimal HTTP `CONNECT` relay. Runs on a VPS in another region |
 | `phase0_latency.py` | Interleaved A/B latency harness. Runs on your machine |
+| `providers.py` | Wire-format adapters, so the harness works against any provider |
+
+## Which provider
+
+The measurement is a **difference**: direct versus relayed against the same
+endpoint. The relay only ever sees ciphertext, so relay overhead does not depend
+on which provider sits behind it. **A free provider is therefore a perfectly
+valid instrument**, even though the absolute baseline it reports would not
+transfer to a different vendor.
+
+```bash
+python3 phase0_latency.py --list-providers
+```
+
+Three wire formats cover everything:
+
+| Format | Providers |
+|---|---|
+| `messages` | Anthropic |
+| `chat` | OpenAI, DeepSeek, GLM, Groq, OpenRouter, Together, Fireworks, Cerebras, xAI, Mistral, Ollama |
+| `gemini` | Google |
+
+Anything else OpenAI-compatible works without a code change:
+
+```bash
+python3 phase0_latency.py --provider openai --base-url https://your-endpoint --model your-model
+```
+
+**Free options, no card:** `--provider gemini` (Google AI Studio) or
+`--provider groq`. Both are rate limited, so the harness paces itself
+automatically; the pause applies to both arms equally and cannot bias the
+comparison. Override with `--delay`.
+
+**Verify the adapters without a key, a network or an account:**
+
+```bash
+python3 phase0_latency.py --self-test
+```
+
+That replays recorded streams through every parser and confirms each one
+extracts the text and ignores role announcements, usage records and keepalives.
+Counting a non-text event as a token would report a first-token time before any
+text arrived, which is precisely the number being measured.
 
 ## Running the measurement
 
@@ -35,18 +78,22 @@ is finished.**
 **2. On your machine.**
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
 pip install requests
+export GEMINI_API_KEY=...          # or ANTHROPIC_API_KEY, OPENAI_API_KEY, ...
 
 # Control arm first, to see this machine's baseline:
-python3 phase0_latency.py --runs 20
+python3 phase0_latency.py --provider gemini --runs 20
 
 # The real measurement:
-python3 phase0_latency.py --runs 30 \
+python3 phase0_latency.py --provider gemini --runs 30 \
     --proxy "http://relay:$SECRET@vps.example.com:8080" \
     --label "eu-west-1" \
     --json ../results/eu-west-1.json
 ```
+
+The relay's `-allow` list must name the provider's host, so match it to whatever
+`--provider` you chose: `api.anthropic.com`, `generativelanguage.googleapis.com`,
+`api.openai.com` and so on.
 
 **3. Repeat from at least three client regions**, per §9, and paste the emitted Markdown tables into
 `docs/phase0-results.md`.
