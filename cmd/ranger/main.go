@@ -10,11 +10,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -74,6 +76,7 @@ func run() error {
 	nickname := fs.String("nickname", "", "short name for this relay in the directory. Enables descriptor publication")
 	contact := fs.String("contact", "", "operator contact published in the descriptor (optional)")
 	descOut := fs.String("descriptor", "", "write a signed descriptor to this path and exit")
+	publishTo := fs.String("publish", "", "POST a signed descriptor to this authority's /publish endpoint and exit (repeatable, comma-separated)")
 	descValid := fs.Duration("descriptor-validity", 24*time.Hour, "how long a published descriptor stays valid")
 	advertise := fs.String("advertise", "", "address clients should dial, if different from -addr")
 	genSecret := fs.Bool("gen-secret", false, "print a fresh random secret and exit")
@@ -139,7 +142,7 @@ func run() error {
 		log.Info("generated a new directory identity", "path", identityPath)
 	}
 
-	if *descOut != "" {
+	if *descOut != "" || *publishTo != "" {
 		if len(allow) == 0 {
 			return errors.New("ranger: -descriptor needs -allow, since a descriptor must say what the relay will carry")
 		}
@@ -169,13 +172,38 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(*descOut, encoded, 0o644); err != nil {
-			return fmt.Errorf("ranger: writing descriptor: %w", err)
-		}
-		fmt.Fprintf(os.Stderr, "wrote descriptor for %q (%s) to %s\n", d.Nickname, d.Address, *descOut)
 		if strings.Contains(advertised, "<this-host>") {
-			fmt.Fprintf(os.Stderr, "\n  WARNING: the address is a placeholder. Pass -advertise with the address\n"+
-				"  clients should actually dial, or the descriptor is unusable.\n\n")
+			return errors.New("ranger: -advertise is required when the relay binds a wildcard address, " +
+				"since the descriptor must carry an address clients can actually dial")
+		}
+
+		if *descOut != "" {
+			if err := os.WriteFile(*descOut, encoded, 0o644); err != nil {
+				return fmt.Errorf("ranger: writing descriptor: %w", err)
+			}
+			fmt.Fprintf(os.Stderr, "wrote descriptor for %q (%s) to %s\n", d.Nickname, d.Address, *descOut)
+		}
+
+		if *publishTo != "" {
+			var failures int
+			for _, raw := range strings.Split(*publishTo, ",") {
+				endpoint := strings.TrimSpace(raw)
+				if endpoint == "" {
+					continue
+				}
+				if err := publish(endpoint, encoded); err != nil {
+					// Publishing to several authorities is normal, and one
+					// being down must not stop the others from hearing about
+					// this relay.
+					fmt.Fprintf(os.Stderr, "  %s: %v\n", endpoint, err)
+					failures++
+					continue
+				}
+				fmt.Fprintf(os.Stderr, "  %s: accepted\n", endpoint)
+			}
+			if failures > 0 {
+				return fmt.Errorf("ranger: %d authority endpoint(s) refused or were unreachable", failures)
+			}
 		}
 		return nil
 	}
@@ -320,4 +348,43 @@ func displayAddr(addr string) string {
 		return net.JoinHostPort("<this-host>", port)
 	}
 	return addr
+}
+
+// publish POSTs a signed descriptor to a directory authority.
+//
+// The descriptor is signed, so this needs no credential and no transport
+// security to be safe: an authority verifies the signature, and a middlebox
+// that altered the document in flight would only produce something the
+// authority rejects.
+func publish(endpoint string, descriptor []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(descriptor))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("User-Agent", "osanwe-ranger")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+	msg := strings.TrimSpace(string(body))
+	switch {
+	case resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusOK:
+		return nil
+	case resp.StatusCode == http.StatusForbidden:
+		return fmt.Errorf("not admitted by this authority (403). Its operator must add this relay's identity to their accept list: %s", msg)
+	case resp.StatusCode == http.StatusConflict:
+		return fmt.Errorf("the authority already holds a newer descriptor (409): %s", msg)
+	case resp.StatusCode == http.StatusServiceUnavailable:
+		return fmt.Errorf("this authority does not accept submissions (503): %s", msg)
+	default:
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
+	}
 }

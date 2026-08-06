@@ -18,6 +18,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -50,6 +51,7 @@ func run() error {
 	probe := fs.Bool("probe", true, "check that each relay is reachable and presenting the key its descriptor claims")
 	probeTimeout := fs.Duration("probe-timeout", 10*time.Second, "how long a single relay probe may take")
 	unhealthyAfter := fs.Int("unhealthy-after", 3, "consecutive failed probes before a relay is dropped from the consensus")
+	acceptPath := fs.String("accept", "", "file listing relay identities this authority will publish. Required to enable POST /publish")
 	showKey := fs.Bool("key", false, "print this authority's public key and exit")
 	verbose := fs.Bool("v", false, "verbose logging")
 
@@ -95,6 +97,21 @@ func run() error {
 		return errors.New("council: -unhealthy-after must be at least 1; dropping a relay on zero failures would drop every relay")
 	}
 
+	var store *directory.Store
+	if *acceptPath != "" {
+		list, err := directory.NewAcceptList(*acceptPath)
+		if err != nil {
+			return err
+		}
+		store = &directory.Store{Dir: *descDir, Accept: list}
+		log.Info("descriptor submission enabled", "accept_list", *acceptPath, "identities", list.Len())
+		if list.Len() == 0 {
+			log.Warn("the accept list is empty, so every submission will be refused until an identity is added")
+		}
+	} else {
+		log.Info("descriptor submission disabled; pass -accept to enable POST /publish")
+	}
+
 	pub := &publisher{
 		dir:            *descDir,
 		id:             id,
@@ -125,6 +142,7 @@ func run() error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/consensus", pub.serve)
+	mux.HandleFunc("/publish", submitHandler(store, pub, log))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
 
 	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
@@ -221,6 +239,82 @@ func (p *publisher) rebuild() error {
 		p.log.Warn("consensus lists no relays; clients fetching it will find nothing to connect to")
 	}
 	return nil
+}
+
+// maxSubmission bounds a POSTed descriptor. Descriptors are small; anything
+// larger is either a mistake or an attempt to make the authority read forever.
+const maxSubmission = 64 << 10
+
+// submitHandler accepts a signed descriptor from a relay.
+//
+// Publication is default-deny and stays that way: without -accept the endpoint
+// refuses everything. An open endpoint would let anyone register relays, and a
+// directory listing a thousand attacker-run relays beside three honest ones has
+// handed the attacker almost every client without breaking one signature.
+func submitHandler(store *directory.Store, pub *publisher, log *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "POST a signed descriptor here", http.StatusMethodNotAllowed)
+			return
+		}
+		if store == nil {
+			http.Error(w, "this authority does not accept submissions; its operator must configure an accept list", http.StatusServiceUnavailable)
+			return
+		}
+
+		body, err := io.ReadAll(io.LimitReader(r.Body, maxSubmission+1))
+		if err != nil {
+			http.Error(w, "could not read the request body", http.StatusBadRequest)
+			return
+		}
+		if len(body) > maxSubmission {
+			http.Error(w, fmt.Sprintf("descriptor larger than %d bytes", maxSubmission), http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		// Parsing is what verifies the signature, so nothing below trusts the
+		// submitter's claims about itself.
+		d, err := directory.ParseDescriptor(body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Re-read the accept list so an operator can admit a relay without
+		// restarting the authority.
+		if err := store.Accept.Reload(); err != nil {
+			log.Error("could not reload the accept list", "error", err)
+		}
+
+		if err := store.Put(d, d.Encoded(), time.Now()); err != nil {
+			var notAccepted *directory.ErrNotAccepted
+			var stale *directory.ErrStale
+			switch {
+			case errors.As(err, &notAccepted):
+				log.Warn("refused submission from an identity that is not admitted",
+					"nickname", d.Nickname, "identity", d.Identity)
+				http.Error(w, err.Error(), http.StatusForbidden)
+			case errors.As(err, &stale):
+				http.Error(w, err.Error(), http.StatusConflict)
+			default:
+				log.Error("could not store submission", "nickname", d.Nickname, "error", err)
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			}
+			return
+		}
+
+		log.Info("accepted descriptor", "nickname", d.Nickname, "address", d.Address, "identity", d.Identity)
+
+		// Rebuild immediately so a relay that just published does not have to
+		// wait out a rebuild interval before clients can find it.
+		if err := pub.rebuild(); err != nil {
+			log.Error("rebuild after submission failed", "error", err)
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+		fmt.Fprintf(w, "accepted %s (%s)\n", d.Nickname, d.Address)
+	}
 }
 
 // healthy drops relays that have failed enough consecutive probes.
