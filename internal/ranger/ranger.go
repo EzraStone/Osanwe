@@ -305,8 +305,14 @@ func (s *Server) pump(client, upstream net.Conn) {
 
 	copyDir := func(dst, src net.Conn, counter *atomic.Int64) {
 		defer wg.Done()
-		n, _ := io.Copy(&deadlineWriter{conn: dst, idle: idle}, &deadlineReader{conn: src, idle: idle})
-		counter.Add(n)
+		// Counting happens inside the writer rather than from io.Copy's return
+		// value. A streaming response can hold a tunnel open for minutes, and
+		// tallying only at close would show an operator zero traffic on a
+		// relay that is busy right now.
+		_, _ = io.Copy(
+			&deadlineWriter{conn: dst, idle: idle, counter: counter},
+			&deadlineReader{conn: src, idle: idle},
+		)
 		// Half-close so the peer observes EOF rather than waiting for the idle
 		// timeout. A streaming response that ends cleanly should not leave the
 		// other direction hanging for minutes.
@@ -339,13 +345,18 @@ func (r *deadlineReader) Read(p []byte) (int, error) {
 }
 
 type deadlineWriter struct {
-	conn net.Conn
-	idle time.Duration
+	conn    net.Conn
+	idle    time.Duration
+	counter *atomic.Int64
 }
 
 func (w *deadlineWriter) Write(p []byte) (int, error) {
 	if w.idle > 0 {
 		_ = w.conn.SetWriteDeadline(time.Now().Add(w.idle))
 	}
-	return w.conn.Write(p)
+	n, err := w.conn.Write(p)
+	if n > 0 && w.counter != nil {
+		w.counter.Add(int64(n))
+	}
+	return n, err
 }

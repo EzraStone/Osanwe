@@ -115,6 +115,21 @@ Stated up front, deliberately:
 **Phase 2 is implemented and tested.** `bearer` (client) and `ranger` (relay) work end to end,
 bring-your-own-key, with no third-party dependencies.
 
+### See it work, right now
+
+```bash
+./demo/run.sh
+```
+
+Runs the whole network on one machine with no API key, no VPS and no accounts: a
+relay, a directory authority, a client, and a stand-in provider. It publishes a
+signed descriptor, gets refused (submission is default-deny), gets admitted,
+fetches a signed consensus, selects a relay, sends a request, streams a
+response, and then greps every byte the relay carried to show the conversation
+was never readable.
+
+### Or run it for real
+
 ```bash
 make build
 

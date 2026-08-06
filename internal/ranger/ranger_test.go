@@ -351,3 +351,39 @@ func port(ln net.Listener) string {
 	_, p, _ := net.SplitHostPort(ln.Addr().String())
 	return p
 }
+
+// TestByteCountersUpdateWhileATunnelIsOpen guards observability that a
+// streaming workload depends on. Counting only when io.Copy returns would show
+// an operator zero traffic on a relay that is busy right now, because an LLM
+// response can hold one tunnel open for minutes.
+func TestByteCountersUpdateWhileATunnelIsOpen(t *testing.T) {
+	echo := echoServer(t)
+	srv, addr, pin := startRanger(t, []string{echo.Addr().String()})
+
+	conn := dialRanger(t, addr, pin)
+	status, br := connect(t, conn, echo.Addr().String(), auth.Header(secret))
+	if !strings.Contains(status, "200") {
+		t.Fatalf("status = %q", status)
+	}
+
+	payload := strings.Repeat("y", 2048)
+	if _, err := conn.Write([]byte(payload)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := io.ReadFull(br, make([]byte, len(payload))); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	// Deliberately do NOT close the tunnel. The counters must already reflect
+	// the traffic that has crossed it.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if srv.Metrics().BytesToTarget.Load() >= int64(len(payload)) &&
+			srv.Metrics().BytesToClient.Load() >= int64(len(payload)) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Errorf("counters still toTarget=%d toClient=%d on an open tunnel that carried %d bytes each way",
+		srv.Metrics().BytesToTarget.Load(), srv.Metrics().BytesToClient.Load(), len(payload))
+}

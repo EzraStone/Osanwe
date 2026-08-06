@@ -14,6 +14,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -51,6 +52,7 @@ func run() error {
 	fs.Var(&authKeys, "authority", "trusted directory authority key (repeatable)")
 	threshold := fs.Int("threshold", 2, "how many authorities must have signed the consensus")
 	upstream := fs.String("upstream", bearer.DefaultUpstream, "provider base URL")
+	upstreamCA := fs.String("upstream-ca", "", "PEM file of extra roots for verifying the provider. For a self-hosted gateway with a private CA; there is deliberately no option to skip verification")
 	allowExposed := fs.Bool("allow-exposed", false, "permit binding a non-loopback address. Traffic between your tools and bearer is plaintext, so this puts prompts on the network in the clear")
 	verbose := fs.Bool("v", false, "verbose logging")
 
@@ -143,10 +145,24 @@ func run() error {
 		return err
 	}
 
+	var roots *x509.CertPool
+	if *upstreamCA != "" {
+		pem, err := os.ReadFile(*upstreamCA)
+		if err != nil {
+			return fmt.Errorf("bearer: reading -upstream-ca: %w", err)
+		}
+		roots = x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(pem) {
+			return fmt.Errorf("bearer: -upstream-ca %s contained no usable certificates", *upstreamCA)
+		}
+		log.Info("using extra roots to verify the provider", "file", *upstreamCA)
+	}
+
 	srv, err := bearer.New(bearer.Config{
 		Addr:             *addr,
 		Upstream:         *upstream,
 		Dialer:           dialer,
+		UpstreamRootCAs:  roots,
 		AllowNonLoopback: *allowExposed,
 		Logger:           log,
 	})
