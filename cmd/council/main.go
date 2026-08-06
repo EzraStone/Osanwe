@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/EzraStone/osanwe/internal/directory"
+	"github.com/EzraStone/osanwe/internal/health"
 )
 
 func main() {
@@ -46,6 +47,9 @@ func run() error {
 	identityPath := fs.String("identity", "./council.key", "this authority's signing key")
 	lifetime := fs.Duration("lifetime", 3*time.Hour, "how long each consensus stays valid")
 	rebuild := fs.Duration("rebuild", 30*time.Minute, "how often to rebuild the consensus")
+	probe := fs.Bool("probe", true, "check that each relay is reachable and presenting the key its descriptor claims")
+	probeTimeout := fs.Duration("probe-timeout", 10*time.Second, "how long a single relay probe may take")
+	unhealthyAfter := fs.Int("unhealthy-after", 3, "consecutive failed probes before a relay is dropped from the consensus")
 	showKey := fs.Bool("key", false, "print this authority's public key and exit")
 	verbose := fs.Bool("v", false, "verbose logging")
 
@@ -87,7 +91,23 @@ func run() error {
 			*rebuild, *lifetime)
 	}
 
-	pub := &publisher{dir: *descDir, id: id, lifetime: *lifetime, log: log}
+	if *unhealthyAfter < 1 {
+		return errors.New("council: -unhealthy-after must be at least 1; dropping a relay on zero failures would drop every relay")
+	}
+
+	pub := &publisher{
+		dir:            *descDir,
+		id:             id,
+		lifetime:       *lifetime,
+		log:            log,
+		probe:          *probe,
+		unhealthyAfter: *unhealthyAfter,
+		checker:        &health.Checker{Timeout: *probeTimeout},
+		tracker:        health.NewTracker(),
+	}
+	if !*probe {
+		log.Warn("relay probing is off; the consensus may advertise relays that are down or whose keys have changed")
+	}
 	if err := pub.rebuild(); err != nil {
 		return err
 	}
@@ -140,6 +160,11 @@ type publisher struct {
 	lifetime time.Duration
 	log      *slog.Logger
 
+	probe          bool
+	unhealthyAfter int
+	checker        *health.Checker
+	tracker        *health.Tracker
+
 	mu      sync.RWMutex
 	current []byte
 	built   time.Time
@@ -169,6 +194,9 @@ func (p *publisher) rebuild() error {
 	if err != nil {
 		return err
 	}
+	if p.probe {
+		descriptors = p.healthy(descriptors)
+	}
 
 	now := time.Now()
 	c := &directory.Consensus{
@@ -193,6 +221,52 @@ func (p *publisher) rebuild() error {
 		p.log.Warn("consensus lists no relays; clients fetching it will find nothing to connect to")
 	}
 	return nil
+}
+
+// healthy drops relays that have failed enough consecutive probes.
+//
+// A single failed probe is not enough. Networks are unreliable, and a
+// directory that removed a relay the first time one timed out would flap
+// constantly and take clients with it. Equally a relay that has been
+// unreachable for hours should not stay listed, hence the threshold.
+func (p *publisher) healthy(in []*directory.Descriptor) []*directory.Descriptor {
+	if len(in) == 0 {
+		return in
+	}
+
+	targets := make([]health.Target, 0, len(in))
+	keep := make(map[string]bool, len(in))
+	for _, d := range in {
+		targets = append(targets, health.Target{Key: d.Identity, Address: d.Address, Pin: d.TLSPin})
+		keep[d.Identity] = true
+	}
+	p.tracker.Forget(keep)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	results := p.checker.ProbeAll(ctx, targets)
+
+	out := make([]*directory.Descriptor, 0, len(in))
+	for _, d := range in {
+		res := results[d.Identity]
+		fails := p.tracker.Record(d.Identity, res.OK)
+		if res.OK {
+			out = append(out, d)
+			continue
+		}
+		if fails < p.unhealthyAfter {
+			// Still listed, but say so, so an operator sees trouble building
+			// before the relay disappears.
+			p.log.Warn("relay probe failed, still listing it",
+				"nickname", d.Nickname, "consecutive_failures", fails,
+				"drops_after", p.unhealthyAfter, "error", res.Err)
+			out = append(out, d)
+			continue
+		}
+		p.log.Warn("dropping unhealthy relay from the consensus",
+			"nickname", d.Nickname, "consecutive_failures", fails, "error", res.Err)
+	}
+	return out
 }
 
 func (p *publisher) serve(w http.ResponseWriter, r *http.Request) {
