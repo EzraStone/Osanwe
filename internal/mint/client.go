@@ -285,7 +285,13 @@ func (w *Wallet) triggerRefill() {
 }
 
 // Run buys tokens in the background until ctx is cancelled.
+//
+// It fills once before waiting for anything. A wallet that only stocked itself
+// after the first request would make that request pay for a round trip to the
+// mint, and would show a balance of zero to anyone who looked before asking
+// their first question -- which reads as broken rather than as empty.
 func (w *Wallet) Run(ctx context.Context) {
+	w.fill(ctx)
 	for {
 		select {
 		case <-ctx.Done():

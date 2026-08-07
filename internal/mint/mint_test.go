@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Key generation at 2048 bits is slow enough that doing it per test would
@@ -563,4 +564,30 @@ func TestReturningAnUnusedTokenReversesTheSpend(t *testing.T) {
 	if got := w.Spent(); got != 0 {
 		t.Fatalf("Spent() = %d after returning an unused token, want 0", got)
 	}
+}
+
+// A wallet that only stocked itself after the first request would make that
+// request wait on the mint, and would show a balance of zero to anyone who
+// looked first.
+func TestTheWalletStocksItselfBeforeTheFirstRequest(t *testing.T) {
+	m := newMint(t)
+	srv := httptest.NewServer(NewServer(m, quietLog()).Handler())
+	defer srv.Close()
+
+	w := NewWallet(&Client{URL: srv.URL, ExpectKeyID: m.KeyID()}, "", 4)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go w.Run(ctx)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if w.Len() > 0 {
+			if got := w.Spent(); got != 0 {
+				t.Fatalf("Spent() = %d before any request was made", got)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the wallet was still empty five seconds after starting")
 }
