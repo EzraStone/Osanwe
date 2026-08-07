@@ -36,6 +36,95 @@ usual places.
 **Do not put it where your relay is**, later. For now it is the same person
 either way; the point is to avoid building a habit you will have to unpick.
 
+### Creating the free e2-micro, in the console
+
+Four settings decide whether this is free or billed. Get them wrong and the
+machine works exactly the same, which is why it is worth checking each one.
+
+| Setting | Value | What goes wrong otherwise |
+|---|---|---|
+| Region | `us-west1`, `us-central1` or `us-east1` | Any other region bills the instance |
+| Machine type | E2 series, `e2-micro` | `e2-small` and up are billed |
+| Boot disk type | **Standard persistent disk** | Balanced and SSD are billed |
+| Boot disk size | 30 GB or less | Above 30 GB is billed |
+
+Console → Compute Engine → VM instances → **Create instance**.
+
+1. **Name** it something you will recognise: `osanwe-gateway`.
+2. **Region**: one of the three above. Any zone within it.
+3. **Machine configuration**: series **E2**, preset **e2-micro** (2 vCPU, 1 GB).
+   The picker defaults to a larger shape, so change it deliberately.
+4. **Boot disk** → Change:
+   - Operating system: **Ubuntu**
+   - Version: **Ubuntu 24.04 LTS**, `x86/64, amd64` — not the *Minimal* build,
+     and not Arm64. `e2-micro` is an Intel/AMD shape and will not boot an Arm
+     image.
+   - Boot disk type: **Standard persistent disk**
+   - Size: **20 GB** is plenty
+5. **Networking** → leave the firewall boxes unticked. "Allow HTTP traffic"
+   opens port 80 to the world, which this does not need.
+6. **Create**.
+
+The instance list will show an external IP once it starts.
+
+### Give it an address that will not move
+
+An ephemeral IP changes whenever the instance stops. Clients pin a relay's
+address and a gateway's name, so a moving address means reissuing configuration
+to everyone holding it.
+
+Console → VPC network → **IP addresses** → find the row for this instance →
+**Reserve**. A static address is free while attached to a running instance and
+billed when left unattached, so release it if you delete the machine.
+
+### Open only what is needed
+
+The default network allows SSH already. Add one narrow rule for the gateway,
+scoped by tag so it applies to this machine and nothing else.
+
+Console → VPC network → Firewall → **Create firewall rule**:
+
+- Name: `osanwe-gateway`
+- Targets: **Specified target tags**, tag `osanwe-gateway`
+- Source IPv4 ranges: **your relay's address**, as `x.x.x.x/32` — not `0.0.0.0/0`
+- Protocols and ports: TCP **8444**
+
+Then add that tag to the instance: VM instances → your instance → Edit →
+Network tags → `osanwe-gateway` → Save.
+
+If your relay does not exist yet, put your own home address in the source range
+so you can test, and narrow it later. `0.0.0.0/0` on a gateway with a provider
+account behind it and no rate limiting is an open tab.
+
+### The same thing from a terminal
+
+```bash
+gcloud compute instances create osanwe-gateway \
+  --zone=us-central1-a \
+  --machine-type=e2-micro \
+  --image-family=ubuntu-2404-lts-amd64 \
+  --image-project=ubuntu-os-cloud \
+  --boot-disk-type=pd-standard \
+  --boot-disk-size=20GB \
+  --tags=osanwe-gateway
+
+gcloud compute firewall-rules create osanwe-gateway \
+  --allow=tcp:8444 --target-tags=osanwe-gateway \
+  --source-ranges=RELAY_IP/32
+```
+
+### Getting in
+
+Console → VM instances → **SSH** beside the instance. That opens a browser
+terminal and needs no key setup.
+
+### What the free tier does not cover
+
+One `e2-micro` per month, 30 GB of standard disk, and **1 GB of outbound
+traffic to the internet per month** from North America. Prompts and answers are
+text, so a gateway serving a handful of people stays well inside that; a busy
+one will not. Watch it in Billing → Reports before it surprises you.
+
 ### Decide about a name
 
 The client verifies the gateway's TLS certificate. Two ways to satisfy that:
