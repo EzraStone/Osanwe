@@ -320,9 +320,13 @@ func (s *Server) handleError(w http.ResponseWriter, r *http.Request, err error) 
 	// creating anywhere else.
 	s.log.Error("upstream request failed", "path", r.URL.Path, "error", err)
 
+	message, _ := explain(err)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadGateway)
-	fmt.Fprintf(w, `{"type":"error","error":{"type":"osanwe_tunnel_error","message":%q}}`+"\n", err.Error())
+	// Both, deliberately: the sentence is for whoever is looking at a screen,
+	// and detail is the original for whoever is debugging a relay.
+	fmt.Fprintf(w, `{"type":"error","error":{"type":"osanwe_tunnel_error","message":%q,"detail":%q}}`+"\n",
+		message, err.Error())
 }
 
 // Metrics returns the server's counters.

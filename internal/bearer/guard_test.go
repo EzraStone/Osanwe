@@ -3,6 +3,7 @@ package bearer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -377,3 +378,75 @@ func (c *countingWallet) Take(context.Context) (*mint.Token, error) {
 	return &mint.Token{KeyID: "mint-stub", Nonce: []byte("n"), Sig: []byte("s")}, nil
 }
 func (c *countingWallet) Put(*mint.Token) {}
+
+// Failures are read by a person. "dial tcp 127.0.0.1:8443: connect:
+// connection refused" is precise, useless at the keyboard, and says nothing
+// about what to do -- which is exactly what the interface showed the first
+// time a relay was killed underneath it.
+func TestFailuresAreExplainedInWords(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{errors.New("tunnel: connecting to relay 127.0.0.1:8443: dial tcp: connect: connection refused"), "not answering"},
+		{errors.New("tunnel: relay key mismatch\n  expected sha256/a\n  got sha256/b"), "different key"},
+		{errors.New("relay 10.0.0.1:8443 rejected the credential (407)"), "OSANWE_SECRET"},
+		{errors.New("relay 10.0.0.1:8443 will not carry traffic to x (403)"), "operator has to allow"},
+		{errors.New("pool: no relay could carry a connection to x"), "No relay is available"},
+		{errors.New("x509: certificate signed by unknown authority"), "could not be verified"},
+		{context.DeadlineExceeded, "took too long"},
+		{context.Canceled, "cancelled"},
+	}
+	for _, tc := range cases {
+		got, recognised := explain(tc.err)
+		if !recognised {
+			t.Fatalf("explain(%v) did not recognise the failure", tc.err)
+		}
+		if !strings.Contains(got, tc.want) {
+			t.Fatalf("explain(%v) = %q, want something mentioning %q", tc.err, got, tc.want)
+		}
+		// No message may leak the machinery it is replacing.
+		for _, jargon := range []string{"dial tcp", "x509:", "EOF", "0x"} {
+			if strings.Contains(got, jargon) {
+				t.Fatalf("explain(%v) = %q, which still contains %q", tc.err, got, jargon)
+			}
+		}
+	}
+}
+
+// An unrecognised failure must not be dressed up as an explanation.
+func TestAnUnknownFailureSaysSoRatherThanGuessing(t *testing.T) {
+	got, recognised := explain(errors.New("something nobody anticipated"))
+	if recognised {
+		t.Fatal("claimed to recognise a failure it does not")
+	}
+	if strings.Contains(got, "something nobody anticipated") {
+		t.Fatalf("message %q simply repeats the original", got)
+	}
+}
+
+// The technical text still has to reach whoever is debugging a relay.
+func TestTheOriginalErrorIsStillReturned(t *testing.T) {
+	s := testServer(t, nil)
+	resp := ask(t, s, "/v1/messages", nil)
+
+	body, _ := io.ReadAll(resp.Body)
+	var out struct {
+		Error struct {
+			Message string `json:"message"`
+			Detail  string `json:"detail"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("error body is not JSON: %v\n%s", err, body)
+	}
+	if out.Error.Message == "" {
+		t.Fatal("no readable message")
+	}
+	if out.Error.Detail == "" {
+		t.Fatal("the original error was dropped; an operator debugging a relay needs it")
+	}
+	if out.Error.Message == out.Error.Detail {
+		t.Fatalf("message and detail are identical (%q); nothing was translated", out.Error.Message)
+	}
+}
