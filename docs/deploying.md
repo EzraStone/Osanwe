@@ -77,7 +77,41 @@ Console → VPC network → **IP addresses** → find the row for this instance 
 **Reserve**. A static address is free while attached to a running instance and
 billed when left unattached, so release it if you delete the machine.
 
-### Open only what is needed
+### Do not open anything yet
+
+A gateway accepts connections from relays. Until a relay exists there is no
+address worth allowing, and an open port on a machine with a provider account
+behind it and no rate limiting is the one mistake here that costs money.
+
+For the first run, tunnel instead. This needs no firewall rule and exposes
+nothing:
+
+```bash
+gcloud compute ssh osanwe-gateway --zone=us-west1-b -- -N -L 8444:localhost:8444
+```
+
+Leave that running. The gateway now answers on `127.0.0.1:8444` of your own
+machine, over SSH, with port 8444 on the server still closed to the world.
+
+Point a local relay at it and run the client as usual:
+
+```bash
+ranger -dir ./relay-data -addr 127.0.0.1:8443 -allow 127.0.0.1:8444
+bearer -relay 127.0.0.1:8443 -pin sha256/... \
+       -upstream https://127.0.0.1:8444 -upstream-ca gateway.crt \
+       -mint http://127.0.0.1:8445 -mint-key-id mint-...
+```
+
+This is worth doing before anything else, because it is the first arrangement
+that achieves something the laptop-only setup could not: **the gateway process
+runs on the server, so the provider sees the server's address rather than your
+home one.** `demo/verify.sh` will stop warning about step 5.
+
+What it still does not give you: the relay is yours and sits beside the client,
+so the gateway sees your home address. Fixing that needs a relay run by someone
+else, which is section 3.
+
+### Open only what is needed, once there is something to open
 
 The default network allows SSH already. Add one narrow rule for the gateway,
 scoped by tag so it applies to this machine and nothing else.
@@ -92,9 +126,13 @@ Console → VPC network → Firewall → **Create firewall rule**:
 Then add that tag to the instance: VM instances → your instance → Edit →
 Network tags → `osanwe-gateway` → Save.
 
-If your relay does not exist yet, put your own home address in the source range
-so you can test, and narrow it later. `0.0.0.0/0` on a gateway with a provider
-account behind it and no rate limiting is an open tab.
+The source is the relay's address, and nothing else. If you want direct access
+from your own machine before a relay exists, use the SSH tunnel above rather
+than opening a port to your home address: home addresses usually change, and a
+rule pointing at whoever holds that address next is worse than no rule.
+
+`0.0.0.0/0` on a gateway with a provider account behind it and no rate limiting
+is an open tab.
 
 ### The same thing from a terminal
 
