@@ -16,5 +16,7 @@ results/
 *.key
 .DS_Store
 
-# Demo/local relay identity
+# Local component identities, copied from a server for testing
 ranger.crt
+gateway.crt
+relay.crt
