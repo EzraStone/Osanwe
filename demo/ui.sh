@@ -2,10 +2,12 @@
 #
 # Runs the whole network on this machine and opens the interface.
 #
-#   ./demo/ui.sh
+#   ./demo/ui.sh                    a mock provider, no key, no money
+#   ./demo/ui.sh routes.conf        real providers, from a route table
 #
-# No API key, no VPS, no money. A mock provider stands in for Anthropic; the
-# mint, the gateway, the relay and the client are all the real thing.
+# With no argument a mock provider stands in and every other component is the
+# real thing. Given a route table, the gateway talks to the providers named in
+# it, using credentials read from the environment.
 #
 # Leave it running and open the URL it prints. Ctrl-C stops everything.
 
@@ -13,6 +15,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 WORK="$(mktemp -d)"
+ROUTES="${1:-}"
+
+if [ -n "$ROUTES" ] && [ ! -f "$ROUTES" ]; then
+  echo "no such route table: $ROUTES" >&2
+  exit 1
+fi
 
 if [ -t 1 ]; then
   B=$'\033[1m'; DIM=$'\033[2m'; G=$'\033[32m'; Y=$'\033[33m'; N=$'\033[0m'
@@ -59,11 +67,15 @@ mkdir -p "$WORK/relay"
 echo
 echo "${B}Starting${N}"
 
-"$WORK/mockprovider" -addr 127.0.0.1:0 \
-  -cert-out "$WORK/provider.crt" -addr-out "$WORK/provider.addr" >"$WORK/provider.log" 2>&1 &
-sleep 1
-PROVIDER=$(cat "$WORK/provider.addr")
-good "provider on $PROVIDER  ${DIM}(stands in for api.anthropic.com)${N}"
+if [ -z "$ROUTES" ]; then
+  "$WORK/mockprovider" -addr 127.0.0.1:0 \
+    -cert-out "$WORK/provider.crt" -addr-out "$WORK/provider.addr" >"$WORK/provider.log" 2>&1 &
+  sleep 1
+  PROVIDER=$(cat "$WORK/provider.addr")
+  good "provider on $PROVIDER  ${DIM}(stands in for api.anthropic.com)${N}"
+else
+  good "using $ROUTES  ${DIM}($(grep -cvE '^[[:space:]]*(#|$)' "$ROUTES") route(s) to real providers)${N}"
+fi
 
 "$WORK/eregion" -key "$WORK/mint.key" -publish "$WORK/mint.pub" \
   -addr "127.0.0.1:$MINT_PORT" -open >"$WORK/eregion.log" 2>&1 &
@@ -71,12 +83,25 @@ wait_for_port "127.0.0.1:$MINT_PORT"
 MINT_KEY_ID=$("$WORK/eregion" -key "$WORK/mint.key" -print-key-id)
 good "mint on 127.0.0.1:$MINT_PORT  ${DIM}($MINT_KEY_ID)${N}"
 
-OSANWE_PROVIDER_KEY="sk-the-gateways-pooled-key" "$WORK/mithlond" \
-  -addr "127.0.0.1:$GATEWAY_PORT" -upstream "https://$PROVIDER" \
-  -mint-key "$WORK/mint.pub" -upstream-ca "$WORK/provider.crt" \
-  -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" >"$WORK/mithlond.log" 2>&1 &
-wait_for_port "127.0.0.1:$GATEWAY_PORT"
-good "gateway on 127.0.0.1:$GATEWAY_PORT  ${DIM}(holds the only provider key)${N}"
+if [ -z "$ROUTES" ]; then
+  OSANWE_PROVIDER_KEY="sk-the-gateways-pooled-key" "$WORK/mithlond" \
+    -addr "127.0.0.1:$GATEWAY_PORT" -upstream "https://$PROVIDER" \
+    -mint-key "$WORK/mint.pub" -upstream-ca "$WORK/provider.crt" \
+    -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" >"$WORK/mithlond.log" 2>&1 &
+else
+  # Real providers verify against the system roots, so no extra CA is needed.
+  # Credentials come from this shell's environment, never from the route file.
+  "$WORK/mithlond" \
+    -addr "127.0.0.1:$GATEWAY_PORT" -routes "$ROUTES" \
+    -mint-key "$WORK/mint.pub" \
+    -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" >"$WORK/mithlond.log" 2>&1 &
+fi
+if ! wait_for_port "127.0.0.1:$GATEWAY_PORT"; then
+  echo; echo "the gateway did not start:" >&2
+  sed 's/^/   /' "$WORK/mithlond.log" >&2
+  exit 1
+fi
+good "gateway on 127.0.0.1:$GATEWAY_PORT  ${DIM}(holds the only provider credentials)${N}"
 
 SECRET=$("$WORK/ranger" -gen-secret)
 OSANWE_RANGER_SECRET="$SECRET" "$WORK/ranger" -dir "$WORK/relay" \
@@ -106,7 +131,12 @@ say "Connect shows the endpoint, the tokens on hand and which relay is in use,"
 say "all read live from the running client."
 echo
 warn "The mint is running with -open, so it gives tokens away. Nothing is being sold."
-warn "The provider is a stand-in; replies are canned, and no real model is involved."
+if [ -z "$ROUTES" ]; then
+  warn "The provider is a stand-in; replies are canned, and no real model is involved."
+else
+  warn "Real providers are being billed. There is no rate limiting: anything that"
+  warn "reaches this gateway spends your credit, so keep it on this machine."
+fi
 echo
 say "Ctrl-C stops everything and deletes the keys this created."
 echo
