@@ -148,14 +148,55 @@ bearer -directory https://council-a.example/consensus \
        -threshold 2
 ```
 
-Endpoints are tried in random order, and the relay is chosen at random from
-those serving your provider. Both are deliberate: always preferring the first
-entry would concentrate clients on one relay, and a relay carrying everyone's
-traffic sees everyone's timing.
+Endpoints are tried in random order, and the first relay is chosen at random
+from those serving your provider. Both are deliberate: always preferring the
+first entry would concentrate clients on one relay, and a relay carrying
+everyone's traffic sees everyone's timing.
 
 `-threshold` defaults to 2. Setting it to 1 with several authorities configured
 logs a warning, because it quietly reduces an M-of-N design to trusting whichever
 authority answers first.
+
+### When a relay goes away
+
+The client re-fetches the consensus every 15 minutes and moves to another relay
+when the one it is using stops answering. Neither needs a restart, and neither
+is anything the user is asked to notice.
+
+**A failed refresh keeps the relays already held.** Going relay-less because an
+authority was briefly unreachable would turn a directory outage into a client
+outage, which is backwards: a consensus is signed, so it stays trustworthy
+while you hold it. It expires eventually, and that is the limit on how long a
+client can coast.
+
+**Selection is sticky, not round-robin.** After the initial random pick the
+client stays on that relay — Tor calls it a guard — and only moves when it
+fails. Rotating for its own sake looks like it should help and does the
+opposite: a client that keeps choosing fresh relays eventually chooses a
+hostile one, and the chance of having used at least one grows with every
+rotation. Spreading traffic across five relays does not divide what they learn
+about you. It hands the same knowledge to five parties instead of one.
+
+A relay that fails is set aside with an exponential backoff, from 15 seconds up
+to a 10-minute cap, and the count survives a refresh so a relay that has been
+failing for an hour does not get traffic thrown back at it every time a new
+document arrives. If every relay is in backoff the client tries anyway, because
+a backoff is a preference about ordering and letting it harden into "this
+client will not make requests" is a worse failure than a slow one.
+
+Two failures are treated specially. A relay presenting a key the directory did
+not publish is logged as an error rather than a warning, since that is either a
+rotation the operator never announced or something impersonating a relay. And
+when *every* relay rejects the credential, the client says the secret is wrong
+instead of listing four identical 407s — with one shared secret across a
+directory of independently operated relays, that is the likely cause. See the
+open question in the last section.
+
+What this does not cover: a relay that vanishes without closing its
+connections — a pulled cable rather than a stopped process — leaves an already
+open tunnel that looks fine until it is used. That request fails before
+failover can happen. Every HTTP client has this property; the recovery is
+automatic, but it costs one request.
 
 ## Document format
 
@@ -191,3 +232,21 @@ endpoint cannot exhaust a client's memory.
 The directory is discovery, not anonymity. You still authenticate to the
 provider as yourself, because Phase 2 is bring-your-own-key. Unlinking the
 account needs `eregion` and `mithlond`, which are Phase 3 and not built.
+
+### One secret, many relays
+
+A client holds a single `OSANWE_SECRET`, but a consensus can list relays run by
+people who have never met and who set their own secrets. Failover walks the
+list, so in practice a client can only fail over to relays that happen to share
+the credential it holds.
+
+This is unresolved, and worth stating rather than discovering. The options are
+a single network-wide secret (simple, and worth exactly as much as the least
+careful operator holding it), a per-relay keyring on the client (honest, more
+to carry), open relays with rate limiting instead of a shared secret (which is
+how a public network would have to work), or waiting for the blind-signed
+tokens in Phase 3, which dissolve the problem by making the credential
+unlinkable and per-request rather than per-relay.
+
+Phase 3 is the real answer. Until then, a directory is most useful across
+relays under one operator's control.
