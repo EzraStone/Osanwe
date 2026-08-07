@@ -31,6 +31,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
@@ -44,6 +45,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -156,6 +158,18 @@ type tokenKey struct{}
 // routeKey carries the chosen provider from the handler to the rewrite hook,
 // which cannot look it up itself: the body has already been consumed by then.
 type routeKey struct{}
+
+// chosen is what the handler worked out and the hooks need.
+type chosen struct {
+	route Route
+
+	// path is where the request should go, which differs from where it
+	// arrived when the provider speaks another API.
+	path string
+
+	// translated says the answer has to be converted back on the way out.
+	translated bool
+}
 
 // New validates a Config and returns a Server.
 func New(cfg Config) (*Server, error) {
@@ -296,7 +310,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, tok))
 
 	if s.cfg.Routes != nil {
-		route, body, err := s.pickRoute(r)
+		pick, body, err := s.pickRoute(r)
 		if err != nil {
 			// The token was spent a moment ago and this request is going
 			// nowhere, so it goes straight back.
@@ -308,7 +322,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		r.Body = body
 		r.ContentLength = int64(body.size)
-		r = r.WithContext(context.WithValue(r.Context(), routeKey{}, route))
+		r = r.WithContext(context.WithValue(r.Context(), routeKey{}, pick))
 	}
 
 	s.proxy.ServeHTTP(w, r)
@@ -320,14 +334,15 @@ type body struct {
 	size int
 }
 
-// pickRoute reads the model out of the request and finds its provider.
-func (s *Server) pickRoute(r *http.Request) (Route, *body, error) {
+// pickRoute reads the model out of the request, finds its provider, and
+// converts the request if that provider speaks another API.
+func (s *Server) pickRoute(r *http.Request) (chosen, *body, error) {
 	model, buf, err := modelOf(r.Body)
 	if err != nil {
-		return Route{}, nil, err
+		return chosen{}, nil, err
 	}
 	if model == "" {
-		return Route{}, nil, fmt.Errorf(
+		return chosen{}, nil, fmt.Errorf(
 			"this request names no model, and this gateway routes by model. It carries: %s",
 			strings.Join(s.cfg.Routes.Models(), ", "))
 	}
@@ -335,25 +350,43 @@ func (s *Server) pickRoute(r *http.Request) (Route, *body, error) {
 	if !ok {
 		// Naming what is available turns a typo into a one-line fix rather
 		// than a support conversation.
-		return Route{}, nil, fmt.Errorf("this gateway does not carry %q. It carries: %s",
+		return chosen{}, nil, fmt.Errorf("this gateway does not carry %q. It carries: %s",
 			model, strings.Join(s.cfg.Routes.Models(), ", "))
 	}
-	return route, &body{ReadCloser: replay(buf), size: len(buf)}, nil
+
+	pick := chosen{route: route, path: r.URL.Path}
+
+	// Clients speak the Messages API. A provider that speaks OpenAI's needs
+	// the request converted, and its answer converted back, or routing is only
+	// a credential swap wearing the word.
+	if route.Style == StyleOpenAI && strings.HasSuffix(r.URL.Path, "/v1/messages") {
+		path, converted, err := toOpenAI(buf)
+		if err != nil {
+			return chosen{}, nil, err
+		}
+		pick.path, pick.translated = path, true
+		buf = converted
+	}
+
+	return pick, &body{ReadCloser: replay(buf), size: len(buf)}, nil
 }
 
 // rewrite points the request at the provider and replaces the client's
 // credentials with the gateway's own.
 func (s *Server) rewrite(pr *httputil.ProxyRequest) {
 	upstream, credential := s.upstream, s.cfg.Credential
-	if route, ok := pr.In.Context().Value(routeKey{}).(Route); ok {
-		if u, err := url.Parse(route.Upstream); err == nil {
-			upstream, credential = u, route.credential()
+	path := pr.Out.URL.Path
+	if pick, ok := pr.In.Context().Value(routeKey{}).(chosen); ok {
+		if u, err := url.Parse(pick.route.Upstream); err == nil {
+			upstream, credential = u, pick.route.credential()
 		}
+		path = pick.path
 	}
 
 	pr.Out.URL.Scheme = upstream.Scheme
 	pr.Out.URL.Host = upstream.Host
 	pr.Out.Host = upstream.Host
+	pr.Out.URL.Path = path
 
 	if base := strings.TrimSuffix(upstream.Path, "/"); base != "" {
 		pr.Out.URL.Path = base + pr.Out.URL.Path
@@ -392,6 +425,11 @@ func (s *Server) rewrite(pr *httputil.ProxyRequest) {
 // is the last moment a refund is honest: past this point the client is getting
 // output and has had what they paid for.
 func (s *Server) modifyResponse(resp *http.Response) error {
+	if pick, ok := resp.Request.Context().Value(routeKey{}).(chosen); ok && pick.translated {
+		if err := translateBack(resp); err != nil {
+			return err
+		}
+	}
 	if resp.StatusCode < 500 {
 		return nil
 	}
@@ -404,6 +442,42 @@ func (s *Server) modifyResponse(resp *http.Response) error {
 		// the link this design removes.
 		s.log.Warn("provider failed; token refunded", "status", resp.StatusCode)
 	}
+	return nil
+}
+
+// translateBack converts a provider's answer into the shape the client asked
+// in, leaving errors alone: a provider's own error message is more use to
+// whoever reads it than a translation of one.
+func translateBack(resp *http.Response) error {
+	if resp.StatusCode >= 400 {
+		return nil
+	}
+
+	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		resp.Body = streamFromOpenAI(resp.Body)
+		// Length is unknown once the bytes change shape, and a stale one would
+		// truncate the answer.
+		resp.Header.Del("Content-Length")
+		resp.ContentLength = -1
+		return nil
+	}
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxRoutedBody))
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	converted, err := fromOpenAI(raw)
+	if err != nil {
+		// Unrecognisable: hand back what arrived rather than nothing at all.
+		resp.Body = io.NopCloser(bytes.NewReader(raw))
+		resp.Header.Set("Content-Length", strconv.Itoa(len(raw)))
+		resp.ContentLength = int64(len(raw))
+		return nil
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(converted))
+	resp.Header.Set("Content-Length", strconv.Itoa(len(converted)))
+	resp.ContentLength = int64(len(converted))
 	return nil
 }
 

@@ -40,20 +40,40 @@ func newRoutedHarness(t *testing.T) *routedHarness {
 	h := &routedHarness{hits: map[string][]http.Header{}}
 
 	roots := x509.NewCertPool()
-	provider := func(name string) string {
+
+	// Each stand-in answers in its own API's shape, and refuses the other
+	// API's path. A mock that accepted anything and replied in one shape is
+	// what hid the missing translation the first time round.
+	provider := func(name string, style Style) string {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			io.Copy(io.Discard, r.Body)
 			h.mu.Lock()
 			h.hits[name] = append(h.hits[name], r.Header.Clone())
 			h.mu.Unlock()
-			fmt.Fprintf(w, `{"answered_by":%q}`, name)
+
+			want := "/v1/messages"
+			if style == StyleOpenAI {
+				want = "/v1/chat/completions"
+			}
+			if r.URL.Path != want {
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprintf(w, `{"error":{"message":"Unknown request URL: %s"}}`, r.URL.Path)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			if style == StyleOpenAI {
+				fmt.Fprintf(w, `{"id":"c1","model":"m","choices":[{"message":{"content":%q},"finish_reason":"stop"}]}`, name)
+				return
+			}
+			fmt.Fprintf(w, `{"type":"message","content":[{"type":"text","text":%q}]}`, name)
 		}))
 		t.Cleanup(srv.Close)
 		roots.AddCert(srv.Certificate())
 		return srv.URL
 	}
-	anthropicish := provider("anthropic")
-	openaiish := provider("openai")
+	anthropicish := provider("anthropic", StyleAnthropic)
+	openaiish := provider("openai", StyleOpenAI)
 
 	routes, err := NewRoutes([]Route{
 		{Model: "claude-sonnet-5", Style: StyleAnthropic, Upstream: anthropicish, Credential: "sk-ant-pooled", CredentialEnv: "ANTHROPIC_API_KEY"},
