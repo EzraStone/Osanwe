@@ -52,6 +52,7 @@ func run() error {
 	fs.Var(&mintKeys, "mint-key", "PEM file holding a mint's public key (repeatable, so a rotation can overlap)")
 	credHeader := fs.String("credential-header", "x-api-key", "header the provider expects its credential in. Use `authorization` for OpenAI-compatible providers")
 	credPrefix := fs.String("credential-prefix", "", "prefix before the credential, e.g. `Bearer ` for OpenAI-compatible providers")
+	routesPath := fs.String("routes", "", "route table mapping models to providers. With one, -upstream and the single credential are unused")
 	upstreamCA := fs.String("upstream-ca", "", "PEM file of extra roots for verifying the provider. For a self-hosted provider with a private CA; there is deliberately no option to skip verification")
 	certPath := fs.String("cert", "mithlond.crt", "TLS certificate path, created if absent")
 	keyPath := fs.String("key", "mithlond.key", "TLS key path, created if absent")
@@ -79,11 +80,28 @@ func run() error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
 	// Environment, not a flag: a command line is visible in the process table
-	// to every user on the machine, and this one is the pooled credential for
+	// to every user on the machine, and these are the pooled credentials for
 	// everybody the gateway serves.
+	var routes *gateway.Routes
 	providerKey := os.Getenv("OSANWE_PROVIDER_KEY")
-	if providerKey == "" {
-		return errors.New("mithlond: no provider credential. Put it in OSANWE_PROVIDER_KEY")
+
+	if *routesPath != "" && providerKey != "" {
+		log.Warn("both -routes and OSANWE_PROVIDER_KEY are set; the route table wins and the single credential is unused")
+	}
+	if *routesPath != "" {
+		f, err := os.Open(*routesPath)
+		if err != nil {
+			return fmt.Errorf("mithlond: opening -routes: %w", err)
+		}
+		routes, err = gateway.ParseRoutes(f, os.Getenv)
+		f.Close()
+		if err != nil {
+			return err
+		}
+		log.Info("routing by model", "models", strings.Join(routes.Models(), ", "))
+	} else if providerKey == "" {
+		return errors.New("mithlond: no provider credential. Put one in OSANWE_PROVIDER_KEY, " +
+			"or pass -routes to front several providers at once")
 	}
 
 	if len(mintKeys) == 0 {
@@ -140,6 +158,7 @@ func run() error {
 		Upstream:        *upstream,
 		MintKeys:        keys,
 		Spent:           mint.NewSpentSet(),
+		Routes:          routes,
 		Credential:      gateway.Credential{Header: *credHeader, Prefix: *credPrefix, Value: providerKey},
 		UpstreamRootCAs: roots,
 		Logger:          log,

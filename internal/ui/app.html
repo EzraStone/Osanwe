@@ -278,9 +278,7 @@ pre.code .s{color:var(--gild)}
       </div>
       <div class="underline">
         <select class="model" id="model" aria-label="Model">
-          <option value="claude-sonnet-5">Claude Sonnet</option>
-          <option value="claude-opus-5">Claude Opus</option>
-          <option value="claude-haiku-4-5-20251001">Claude Haiku</option>
+          <option value="claude-sonnet-5">claude-sonnet-5</option>
         </select>
         <span class="state" id="state">Sealed</span>
       </div>
@@ -678,6 +676,32 @@ $("copyEndpoint").addEventListener("click",function(){
   }else{done()}
 });
 
+// ---- what this gateway actually carries -----------------------------
+//
+// The list is asked for rather than assumed. A hardcoded picker offering a
+// model the gateway does not route would spend nothing -- the request is
+// refused before payment -- but it would still be a menu with dishes that are
+// not available, which is its own kind of lie.
+//
+// The catalog is free and needs no token, so asking costs nothing.
+function loadModels(){
+  return fetch("/v1/models",{headers:{"accept":"application/json"}})
+    .then(function(r){ return r.ok ? r.json() : null })
+    .then(function(cat){
+      if(!cat||!cat.data||!cat.data.length)return;   // no routing: keep the default
+      var current=model.value;
+      model.textContent="";
+      cat.data.forEach(function(m){
+        var o=document.createElement("option");
+        o.value=m.id;o.textContent=m.id;
+        model.appendChild(o);
+      });
+      // Keep the selection if it survived, otherwise take the first.
+      if(cat.data.some(function(m){return m.id===current}))model.value=current;
+    })
+    .catch(function(){ /* single-provider gateway; the default stands */ });
+}
+
 // ---- appearance -----------------------------------------------------
 // Three states rather than two, because "follow the system" is a real
 // preference and not the absence of one: a machine that switches itself at
@@ -713,7 +737,7 @@ $("copyEndpoint").addEventListener("click",function(){
 })();
 
 showSnippet("shell");
-load();
+load().then(loadModels);
 // The client is local, so polling it is nearly free, and a relay that failed
 // over should not sit behind a stale label until the page is reloaded.
 setInterval(function(){if(!busy)load()},10000);

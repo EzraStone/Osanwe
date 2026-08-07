@@ -35,8 +35,10 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -100,8 +102,14 @@ type Config struct {
 	// infinitely reusable.
 	Spent *mint.SpentSet
 
-	// Credential authenticates the gateway to the provider.
+	// Credential authenticates the gateway to the provider, when there is a
+	// single one. Ignored if Routes is set.
 	Credential Credential
+
+	// Routes, when set, chooses the provider per request from the model asked
+	// for. Upstream and Credential are then unused, and a model with no route
+	// is refused rather than sent somewhere surprising.
+	Routes *Routes
 
 	// UpstreamRootCAs overrides the roots used to verify the provider.
 	//
@@ -126,6 +134,7 @@ type Metrics struct {
 	Replayed    atomic.Int64
 	Refunded    atomic.Int64
 	UpstreamErr atomic.Int64
+	NoRoute     atomic.Int64
 }
 
 // Server is the gateway.
@@ -144,13 +153,17 @@ type Server struct {
 // produced nothing can be refunded.
 type tokenKey struct{}
 
+// routeKey carries the chosen provider from the handler to the rewrite hook,
+// which cannot look it up itself: the body has already been consumed by then.
+type routeKey struct{}
+
 // New validates a Config and returns a Server.
 func New(cfg Config) (*Server, error) {
 	if cfg.Addr == "" {
 		return nil, errors.New("gateway: Addr is required")
 	}
-	if cfg.Upstream == "" {
-		return nil, errors.New("gateway: Upstream is required")
+	if cfg.Upstream == "" && cfg.Routes == nil {
+		return nil, errors.New("gateway: Upstream is required, unless Routes chooses one per request")
 	}
 	if len(cfg.MintKeys) == 0 {
 		return nil, errors.New("gateway: at least one mint key is required; a gateway with none would accept no token, or worse, any")
@@ -158,8 +171,10 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Spent == nil {
 		return nil, errors.New("gateway: a SpentSet is required; without one every token can be spent forever")
 	}
-	if err := cfg.Credential.valid(); err != nil {
-		return nil, err
+	if cfg.Routes == nil {
+		if err := cfg.Credential.valid(); err != nil {
+			return nil, err
+		}
 	}
 	if cfg.ResponseHeaderTimeout <= 0 {
 		cfg.ResponseHeaderTimeout = DefaultResponseHeaderTimeout
@@ -168,15 +183,21 @@ func New(cfg Config) (*Server, error) {
 		cfg.Logger = slog.Default()
 	}
 
-	up, err := url.Parse(cfg.Upstream)
-	if err != nil {
-		return nil, fmt.Errorf("gateway: parsing upstream %q: %w", cfg.Upstream, err)
-	}
-	if up.Scheme != "https" {
-		return nil, fmt.Errorf("gateway: upstream must be https, got %q; the pooled credential would otherwise cross the network in the clear", cfg.Upstream)
-	}
-	if up.Host == "" {
-		return nil, fmt.Errorf("gateway: upstream %q has no host", cfg.Upstream)
+	// With a route table the upstream is chosen per request, so a blank one is
+	// correct rather than missing.
+	up := &url.URL{}
+	if cfg.Upstream != "" {
+		parsed, err := url.Parse(cfg.Upstream)
+		if err != nil {
+			return nil, fmt.Errorf("gateway: parsing upstream %q: %w", cfg.Upstream, err)
+		}
+		if parsed.Scheme != "https" {
+			return nil, fmt.Errorf("gateway: upstream must be https, got %q; the pooled credential would otherwise cross the network in the clear", cfg.Upstream)
+		}
+		if parsed.Host == "" {
+			return nil, fmt.Errorf("gateway: upstream %q has no host", cfg.Upstream)
+		}
+		up = parsed
 	}
 
 	// Every key must be usable, checked now rather than at the first request.
@@ -222,6 +243,14 @@ func (s *Server) transport() *http.Transport {
 
 // ServeHTTP takes payment, then proxies.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// The catalog is free and needs no token. Charging to find out what is on
+	// offer, or making a client spend one to discover a typo, would be an odd
+	// way to run a shop.
+	if s.cfg.Routes != nil && r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+		s.handleModels(w)
+		return
+	}
+
 	s.metrics.Accepted.Add(1)
 
 	raw := r.Header.Get(TokenHeader)
@@ -265,17 +294,68 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, tok))
+
+	if s.cfg.Routes != nil {
+		route, body, err := s.pickRoute(r)
+		if err != nil {
+			// The token was spent a moment ago and this request is going
+			// nowhere, so it goes straight back.
+			s.cfg.Spent.Refund(tok)
+			s.metrics.Refunded.Add(1)
+			s.metrics.NoRoute.Add(1)
+			s.refuse(w, http.StatusNotFound, "no_route", err.Error())
+			return
+		}
+		r.Body = body
+		r.ContentLength = int64(body.size)
+		r = r.WithContext(context.WithValue(r.Context(), routeKey{}, route))
+	}
+
 	s.proxy.ServeHTTP(w, r)
+}
+
+// body is a replayable request body, so ContentLength stays honest.
+type body struct {
+	io.ReadCloser
+	size int
+}
+
+// pickRoute reads the model out of the request and finds its provider.
+func (s *Server) pickRoute(r *http.Request) (Route, *body, error) {
+	model, buf, err := modelOf(r.Body)
+	if err != nil {
+		return Route{}, nil, err
+	}
+	if model == "" {
+		return Route{}, nil, fmt.Errorf(
+			"this request names no model, and this gateway routes by model. It carries: %s",
+			strings.Join(s.cfg.Routes.Models(), ", "))
+	}
+	route, ok := s.cfg.Routes.Lookup(model)
+	if !ok {
+		// Naming what is available turns a typo into a one-line fix rather
+		// than a support conversation.
+		return Route{}, nil, fmt.Errorf("this gateway does not carry %q. It carries: %s",
+			model, strings.Join(s.cfg.Routes.Models(), ", "))
+	}
+	return route, &body{ReadCloser: replay(buf), size: len(buf)}, nil
 }
 
 // rewrite points the request at the provider and replaces the client's
 // credentials with the gateway's own.
 func (s *Server) rewrite(pr *httputil.ProxyRequest) {
-	pr.Out.URL.Scheme = s.upstream.Scheme
-	pr.Out.URL.Host = s.upstream.Host
-	pr.Out.Host = s.upstream.Host
+	upstream, credential := s.upstream, s.cfg.Credential
+	if route, ok := pr.In.Context().Value(routeKey{}).(Route); ok {
+		if u, err := url.Parse(route.Upstream); err == nil {
+			upstream, credential = u, route.credential()
+		}
+	}
 
-	if base := strings.TrimSuffix(s.upstream.Path, "/"); base != "" {
+	pr.Out.URL.Scheme = upstream.Scheme
+	pr.Out.URL.Host = upstream.Host
+	pr.Out.Host = upstream.Host
+
+	if base := strings.TrimSuffix(upstream.Path, "/"); base != "" {
 		pr.Out.URL.Path = base + pr.Out.URL.Path
 	}
 
@@ -303,7 +383,7 @@ func (s *Server) rewrite(pr *httputil.ProxyRequest) {
 	pr.Out.Header.Del("X-Real-Ip")
 	pr.Out.Header.Del("Cookie")
 
-	pr.Out.Header.Set(s.cfg.Credential.Header, s.cfg.Credential.Prefix+s.cfg.Credential.Value)
+	pr.Out.Header.Set(credential.Header, credential.Prefix+credential.Value)
 }
 
 // modifyResponse refunds a token when the provider produced nothing usable.
@@ -346,6 +426,24 @@ func (s *Server) refuse(w http.ResponseWriter, status int, kind, message string)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	fmt.Fprintf(w, `{"type":"error","error":{"type":%q,"message":%q}}`+"\n", "osanwe_"+kind, message)
+}
+
+// handleModels lists what this gateway carries, in the shape a provider does.
+func (s *Server) handleModels(w http.ResponseWriter) {
+	models := s.cfg.Routes.Models()
+	out := struct {
+		Data []map[string]string `json:"data"`
+	}{Data: make([]map[string]string, 0, len(models))}
+	for _, m := range models {
+		// The upstream address and its credential are deliberately absent: a
+		// client has no use for either, and either would be worth stealing.
+		// Which vendor serves a model is not a secret and could not be kept
+		// one -- the names say so themselves.
+		out.Data = append(out.Data, map[string]string{"id": m, "type": "model"})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 // Metrics returns the counters.
