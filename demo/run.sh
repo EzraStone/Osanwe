@@ -114,7 +114,7 @@ if "$WORK/ranger" -dir "$WORK/relay" -allow "$PROVIDER" \
   bad "publication succeeded, but the accept list is empty"
 else
   good "refused, as it should be"
-  note "$(grep -o 'not admitted.*accept list' "$WORK/publish1.log" | head -1)"
+  note "$(grep -o 'not admitted.*accept list' "$WORK/publish1.log" | head -1 || true)"
 fi
 note "an open endpoint would let anyone register relays; a directory listing a"
 note "thousand attacker-run relays has handed over almost every client"
@@ -161,9 +161,13 @@ OSANWE_SECRET="$SECRET" "$WORK/bearer" \
   -upstream-ca "$WORK/provider.crt" \
   >"$WORK/bearer.log" 2>&1 &
 wait_for_port 127.0.0.1:18080
-grep -o 'selected relay from the directory.*' "$WORK/bearer.log" | head -1 | sed 's/^/   /'
+# Greps against a log are matched against wording, which drifts. Failing soft
+# keeps a renamed message from killing the demo, which is exactly how this
+# script broke once and stayed broken.
+grep -o 'relays available from the directory.*' "$WORK/bearer.log" | head -1 | sed 's/^/   /' || true
 good "client listening on http://127.0.0.1:18080"
 note "no relay address was configured; it was chosen from the signed consensus"
+note "and no relay is chosen until the first request, so none is named yet"
 
 # ── 7. a request ──────────────────────────────────────────────────────────
 step "7. Sending a request, the way any tool would"

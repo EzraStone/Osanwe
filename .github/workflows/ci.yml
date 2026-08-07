@@ -27,3 +27,13 @@ jobs:
       # The relay pumps bytes between goroutines; run tests under -race.
       - name: test
         run: go test -race ./...
+
+      # The demos are the only thing that exercises the daemons as a user runs
+      # them, wired together over real sockets. run.sh went unnoticed-broken
+      # for several commits because a log message was renamed and nothing was
+      # watching, so they are checked here rather than by remembering to.
+      - name: demo — relay carries what it cannot read
+        run: ./demo/run.sh
+
+      - name: demo — buy a token, spend it, get an answer
+        run: ./demo/tokens.sh
