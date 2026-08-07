@@ -86,6 +86,19 @@ type Config struct {
 	// and has no idea what to do with one.
 	Tokens TokenSource
 
+	// Relays, when set, lets the client report which relay it is using.
+	// internal/pool satisfies it.
+	Relays RelayStatus
+
+	// ManualRelay names a relay pinned by hand, purely so status can report it.
+	// It is not used for dialling; the Dialer already holds that.
+	ManualRelay string
+
+	// AllowOrigins adds origins permitted to reach this client, beyond
+	// loopback. Every entry is a page that may spend the user's tokens, so the
+	// list is empty by default and adding to it is a deliberate act.
+	AllowOrigins []string
+
 	// UpstreamRootCAs overrides the roots used to verify the provider.
 	//
 	// For api.anthropic.com the system roots are correct and this stays nil.
@@ -113,6 +126,7 @@ type Metrics struct {
 	Upstream5xx atomic.Int64
 	TunnelFails atomic.Int64
 	NoToken     atomic.Int64
+	CrossOrigin atomic.Int64
 }
 
 // Server is the local endpoint a tool points at.
@@ -125,6 +139,10 @@ type Server struct {
 	http     *http.Server
 	tr       *http.Transport
 	listener net.Listener
+
+	// manualRelay is set when a relay was pinned by hand rather than chosen
+	// from a directory, so status can name it.
+	manualRelay string
 }
 
 // New validates a Config and returns a Server.
@@ -162,7 +180,7 @@ func New(cfg Config) (*Server, error) {
 		}
 	}
 
-	s := &Server{cfg: cfg, log: cfg.Logger, upstream: up}
+	s := &Server{cfg: cfg, log: cfg.Logger, upstream: up, manualRelay: cfg.ManualRelay}
 	s.tr = s.transport()
 
 	proxy := &httputil.ReverseProxy{
@@ -182,7 +200,7 @@ func New(cfg Config) (*Server, error) {
 
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           handler,
+		Handler:           s.routes(handler),
 		ReadHeaderTimeout: DefaultReadHeaderTimeout,
 	}
 	return s, nil

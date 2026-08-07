@@ -188,6 +188,7 @@ type Wallet struct {
 	mu     sync.Mutex
 	tokens []*Token
 	refill chan struct{}
+	spent  uint64
 }
 
 // NewWallet returns a Wallet drawing on the given mint.
@@ -210,6 +211,7 @@ func (w *Wallet) Take(ctx context.Context) (*Token, error) {
 	if n := len(w.tokens); n > 0 {
 		tok := w.tokens[n-1]
 		w.tokens = w.tokens[:n-1]
+		w.spent++
 		low := len(w.tokens) <= w.lowWater
 		w.mu.Unlock()
 		if low {
@@ -224,6 +226,9 @@ func (w *Wallet) Take(ctx context.Context) (*Token, error) {
 	if err != nil {
 		return nil, err
 	}
+	w.mu.Lock()
+	w.spent++
+	w.mu.Unlock()
 	w.triggerRefill()
 	return tok, nil
 }
@@ -237,6 +242,11 @@ func (w *Wallet) Put(tok *Token) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.tokens = append(w.tokens, tok)
+	// Handing a token back un-spends it, so the count stays a count of tokens
+	// actually given away rather than of times Take was called.
+	if w.spent > 0 {
+		w.spent--
+	}
 }
 
 // Len reports how many tokens are on hand.
@@ -244,6 +254,13 @@ func (w *Wallet) Len() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return len(w.tokens)
+}
+
+// Spent reports how many tokens have left this wallet.
+func (w *Wallet) Spent() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.spent
 }
 
 func (w *Wallet) triggerRefill() {

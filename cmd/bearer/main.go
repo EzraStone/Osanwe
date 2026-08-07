@@ -235,6 +235,11 @@ func run() error {
 	if wallet != nil {
 		cfg.Tokens = wallet
 	}
+	if relays != nil {
+		cfg.Relays = relays
+	} else {
+		cfg.ManualRelay = relayAddr
+	}
 	srv, err := bearer.New(cfg)
 	if err != nil {
 		return err

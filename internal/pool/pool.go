@@ -116,10 +116,12 @@ type Pool struct {
 	log *slog.Logger
 	now func() time.Time
 
-	mu     sync.Mutex
-	relays []*relay
-	guard  *relay
-	stats  Stats
+	mu         sync.Mutex
+	relays     []*relay
+	guard      *relay
+	guardSince time.Time
+	signedBy   int
+	stats      Stats
 }
 
 // New validates a Config and returns a Pool. It does not fetch; call Refresh.
@@ -170,6 +172,10 @@ func (p *Pool) Refresh(ctx context.Context) error {
 		}
 		return fmt.Errorf("pool: refreshing the directory: %w", err)
 	}
+
+	p.mu.Lock()
+	p.signedBy = len(c.Signatures)
+	p.mu.Unlock()
 
 	usable := c.Usable(p.now(), p.cfg.Destination)
 	if len(usable) == 0 {
@@ -263,6 +269,7 @@ func (p *Pool) install(descs []*directory.Descriptor) error {
 			p.log.Info("the relay in use is no longer in the consensus; another will be chosen on the next request",
 				"relay", p.guard.desc.Nickname)
 			p.guard = nil
+			p.guardSince = time.Time{}
 		}
 	}
 	return nil
@@ -361,6 +368,7 @@ func (p *Pool) succeed(r *relay) {
 			p.log.Info("moved to another relay", "from", p.guard.desc.Nickname, "to", r.desc.Nickname)
 		}
 		p.guard = r
+		p.guardSince = p.now()
 	}
 }
 
@@ -427,6 +435,28 @@ func (p *Pool) Current() (nickname, address string, ok bool) {
 		return "", "", false
 	}
 	return p.guard.desc.Nickname, p.guard.desc.Address, true
+}
+
+// GuardSince reports when the relay in use was chosen. The bool is false when
+// no relay has been selected yet.
+func (p *Pool) GuardSince() (time.Time, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.guard == nil || p.guardSince.IsZero() {
+		return time.Time{}, false
+	}
+	return p.guardSince, true
+}
+
+// SignedBy reports how many authorities signed the consensus in force.
+//
+// This is the number a user should actually be shown. The threshold is what
+// the client demanded; this is what it got, and the two are not the same
+// statement.
+func (p *Pool) SignedBy() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.signedBy
 }
 
 // Len reports how many relays are currently known.
