@@ -5,7 +5,10 @@ import (
 	"context"
 	"crypto/rsa"
 	"errors"
+	"io"
+	"log/slog"
 	"math/big"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,6 +21,8 @@ var (
 	keyOnce sync.Once
 	testKey *rsa.PrivateKey
 )
+
+func quietLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func key(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
@@ -506,5 +511,56 @@ func TestKeyRoundTripsAndIsNotOverwritten(t *testing.T) {
 func TestUndersizedKeysAreRefused(t *testing.T) {
 	if _, err := GenerateKey(1024); err == nil {
 		t.Fatal("generated a 1024-bit mint key; factoring it later mints unlimited free tokens")
+	}
+}
+
+// TestRefillingDoesNotCancelASpend guards a bug found by watching a live
+// wallet: the background refill used Put, which exists to reverse a Take, so
+// every token bought in the background quietly un-counted a request that had
+// already happened. The interface showed zero spent after a request that had
+// plainly gone through.
+func TestRefillingDoesNotCancelASpend(t *testing.T) {
+	m := newMint(t)
+	srv := httptest.NewServer(NewServer(m, quietLog()).Handler())
+	defer srv.Close()
+
+	w := NewWallet(&Client{URL: srv.URL, ExpectKeyID: m.KeyID()}, "", 4)
+
+	// Take one, which also empties the wallet and triggers a refill.
+	if _, err := w.Take(context.Background()); err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if got := w.Spent(); got != 1 {
+		t.Fatalf("Spent() = %d immediately after one Take, want 1", got)
+	}
+
+	// Refill in the foreground, so the assertion does not race a goroutine.
+	w.fill(context.Background())
+	if w.Len() == 0 {
+		t.Fatal("the wallet did not refill")
+	}
+	if got := w.Spent(); got != 1 {
+		t.Fatalf("Spent() = %d after a refill, want 1: buying tokens must not un-count a request", got)
+	}
+}
+
+// Returning a token that was never handed over does reverse the spend, which
+// is the case Put exists for.
+func TestReturningAnUnusedTokenReversesTheSpend(t *testing.T) {
+	m := newMint(t)
+	srv := httptest.NewServer(NewServer(m, quietLog()).Handler())
+	defer srv.Close()
+
+	w := NewWallet(&Client{URL: srv.URL, ExpectKeyID: m.KeyID()}, "", 4)
+	tok, err := w.Take(context.Background())
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if got := w.Spent(); got != 1 {
+		t.Fatalf("Spent() = %d, want 1", got)
+	}
+	w.Put(tok)
+	if got := w.Spent(); got != 0 {
+		t.Fatalf("Spent() = %d after returning an unused token, want 0", got)
 	}
 }

@@ -2,8 +2,12 @@ package bearer
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/EzraStone/osanwe/internal/ui"
 )
 
 // Prefix is reserved for bearer's own routes. Everything outside it is
@@ -147,12 +151,46 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	_ = enc.Encode(s.Status())
 }
 
+// notAWebsite answers browser resource requests locally instead of forwarding
+// them.
+//
+// This is not tidiness, it is a leak. A browser pointed at this port asks for
+// /favicon.ico unprompted, and forwarding that buys a token, opens a tunnel,
+// spends the token at the gateway and receives a 404 from the provider -- so
+// merely opening the interface cost the user money, and a 404 is not a failure
+// the gateway refunds. The same is true of apple-touch-icon, robots.txt and
+// whatever a browser decides to fetch next.
+//
+// Sec-Fetch-Dest is what separates the cases. A fetch or XHR -- which is what
+// an API call is -- reports "empty". A favicon reports "image", a navigation
+// reports "document". Non-browser clients do not send the header at all, so the SDKs
+// and curl are unaffected.
+func notAWebsite(proxy http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch dest := r.Header.Get("Sec-Fetch-Dest"); dest {
+		case "", "empty":
+			proxy.ServeHTTP(w, r)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"type":"error","error":{"type":"osanwe_not_a_website","message":%q}}`+"\n",
+				"This is an API endpoint, not a web server. A browser asked for a "+dest+
+					", which was answered here rather than bought and forwarded.")
+		}
+	})
+}
+
 // routes builds the handler: bearer's own paths, then the proxy for
 // everything else.
 func (s *Server) routes(proxy http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+Prefix+"status", s.handleStatus)
-	mux.Handle("/", proxy)
+	if s.cfg.UI {
+		// More specific patterns win, so the status route above is unaffected.
+		mux.Handle(Prefix, ui.Handler(Prefix))
+		mux.Handle(strings.TrimSuffix(Prefix, "/"), http.RedirectHandler(Prefix, http.StatusMovedPermanently))
+	}
+	mux.Handle("/", notAWebsite(proxy))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := s.checkOrigin(r); err != nil {

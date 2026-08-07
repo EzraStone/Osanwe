@@ -90,6 +90,12 @@ type Config struct {
 	// internal/pool satisfies it.
 	Relays RelayStatus
 
+	// UI serves the local interface at Prefix.
+	//
+	// It is guarded by the same origin checks as everything else, which is
+	// what makes serving a page from a daemon defensible at all.
+	UI bool
+
 	// ManualRelay names a relay pinned by hand, purely so status can report it.
 	// It is not used for dialling; the Dialer already holds that.
 	ManualRelay string

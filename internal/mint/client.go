@@ -235,6 +235,12 @@ func (w *Wallet) Take(ctx context.Context) (*Token, error) {
 
 // Put returns an unused token to the wallet, so a request that failed before
 // the token was spent does not throw away something already paid for.
+//
+// This is distinct from add below, and the difference is not cosmetic. Put
+// reverses a Take, so it un-counts the spend; add merely stocks the wallet
+// with something newly bought. Using one for the other makes every refill
+// quietly cancel a spend, which is how the counter first came to read zero
+// after a request that had plainly gone through.
 func (w *Wallet) Put(tok *Token) {
 	if tok == nil {
 		return
@@ -242,11 +248,19 @@ func (w *Wallet) Put(tok *Token) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.tokens = append(w.tokens, tok)
-	// Handing a token back un-spends it, so the count stays a count of tokens
-	// actually given away rather than of times Take was called.
 	if w.spent > 0 {
 		w.spent--
 	}
+}
+
+// add stocks the wallet with a token that has never been handed out.
+func (w *Wallet) add(tok *Token) {
+	if tok == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.tokens = append(w.tokens, tok)
 }
 
 // Len reports how many tokens are on hand.
@@ -297,6 +311,6 @@ func (w *Wallet) fill(ctx context.Context) {
 			// requests down rather than failing them.
 			return
 		}
-		w.Put(tok)
+		w.add(tok)
 	}
 }

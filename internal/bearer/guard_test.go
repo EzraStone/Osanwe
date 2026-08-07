@@ -328,3 +328,52 @@ func (s stubWallet) Take(context.Context) (*mint.Token, error) {
 func (s stubWallet) Put(*mint.Token) {}
 func (s stubWallet) Len() int        { return s.on }
 func (s stubWallet) Spent() uint64   { return s.spent }
+
+// A browser opening the interface asks for a favicon unprompted. Forwarding
+// that would buy a token, tunnel it to the gateway, spend it and collect a 404
+// -- so merely opening the page would cost the user money, and a 404 is not a
+// failure the gateway refunds.
+func TestBrowserResourceRequestsAreNotForwarded(t *testing.T) {
+	spender := &countingWallet{}
+	s := testServer(t, func(c *Config) { c.Tokens = spender })
+
+	for _, dest := range []string{"image", "document", "style", "script", "font"} {
+		resp := ask(t, s, "/favicon.ico", map[string]string{"Sec-Fetch-Dest": dest})
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("Sec-Fetch-Dest %q returned %d, want 404", dest, resp.StatusCode)
+		}
+	}
+	if spender.taken != 0 {
+		t.Fatalf("bought %d tokens answering browser resource requests; opening the interface must not cost anything", spender.taken)
+	}
+}
+
+// The rule must not catch the requests that matter. An API call from fetch
+// reports "empty", and every non-browser client sends no such header at all.
+func TestApiCallsStillReachTheProxy(t *testing.T) {
+	spender := &countingWallet{}
+	s := testServer(t, func(c *Config) { c.Tokens = spender })
+
+	for _, headers := range []map[string]string{
+		{"Sec-Fetch-Dest": "empty"},
+		nil,
+	} {
+		resp := ask(t, s, "/v1/messages", headers)
+		if resp.StatusCode == http.StatusNotFound {
+			t.Fatalf("an API call with headers %v was refused as a browser resource", headers)
+		}
+	}
+	if spender.taken != 2 {
+		t.Fatalf("took %d tokens for 2 API calls", spender.taken)
+	}
+}
+
+type countingWallet struct {
+	taken int
+}
+
+func (c *countingWallet) Take(context.Context) (*mint.Token, error) {
+	c.taken++
+	return &mint.Token{KeyID: "mint-stub", Nonce: []byte("n"), Sig: []byte("s")}, nil
+}
+func (c *countingWallet) Put(*mint.Token) {}

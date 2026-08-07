@@ -59,6 +59,7 @@ func run() error {
 	mintURL := fs.String("mint", "", "mint to buy tokens from. Switches to paying with tokens instead of your own API key, and -upstream must then be a gateway")
 	mintKeyID := fs.String("mint-key-id", "", "the mint's key id, obtained anywhere other than the mint itself. Required with -mint")
 	receipt := fs.String("receipt", "", "proof of payment to present to the mint (or set OSANWE_RECEIPT)")
+	noUI := fs.Bool("no-ui", false, "do not serve the local interface")
 	buyToken := fs.Bool("buy-token", false, "buy one token, print it and exit. Needs -mint and -mint-key-id, and nothing else")
 	verbose := fs.Bool("v", false, "verbose logging")
 
@@ -230,6 +231,7 @@ func run() error {
 		Dialer:           dialer,
 		UpstreamRootCAs:  roots,
 		AllowNonLoopback: *allowExposed,
+		UI:               !*noUI,
 		Logger:           log,
 	}
 	if wallet != nil {
@@ -254,6 +256,9 @@ func run() error {
 		log.Info("bearer listening", "addr", srv.Addr().String(), "relays", relays.Len(), "upstream", *upstream)
 	} else {
 		log.Info("bearer listening", "addr", srv.Addr().String(), "relay", relayAddr, "upstream", *upstream)
+	}
+	if !*noUI {
+		fmt.Fprintf(os.Stderr, "\n  Open this:\n    http://%s%s\n", srv.Addr().String(), bearer.Prefix)
 	}
 	fmt.Fprintf(os.Stderr, "\n  Point your tool at this:\n    export ANTHROPIC_BASE_URL=http://%s\n\n"+
 		"  The relay must allow %s; its operator sets that with -allow.\n\n",
