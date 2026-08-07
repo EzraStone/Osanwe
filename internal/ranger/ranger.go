@@ -92,6 +92,13 @@ type Server struct {
 
 	mu       sync.Mutex
 	listener net.Listener
+
+	// Established tunnels are hijacked connections, which http.Server neither
+	// tracks nor closes. Without this set, stopping a ranger would close the
+	// listener and leave every tunnel already open still carrying traffic --
+	// an operator who stopped their relay would still be running one.
+	tunnels  map[net.Conn]struct{}
+	stopping bool
 }
 
 // New validates a Config and returns a Server.
@@ -187,16 +194,58 @@ func (s *Server) Serve() error {
 	return err
 }
 
-// Shutdown stops accepting connections and waits for the context to expire.
+// Shutdown stops accepting connections and tears down established tunnels.
 //
-// Established tunnels are hijacked connections, which http.Server does not
-// track, so Close is called afterwards to tear them down. A tunnel carrying a
-// half-finished model response will be cut; that is the honest behaviour for a
-// relay being stopped, and better than hanging until an idle timeout.
+// Tunnels are cut first, deliberately. They are hijacked connections, and
+// http.Server's Shutdown and Close both explicitly leave those alone, so
+// relying on either would let a stopped relay keep carrying traffic for as
+// long as its clients cared to hold the connections open. A tunnel carrying a
+// half-finished model response gets cut; that is the honest behaviour for a
+// relay being stopped, and far better than a relay that cannot be stopped.
 func (s *Server) Shutdown(ctx context.Context) error {
+	s.closeTunnels()
 	err := s.http.Shutdown(ctx)
 	_ = s.http.Close()
 	return err
+}
+
+// track registers a tunnel. It reports false once the server is stopping, so a
+// CONNECT that arrives during shutdown is not left running behind it.
+func (s *Server) track(c net.Conn) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopping {
+		return false
+	}
+	if s.tunnels == nil {
+		s.tunnels = make(map[net.Conn]struct{})
+	}
+	s.tunnels[c] = struct{}{}
+	return true
+}
+
+func (s *Server) untrack(c net.Conn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.tunnels, c)
+}
+
+// closeTunnels cuts every established tunnel and refuses further ones.
+func (s *Server) closeTunnels() {
+	s.mu.Lock()
+	s.stopping = true
+	open := make([]net.Conn, 0, len(s.tunnels))
+	for c := range s.tunnels {
+		open = append(open, c)
+	}
+	s.tunnels = nil
+	s.mu.Unlock()
+
+	// Closing outside the lock: each Close wakes a blocked pump, and holding
+	// the mutex while that happens invites a deadlock against untrack.
+	for _, c := range open {
+		_ = c.Close()
+	}
 }
 
 // ServeHTTP handles a request. Only CONNECT is meaningful; everything else is
@@ -267,6 +316,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer client.Close()
+
+	// Registered before the tunnel is confirmed, so a relay stopping right now
+	// cuts this connection instead of racing past the check and leaving one
+	// tunnel alive after shutdown.
+	if !s.track(client) {
+		return
+	}
+	defer s.untrack(client)
 
 	if _, err := buf.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
 		return

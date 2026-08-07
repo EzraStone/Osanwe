@@ -5,10 +5,12 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -386,4 +388,49 @@ func TestByteCountersUpdateWhileATunnelIsOpen(t *testing.T) {
 	}
 	t.Errorf("counters still toTarget=%d toClient=%d on an open tunnel that carried %d bytes each way",
 		srv.Metrics().BytesToTarget.Load(), srv.Metrics().BytesToClient.Load(), len(payload))
+}
+
+// TestShutdownCutsEstablishedTunnels guards a property that looked correct and
+// was not: a tunnel is a hijacked connection, and http.Server's Shutdown and
+// Close both leave hijacked connections strictly alone. The relay tracks them
+// itself for exactly this reason.
+//
+// Without that, stopping a relay closed its listener and nothing else, so every
+// tunnel already open kept carrying traffic for as long as its client cared to
+// hold it. An operator who stopped their relay would still have been running
+// one, which is a promise broken in the direction that matters.
+func TestShutdownCutsEstablishedTunnels(t *testing.T) {
+	echo := echoServer(t)
+	srv, addr, pin := startRanger(t, []string{echo.Addr().String()})
+
+	conn := dialRanger(t, addr, pin)
+	defer conn.Close()
+	status, br := connect(t, conn, echo.Addr().String(), auth.Header(secret))
+	if !strings.Contains(status, "200") {
+		t.Fatalf("CONNECT status = %q, want 200", status)
+	}
+
+	// The tunnel works before shutdown.
+	if _, err := conn.Write([]byte("ping\n")); err != nil {
+		t.Fatalf("write through tunnel: %v", err)
+	}
+	line, err := br.ReadString('\n')
+	if err != nil || line != "ping\n" {
+		t.Fatalf("echo returned %q, %v; want \"ping\\n\"", line, err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	// The tunnel must now be dead. A read has to end rather than block, so the
+	// deadline here is a failure condition and not just hygiene.
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := br.ReadString('\n'); err == nil {
+		t.Fatal("the tunnel still carried traffic after the relay was shut down")
+	} else if errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatal("the tunnel neither closed nor errored after shutdown; a stopped relay is still relaying")
+	}
 }

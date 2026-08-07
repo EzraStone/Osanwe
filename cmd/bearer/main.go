@@ -28,6 +28,7 @@ import (
 
 	"github.com/EzraStone/osanwe/internal/bearer"
 	"github.com/EzraStone/osanwe/internal/directory"
+	"github.com/EzraStone/osanwe/internal/pool"
 	"github.com/EzraStone/osanwe/internal/tunnel"
 )
 
@@ -99,6 +100,14 @@ func run() error {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
+	// runCtx bounds the directory refresh loop, which lives as long as the
+	// process does.
+	runCtx, stopRefresh := context.WithCancel(context.Background())
+	defer stopRefresh()
+
+	var dialer bearer.Dialer
+	var relays *pool.Pool
+
 	relayAddr, relayPin := *relay, *pin
 	if usingDirectory {
 		if len(authKeys) == 0 {
@@ -123,26 +132,36 @@ func run() error {
 		}
 		want := probe.UpstreamAddr()
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		fetcher := &directory.Fetcher{URLs: dirURLs, Authorities: authorities, Threshold: *threshold}
-		consensus, err := fetcher.Fetch(ctx)
+		relays, err = pool.New(pool.Config{
+			Fetcher:     &directory.Fetcher{URLs: dirURLs, Authorities: authorities, Threshold: *threshold},
+			Destination: want,
+			Secret:      sec,
+			Logger:      log,
+		})
+		if err != nil {
+			return err
+		}
+
+		ctx, cancel := context.WithTimeout(runCtx, 30*time.Second)
+		err = relays.Refresh(ctx)
 		cancel()
 		if err != nil {
 			return err
 		}
 
-		chosen, err := directory.Select(consensus.Usable(time.Now(), want))
-		if err != nil {
-			return fmt.Errorf("bearer: %w (looking for a relay serving %s)", err, want)
-		}
-		relayAddr, relayPin = chosen.Address, chosen.TLSPin
-		log.Info("selected relay from the directory",
-			"nickname", chosen.Nickname, "address", relayAddr, "relays_available", len(consensus.Usable(time.Now(), want)))
-	}
+		// From here the pool keeps itself current: it re-fetches on a timer and
+		// moves to another relay when the one in use stops answering, so a
+		// relay going down is not something the user has to notice.
+		go relays.Run(runCtx)
 
-	dialer, err := tunnel.New(tunnel.Config{Relay: relayAddr, Pin: relayPin, Secret: sec})
-	if err != nil {
-		return err
+		log.Info("relays available from the directory", "count", relays.Len(), "destination", want)
+		dialer = relays
+	} else {
+		d, err := tunnel.New(tunnel.Config{Relay: relayAddr, Pin: relayPin, Secret: sec})
+		if err != nil {
+			return err
+		}
+		dialer = d
 	}
 
 	var roots *x509.CertPool
@@ -173,7 +192,13 @@ func run() error {
 		return err
 	}
 
-	log.Info("bearer listening", "addr", srv.Addr().String(), "relay", relayAddr, "upstream", *upstream)
+	if relays != nil {
+		// No relay has been chosen yet: the pool picks one on the first
+		// request, so naming one here would be a guess.
+		log.Info("bearer listening", "addr", srv.Addr().String(), "relays", relays.Len(), "upstream", *upstream)
+	} else {
+		log.Info("bearer listening", "addr", srv.Addr().String(), "relay", relayAddr, "upstream", *upstream)
+	}
 	fmt.Fprintf(os.Stderr, "\n  Point your tool at this:\n    export ANTHROPIC_BASE_URL=http://%s\n\n"+
 		"  The relay must allow %s; its operator sets that with -allow.\n\n",
 		srv.Addr().String(), srv.UpstreamAddr())
