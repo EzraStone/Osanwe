@@ -256,6 +256,64 @@ type Token struct {
 	Sig   []byte
 }
 
+// Encode renders a token for transport, as three dot-separated fields.
+//
+// A token is a bearer instrument: whoever holds these bytes can spend them,
+// and there is deliberately no way to tell who that is. It belongs in a header
+// over TLS and nowhere that gets written down.
+func (t *Token) Encode() string {
+	return t.KeyID + "." +
+		base64.RawURLEncoding.EncodeToString(t.Nonce) + "." +
+		base64.RawURLEncoding.EncodeToString(t.Sig)
+}
+
+// MaxTokenBytes bounds what a verifier will parse, so a hostile client cannot
+// hand a gateway an arbitrarily long string to decode.
+const MaxTokenBytes = 4096
+
+// ParseToken reads the wire form.
+func ParseToken(s string) (*Token, error) {
+	if len(s) == 0 {
+		return nil, errors.New("mint: empty token")
+	}
+	if len(s) > MaxTokenBytes {
+		return nil, fmt.Errorf("mint: token is %d bytes, over the %d limit", len(s), MaxTokenBytes)
+	}
+
+	var keyID, nonceB64, sigB64 string
+	first := -1
+	second := -1
+	for i := 0; i < len(s); i++ {
+		if s[i] != '.' {
+			continue
+		}
+		if first < 0 {
+			first = i
+		} else if second < 0 {
+			second = i
+		} else {
+			return nil, errors.New("mint: token has too many fields")
+		}
+	}
+	if first < 0 || second < 0 {
+		return nil, errors.New("mint: token must have three dot-separated fields")
+	}
+	keyID, nonceB64, sigB64 = s[:first], s[first+1:second], s[second+1:]
+
+	if keyID == "" || nonceB64 == "" || sigB64 == "" {
+		return nil, errors.New("mint: token has an empty field")
+	}
+	nonce, err := base64.RawURLEncoding.DecodeString(nonceB64)
+	if err != nil {
+		return nil, fmt.Errorf("mint: decoding nonce: %w", err)
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(sigB64)
+	if err != nil {
+		return nil, fmt.Errorf("mint: decoding signature: %w", err)
+	}
+	return &Token{KeyID: keyID, Nonce: nonce, Sig: sig}, nil
+}
+
 // Verify checks a token against a mint key.
 func Verify(pub *rsa.PublicKey, tok *Token) error {
 	if pub == nil || tok == nil {

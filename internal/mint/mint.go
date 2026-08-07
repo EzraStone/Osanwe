@@ -151,6 +151,26 @@ func (s *SpentSet) Spend(tok *Token) error {
 	return nil
 }
 
+// Refund un-spends a token.
+//
+// A token has to be marked spent before the request it paid for is forwarded,
+// because anything else leaves a window where the same token buys two
+// requests at once. That ordering means a provider outage would otherwise
+// silently consume what somebody paid for. Refunding restores it, but only
+// when the request produced nothing: once a response has started, the token is
+// gone whatever happens next.
+//
+// This cannot be used to get free retries. A refund only happens where there
+// was no output to keep.
+func (s *SpentSet) Refund(tok *Token) {
+	if tok == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.seen, tok.KeyID+"|"+string(tok.Nonce))
+}
+
 // Len reports how many tokens have been redeemed.
 func (s *SpentSet) Len() int {
 	s.mu.Lock()
@@ -228,6 +248,49 @@ func LoadKey(path string) (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("mint: %s holds a %d-bit key, below the %d minimum", path, priv.N.BitLen(), MinKeyBits)
 	}
 	return priv, nil
+}
+
+// WritePublicKey saves the verification half of a mint key.
+//
+// This is the file a gateway operator needs and a mint operator publishes. It
+// is not secret, and the whole point is that anyone can hold it: a token is
+// only worth something because its signature can be checked by a party the
+// mint has no relationship with.
+func WritePublicKey(pub *rsa.PublicKey, path string) error {
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return fmt.Errorf("mint: encoding public key: %w", err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("mint: writing public key: %w", err)
+	}
+	defer f.Close()
+	return pem.Encode(f, &pem.Block{Type: "PUBLIC KEY", Bytes: der})
+}
+
+// LoadPublicKey reads a mint's verification key.
+func LoadPublicKey(path string) (*rsa.PublicKey, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("mint: reading public key: %w", err)
+	}
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("mint: %s contains no PEM block", path)
+	}
+	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("mint: parsing public key: %w", err)
+	}
+	pub, ok := parsed.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("mint: %s holds a %T, not an RSA public key", path, parsed)
+	}
+	if pub.N.BitLen() < MinKeyBits {
+		return nil, fmt.Errorf("mint: %s holds a %d-bit key, below the %d minimum", path, pub.N.BitLen(), MinKeyBits)
+	}
+	return pub, nil
 }
 
 // LoadOrCreateKey loads a key, generating one if the file is absent. The bool
