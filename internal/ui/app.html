@@ -16,13 +16,29 @@
   --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
 }
+/* The dark palette, applied three ways: by the system preference, and by an
+   explicit choice in either direction. The explicit ones have to override the
+   media query in both directions, or picking light on a dark machine would do
+   nothing. */
 @media (prefers-color-scheme:dark){
-  :root{
+  :root:not([data-theme="light"]){
     --ground:#14130f; --raised:#1b1a16; --sunk:#100f0c;
     --ink:#e8e3d8; --muted:#a49b8b; --faint:#7d7566;
     --line:#302d26; --gild:#d3ab6a; --gild-soft:#2a2419; --gild-dim:#8a6f42;
     --alarm:#c9584a;
   }
+}
+:root[data-theme="dark"]{
+  --ground:#14130f; --raised:#1b1a16; --sunk:#100f0c;
+  --ink:#e8e3d8; --muted:#a49b8b; --faint:#7d7566;
+  --line:#302d26; --gild:#d3ab6a; --gild-soft:#2a2419; --gild-dim:#8a6f42;
+  --alarm:#c9584a;
+}
+:root[data-theme="light"]{
+  --ground:#fbfaf7; --raised:#ffffff; --sunk:#f4f1ea;
+  --ink:#1c1a17; --muted:#6b6459; --faint:#938b7e;
+  --line:#e3ded4; --gild:#7a5c2e; --gild-soft:#f0e7d6; --gild-dim:#a98f63;
+  --alarm:#a33f31;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -220,7 +236,10 @@ pre.code .s{color:var(--gild)}
     <button type="button" role="tab" aria-selected="true" data-view="chat">Chat</button>
     <button type="button" role="tab" aria-selected="false" data-view="dev">Connect</button>
   </div>
-  <button type="button" class="ghost" id="newBtn">New</button>
+  <div style="display:flex;align-items:center;gap:.15rem">
+    <button type="button" class="ghost" id="themeBtn" title="Light, dark, or follow the system">Auto</button>
+    <button type="button" class="ghost" id="newBtn">New</button>
+  </div>
 </div>
 
 <div class="view" id="chatView">
@@ -658,6 +677,40 @@ $("copyEndpoint").addEventListener("click",function(){
     navigator.clipboard.writeText(btn.dataset.copy).then(done,done);
   }else{done()}
 });
+
+// ---- appearance -----------------------------------------------------
+// Three states rather than two, because "follow the system" is a real
+// preference and not the absence of one: a machine that switches itself at
+// dusk should be able to take this with it.
+//
+// The choice is the only thing this page stores. It says nothing about what
+// was asked, of whom, or when -- and a window that forgot which way round it
+// was every time you opened it would be its own small annoyance.
+(function(){
+  var btn=$("themeBtn"),modes=["auto","light","dark"],
+      labels={auto:"Auto",light:"Light",dark:"Dark"},mode="auto";
+  try{ mode=localStorage.getItem("osanwe-theme")||"auto" }catch(e){}
+  if(modes.indexOf(mode)<0)mode="auto";
+
+  function apply(){
+    var root=document.documentElement;
+    if(mode==="auto"){
+      root.removeAttribute("data-theme");
+      root.style.colorScheme="light dark";
+    }else{
+      root.setAttribute("data-theme",mode);
+      // Keeps scrollbars and form controls on the same side as the page.
+      root.style.colorScheme=mode;
+    }
+    btn.textContent=labels[mode];
+  }
+  btn.addEventListener("click",function(){
+    mode=modes[(modes.indexOf(mode)+1)%modes.length];
+    try{ localStorage.setItem("osanwe-theme",mode) }catch(e){}
+    apply();
+  });
+  apply();
+})();
 
 showSnippet("shell");
 load();
