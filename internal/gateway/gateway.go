@@ -34,6 +34,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -101,6 +102,15 @@ type Config struct {
 
 	// Credential authenticates the gateway to the provider.
 	Credential Credential
+
+	// UpstreamRootCAs overrides the roots used to verify the provider.
+	//
+	// It exists for a self-hosted or enterprise provider endpoint presenting a
+	// privately-issued certificate, which would otherwise be unreachable. As
+	// in bearer, there is deliberately no option to skip verification: the
+	// pooled credential is attached to this connection, and a gateway that
+	// could be talked into trusting anything would hand it to whoever asked.
+	UpstreamRootCAs *x509.CertPool
 
 	ResponseHeaderTimeout time.Duration
 	Logger                *slog.Logger
@@ -199,6 +209,10 @@ func New(cfg Config) (*Server, error) {
 
 func (s *Server) transport() *http.Transport {
 	return &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    s.cfg.UpstreamRootCAs,
+		},
 		ForceAttemptHTTP2:     true,
 		ResponseHeaderTimeout: s.cfg.ResponseHeaderTimeout,
 		MaxIdleConns:          64,

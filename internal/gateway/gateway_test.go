@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io"
@@ -91,11 +90,18 @@ func newHarness(t *testing.T, handler http.HandlerFunc) *harness {
 	}
 	spent := mint.NewSpentSet()
 
+	// The provider uses a self-signed certificate, so the gateway needs its
+	// root. Only the test's provider is trusted here; there is no option
+	// anywhere in the gateway to skip verification.
+	roots := x509.NewCertPool()
+	roots.AddCert(provider.Certificate())
+
 	gw, err := New(Config{
-		Addr:     "127.0.0.1:0",
-		Upstream: provider.URL,
-		MintKeys: map[string]*rsa.PublicKey{m.KeyID(): m.PublicKey()},
-		Spent:    spent,
+		Addr:            "127.0.0.1:0",
+		Upstream:        provider.URL,
+		MintKeys:        map[string]*rsa.PublicKey{m.KeyID(): m.PublicKey()},
+		Spent:           spent,
+		UpstreamRootCAs: roots,
 		Credential: Credential{
 			Header: "x-api-key",
 			Value:  pooledKey,
@@ -104,15 +110,6 @@ func newHarness(t *testing.T, handler http.HandlerFunc) *harness {
 	})
 	if err != nil {
 		t.Fatalf("gateway.New: %v", err)
-	}
-
-	// The provider uses a self-signed certificate, so the gateway's transport
-	// needs its root. Only the test's provider is trusted here; there is no
-	// option anywhere in the gateway to skip verification.
-	roots := x509.NewCertPool()
-	roots.AddCert(provider.Certificate())
-	gw.proxy.Transport = &http.Transport{
-		TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
 	}
 
 	front := httptest.NewServer(gw.Handler())

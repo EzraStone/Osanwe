@@ -28,6 +28,7 @@ import (
 
 	"github.com/EzraStone/osanwe/internal/bearer"
 	"github.com/EzraStone/osanwe/internal/directory"
+	"github.com/EzraStone/osanwe/internal/mint"
 	"github.com/EzraStone/osanwe/internal/pool"
 	"github.com/EzraStone/osanwe/internal/tunnel"
 )
@@ -55,6 +56,10 @@ func run() error {
 	upstream := fs.String("upstream", bearer.DefaultUpstream, "provider base URL")
 	upstreamCA := fs.String("upstream-ca", "", "PEM file of extra roots for verifying the provider. For a self-hosted gateway with a private CA; there is deliberately no option to skip verification")
 	allowExposed := fs.Bool("allow-exposed", false, "permit binding a non-loopback address. Traffic between your tools and bearer is plaintext, so this puts prompts on the network in the clear")
+	mintURL := fs.String("mint", "", "mint to buy tokens from. Switches to paying with tokens instead of your own API key, and -upstream must then be a gateway")
+	mintKeyID := fs.String("mint-key-id", "", "the mint's key id, obtained anywhere other than the mint itself. Required with -mint")
+	receipt := fs.String("receipt", "", "proof of payment to present to the mint (or set OSANWE_RECEIPT)")
+	buyToken := fs.Bool("buy-token", false, "buy one token, print it and exit. Needs -mint and -mint-key-id, and nothing else")
 	verbose := fs.Bool("v", false, "verbose logging")
 
 	fs.Usage = func() {
@@ -68,6 +73,28 @@ func run() error {
 			return nil
 		}
 		return err
+	}
+
+	// Buying a single token needs no relay, no secret and no listener, so it
+	// is handled before any of those are required. It exists so a token can be
+	// held in a shell variable and inspected, which is the only way to
+	// demonstrate by hand that spending one twice does not work.
+	if *buyToken {
+		if *mintURL == "" || *mintKeyID == "" {
+			return errors.New("bearer: -buy-token needs -mint and -mint-key-id")
+		}
+		rcpt := os.Getenv("OSANWE_RECEIPT")
+		if *receipt != "" {
+			rcpt = *receipt
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		tok, err := (&mint.Client{URL: *mintURL, ExpectKeyID: *mintKeyID}).Token(ctx, rcpt)
+		if err != nil {
+			return err
+		}
+		fmt.Println(tok.Encode())
+		return nil
 	}
 
 	usingDirectory := len(dirURLs) > 0
@@ -177,14 +204,38 @@ func run() error {
 		log.Info("using extra roots to verify the provider", "file", *upstreamCA)
 	}
 
-	srv, err := bearer.New(bearer.Config{
+	// Paying with tokens is opt-in and, once on, changes what the upstream
+	// must be: a provider would reject a token and has no idea what one is.
+	var wallet *mint.Wallet
+	if *mintURL != "" {
+		if *mintKeyID == "" {
+			return errors.New("bearer: -mint needs -mint-key-id. " +
+				"Take the id from somewhere other than the mint: a mint that handed every buyer a key of their own " +
+				"would put each of them in an anonymity set of one while appearing to work perfectly")
+		}
+		rcpt := os.Getenv("OSANWE_RECEIPT")
+		if *receipt != "" {
+			rcpt = *receipt
+		}
+		wallet = mint.NewWallet(&mint.Client{URL: *mintURL, ExpectKeyID: *mintKeyID}, rcpt, 8)
+		go wallet.Run(runCtx)
+		log.Info("paying with tokens", "mint", *mintURL, "key", *mintKeyID)
+	} else if *mintKeyID != "" {
+		return errors.New("bearer: -mint-key-id given without -mint, so no tokens would be bought and your own API key would still be used")
+	}
+
+	cfg := bearer.Config{
 		Addr:             *addr,
 		Upstream:         *upstream,
 		Dialer:           dialer,
 		UpstreamRootCAs:  roots,
 		AllowNonLoopback: *allowExposed,
 		Logger:           log,
-	})
+	}
+	if wallet != nil {
+		cfg.Tokens = wallet
+	}
+	srv, err := bearer.New(cfg)
 	if err != nil {
 		return err
 	}
@@ -202,6 +253,10 @@ func run() error {
 	fmt.Fprintf(os.Stderr, "\n  Point your tool at this:\n    export ANTHROPIC_BASE_URL=http://%s\n\n"+
 		"  The relay must allow %s; its operator sets that with -allow.\n\n",
 		srv.Addr().String(), srv.UpstreamAddr())
+	if wallet != nil {
+		fmt.Fprintf(os.Stderr, "  Each request buys and spends one token. Your own API key is not used\n"+
+			"  and is stripped before anything leaves this machine.\n\n")
+	}
 	if *allowExposed {
 		log.Warn("bound a non-loopback address; traffic between your tools and bearer is plaintext on the network")
 	}

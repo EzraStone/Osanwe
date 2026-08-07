@@ -25,10 +25,18 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/EzraStone/osanwe/internal/mint"
 )
 
 // DefaultUpstream is the provider bearer forwards to.
 const DefaultUpstream = "https://api.anthropic.com"
+
+// gatewayTokenHeader is where mithlond looks for a token. It is duplicated
+// rather than imported so that the client does not depend on the gateway
+// package; the two are deployed by different people and should not have to be
+// built together.
+const gatewayTokenHeader = "X-Osanwe-Token"
 
 // Timeouts. ResponseHeaderTimeout is generous because a model may think for a
 // long time before emitting its first token, and no overall response timeout
@@ -43,6 +51,24 @@ type Dialer interface {
 	DialContext(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
+// TokenSource supplies one token per request. internal/mint.Wallet satisfies
+// it.
+//
+// Setting one switches bearer from bring-your-own-key to paying with tokens:
+// the upstream becomes a gateway rather than the provider, and the user's own
+// credentials stop leaving this machine entirely.
+type TokenSource interface {
+	Take(ctx context.Context) (*mint.Token, error)
+
+	// Put takes back a token that was never presented, so a request that
+	// failed before reaching the gateway does not throw away something already
+	// paid for.
+	Put(*mint.Token)
+}
+
+// tokenKey carries the token from the handler to the rewrite hook.
+type tokenKey struct{}
+
 // Config configures a Server.
 type Config struct {
 	// Addr is the loopback address to listen on.
@@ -53,6 +79,12 @@ type Config struct {
 
 	// Dialer opens tunnels. Required.
 	Dialer Dialer
+
+	// Tokens, when set, pays for each request with a blind-signed token and
+	// strips the user's own credentials before forwarding. Upstream must then
+	// be a gateway, not a provider directly: a provider would reject a token
+	// and has no idea what to do with one.
+	Tokens TokenSource
 
 	// UpstreamRootCAs overrides the roots used to verify the provider.
 	//
@@ -80,6 +112,7 @@ type Metrics struct {
 	Requests    atomic.Int64
 	Upstream5xx atomic.Int64
 	TunnelFails atomic.Int64
+	NoToken     atomic.Int64
 }
 
 // Server is the local endpoint a tool points at.
@@ -142,12 +175,53 @@ func New(cfg Config) (*Server, error) {
 		ErrorHandler:  s.handleError,
 	}
 
+	var handler http.Handler = proxy
+	if cfg.Tokens != nil {
+		handler = s.withToken(proxy)
+	}
+
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           proxy,
+		Handler:           handler,
 		ReadHeaderTimeout: DefaultReadHeaderTimeout,
 	}
 	return s, nil
+}
+
+// withToken takes payment before proxying.
+//
+// A token is acquired here rather than inside rewrite because rewrite cannot
+// report a failure: it has no way to answer the request, so a mint being
+// unreachable would surface as a request forwarded without payment.
+func (s *Server) withToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tok, err := s.cfg.Tokens.Take(r.Context())
+		if err != nil {
+			s.metrics.NoToken.Add(1)
+			s.log.Error("could not get a token", "error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusPaymentRequired)
+			fmt.Fprintf(w, `{"type":"error","error":{"type":"osanwe_no_token","message":%q}}`+"\n",
+				"Could not buy a token: "+err.Error())
+			return
+		}
+
+		tracked := &tokenTracker{token: tok}
+		r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, tracked))
+		next.ServeHTTP(w, r)
+
+		// If the request never made it far enough to hand the token over, it
+		// is still good and goes back in the wallet.
+		if !tracked.presented {
+			s.cfg.Tokens.Put(tok)
+		}
+	})
+}
+
+// tokenTracker records whether the token actually reached the gateway.
+type tokenTracker struct {
+	token     *mint.Token
+	presented bool
 }
 
 // transport dials every upstream connection through the tunnel and runs TLS to
@@ -198,6 +272,20 @@ func (s *Server) rewrite(pr *httputil.ProxyRequest) {
 	// they must never reach the provider.
 	pr.Out.Header.Del("Proxy-Authorization")
 	pr.Out.Header.Del("Proxy-Connection")
+
+	if tracked, ok := pr.In.Context().Value(tokenKey{}).(*tokenTracker); ok {
+		// Paying with a token means the user has no account in play, so
+		// anything credential-shaped their tool attached is dropped here
+		// rather than at the gateway. A key that never leaves the machine
+		// cannot be logged by a gateway, leaked by one, or subpoenaed from
+		// one.
+		pr.Out.Header.Del("Authorization")
+		pr.Out.Header.Del("X-Api-Key")
+		pr.Out.Header.Del("Api-Key")
+
+		pr.Out.Header.Set(gatewayTokenHeader, tracked.token.Encode())
+		tracked.presented = true
+	}
 }
 
 // handleError reports a failure without leaking request content into logs.

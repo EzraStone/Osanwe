@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -51,6 +52,7 @@ func run() error {
 	fs.Var(&mintKeys, "mint-key", "PEM file holding a mint's public key (repeatable, so a rotation can overlap)")
 	credHeader := fs.String("credential-header", "x-api-key", "header the provider expects its credential in. Use `authorization` for OpenAI-compatible providers")
 	credPrefix := fs.String("credential-prefix", "", "prefix before the credential, e.g. `Bearer ` for OpenAI-compatible providers")
+	upstreamCA := fs.String("upstream-ca", "", "PEM file of extra roots for verifying the provider. For a self-hosted provider with a private CA; there is deliberately no option to skip verification")
 	certPath := fs.String("cert", "mithlond.crt", "TLS certificate path, created if absent")
 	keyPath := fs.String("key", "mithlond.key", "TLS key path, created if absent")
 	hosts := fs.String("hosts", "", "comma-separated names or IPs for a generated certificate")
@@ -101,6 +103,19 @@ func run() error {
 		log.Info("accepting tokens from mint key", "key", id, "file", path)
 	}
 
+	var roots *x509.CertPool
+	if *upstreamCA != "" {
+		pemBytes, err := os.ReadFile(*upstreamCA)
+		if err != nil {
+			return fmt.Errorf("mithlond: reading -upstream-ca: %w", err)
+		}
+		roots = x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(pemBytes) {
+			return fmt.Errorf("mithlond: -upstream-ca %s contained no usable certificates", *upstreamCA)
+		}
+		log.Info("using extra roots to verify the provider", "file", *upstreamCA)
+	}
+
 	var tlsConf *tls.Config
 	if *plaintext {
 		log.Warn("serving without TLS; whatever sits in front of this reads every prompt that passes through it")
@@ -121,12 +136,13 @@ func run() error {
 	}
 
 	srv, err := gateway.New(gateway.Config{
-		Addr:       *addr,
-		Upstream:   *upstream,
-		MintKeys:   keys,
-		Spent:      mint.NewSpentSet(),
-		Credential: gateway.Credential{Header: *credHeader, Prefix: *credPrefix, Value: providerKey},
-		Logger:     log,
+		Addr:            *addr,
+		Upstream:        *upstream,
+		MintKeys:        keys,
+		Spent:           mint.NewSpentSet(),
+		Credential:      gateway.Credential{Header: *credHeader, Prefix: *credPrefix, Value: providerKey},
+		UpstreamRootCAs: roots,
+		Logger:          log,
 	})
 	if err != nil {
 		return err
