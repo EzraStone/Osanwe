@@ -12,7 +12,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26.x'
+          check-latest: true
           cache: true
 
       - name: gofmt
@@ -27,6 +28,16 @@ jobs:
       # The relay pumps bytes between goroutines; run tests under -race.
       - name: test
         run: go test -race ./...
+
+      # CIRCL carries the official RFC 9474 vectors. Run the pinned module's
+      # vector suite as well as Osanwe's integration/interoperability tests.
+      - name: RFC 9474 vectors
+        run: go test github.com/cloudflare/circl/blindsign/blindrsa
+
+      # A normal unit-test run executes only the seed corpus. Spend a bounded
+      # interval exploring the token parser on every change as well.
+      - name: token parser fuzzing
+        run: go test ./internal/mint -run '^$' -fuzz '^FuzzParseTokenCanonical$' -fuzztime 10s
 
       # The demos are the only thing that exercises the daemons as a user runs
       # them, wired together over real sockets. run.sh went unnoticed-broken

@@ -49,8 +49,12 @@ func testServer(t *testing.T, mut func(*Config)) *Server {
 
 // ask sends a request through the full handler, including the origin guard.
 func ask(t *testing.T, s *Server, path string, headers map[string]string) *http.Response {
+	return askMethod(t, s, http.MethodGet, path, headers)
+}
+
+func askMethod(t *testing.T, s *Server, method, path string, headers map[string]string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:8080"+path, nil)
+	req, err := http.NewRequest(method, "http://127.0.0.1:8080"+path, nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
@@ -330,10 +334,9 @@ func (s stubWallet) Put(*mint.Token) {}
 func (s stubWallet) Len() int        { return s.on }
 func (s stubWallet) Spent() uint64   { return s.spent }
 
-// A browser opening the interface asks for a favicon unprompted. Forwarding
-// that would buy a token, tunnel it to the gateway, spend it and collect a 404
-// -- so merely opening the page would cost the user money, and a 404 is not a
-// failure the gateway refunds.
+// A browser opening the interface asks for a favicon unprompted. Answer it
+// locally with the browser-specific refusal; token mode's paid-path policy is
+// an independent second layer that must also keep the wallet untouched.
 func TestBrowserResourceRequestsAreNotForwarded(t *testing.T) {
 	spender := &countingWallet{}
 	s := testServer(t, func(c *Config) { c.Tokens = spender })
@@ -359,7 +362,7 @@ func TestApiCallsStillReachTheProxy(t *testing.T) {
 		{"Sec-Fetch-Dest": "empty"},
 		nil,
 	} {
-		resp := ask(t, s, "/v1/messages", headers)
+		resp := askMethod(t, s, http.MethodPost, "/v1/messages", headers)
 		if resp.StatusCode == http.StatusNotFound {
 			t.Fatalf("an API call with headers %v was refused as a browser resource", headers)
 		}

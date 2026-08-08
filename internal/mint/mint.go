@@ -49,8 +49,7 @@ type Mint struct {
 	keyID string
 	auth  Authorizer
 
-	issued sync.Map // not a counter of who, only of how many
-	count  struct {
+	count struct {
 		mu sync.Mutex
 		n  uint64
 	}
@@ -62,20 +61,19 @@ func New(priv *rsa.PrivateKey, auth Authorizer) (*Mint, error) {
 	if priv == nil {
 		return nil, errors.New("mint: a signing key is required")
 	}
-	if priv.N.BitLen() < MinKeyBits {
-		return nil, fmt.Errorf("mint: key is %d bits, refusing anything under %d", priv.N.BitLen(), MinKeyBits)
+	if err := validatePrivateKey(priv); err != nil {
+		return nil, fmt.Errorf("mint: signing key is not valid: %w", err)
 	}
 	if auth == nil {
 		return nil, errors.New("mint: an Authorizer is required; pass OpenAuthorizer{} to deliberately issue to anyone")
-	}
-	if err := priv.Validate(); err != nil {
-		return nil, fmt.Errorf("mint: signing key is not valid: %w", err)
 	}
 	return &Mint{priv: priv, keyID: KeyID(&priv.PublicKey), auth: auth}, nil
 }
 
 // PublicKey returns the key clients blind against and gateways verify with.
-func (m *Mint) PublicKey() *rsa.PublicKey { return &m.priv.PublicKey }
+// The modulus is copied because big.Int is mutable; callers must not be able
+// to corrupt the mint's validated signing key through the public-key view.
+func (m *Mint) PublicKey() *rsa.PublicKey { return clonePublicKey(&m.priv.PublicKey) }
 
 // KeyID names the current key.
 func (m *Mint) KeyID() string { return m.keyID }
@@ -94,10 +92,16 @@ func (m *Mint) Issued() uint64 {
 // The mint cannot read what it signs, cannot tell two requests apart, and
 // cannot recognise the result when it comes back to be spent.
 func (m *Mint) Issue(ctx context.Context, receipt, blinded []byte) ([]byte, error) {
+	// Reject malformed protocol input before asking the payment rail to consume
+	// an entitlement. Authorization is allowed to be one-shot; an attacker must
+	// not be able to burn a valid receipt with a value the signer cannot accept.
+	if err := ValidateBlinded(&m.priv.PublicKey, blinded); err != nil {
+		return nil, err
+	}
 	if err := m.auth.Authorize(ctx, receipt); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNotPaid, err)
 	}
-	sig, err := SignBlinded(m.priv, blinded)
+	sig, err := signValidatedBlinded(m.priv, blinded)
 	if err != nil {
 		return nil, err
 	}
@@ -107,8 +111,25 @@ func (m *Mint) Issue(ctx context.Context, receipt, blinded []byte) ([]byte, erro
 	return sig, nil
 }
 
+// RedemptionStore atomically records and releases token redemptions.
+//
+// Spend must not return nil until the redemption is durable. A second Spend
+// for the same token must return ErrAlreadySpent, including when the calls
+// race or arrive through different users of a shared implementation. Refund
+// must not make a token spendable until that change is durable. Callers must
+// fail closed on every other error from either method.
+//
+// Implementations shared by several gateways are the synchronization boundary
+// for double-spend prevention. They learn no client identity or prompt, but do
+// observe the opaque token fingerprints and timing of every redemption.
+type RedemptionStore interface {
+	Spend(tok *Token) error
+	Refund(tok *Token) error
+}
+
 // SpentSet records tokens that have been redeemed, so one cannot be spent
-// twice.
+// twice. It is process-local and intended for tests; OpenFileSpentSet is the
+// durable implementation used by mithlond.
 //
 // This is where the design's least comfortable trade sits. Double-spend
 // prevention needs every redemption checked against every earlier one, so the
@@ -162,13 +183,14 @@ func (s *SpentSet) Spend(tok *Token) error {
 //
 // This cannot be used to get free retries. A refund only happens where there
 // was no output to keep.
-func (s *SpentSet) Refund(tok *Token) {
+func (s *SpentSet) Refund(tok *Token) error {
 	if tok == nil {
-		return
+		return errors.New("mint: nil token")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.seen, tok.KeyID+"|"+string(tok.Nonce))
+	return nil
 }
 
 // Len reports how many tokens have been redeemed.
@@ -211,6 +233,9 @@ func GenerateKey(bits int) (*rsa.PrivateKey, error) {
 // old key, and the failure would appear as customers being told their paid
 // tokens are counterfeit.
 func WriteKey(priv *rsa.PrivateKey, path string) error {
+	if err := validatePrivateKey(priv); err != nil {
+		return fmt.Errorf("mint: refusing to write an invalid signing key: %w", err)
+	}
 	der, err := x509.MarshalPKCS8PrivateKey(priv)
 	if err != nil {
 		return fmt.Errorf("mint: encoding key: %w", err)
@@ -223,7 +248,7 @@ func WriteKey(priv *rsa.PrivateKey, path string) error {
 		return fmt.Errorf("mint: writing key: %w", err)
 	}
 	defer f.Close()
-	return pem.Encode(f, &pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	return pem.Encode(f, &pem.Block{Type: privateKeyPEMType, Bytes: der})
 }
 
 // LoadKey reads a signing key.
@@ -236,6 +261,9 @@ func LoadKey(path string) (*rsa.PrivateKey, error) {
 	if block == nil {
 		return nil, fmt.Errorf("mint: %s contains no PEM block", path)
 	}
+	if block.Type != privateKeyPEMType {
+		return nil, fmt.Errorf("mint: %s is a legacy or non-Osanwe RSA key (%q); RFC 9474 requires a dedicated key, so generate a new mint key instead of reusing it", path, block.Type)
+	}
 	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("mint: parsing key: %w", err)
@@ -244,8 +272,8 @@ func LoadKey(path string) (*rsa.PrivateKey, error) {
 	if !ok {
 		return nil, fmt.Errorf("mint: %s holds a %T, not an RSA key", path, parsed)
 	}
-	if priv.N.BitLen() < MinKeyBits {
-		return nil, fmt.Errorf("mint: %s holds a %d-bit key, below the %d minimum", path, priv.N.BitLen(), MinKeyBits)
+	if err := validatePrivateKey(priv); err != nil {
+		return nil, fmt.Errorf("mint: %s holds an invalid RSA key: %w", path, err)
 	}
 	return priv, nil
 }
@@ -257,6 +285,9 @@ func LoadKey(path string) (*rsa.PrivateKey, error) {
 // only worth something because its signature can be checked by a party the
 // mint has no relationship with.
 func WritePublicKey(pub *rsa.PublicKey, path string) error {
+	if err := validatePublicKey(pub); err != nil {
+		return fmt.Errorf("mint: refusing to write an invalid public key: %w", err)
+	}
 	der, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
 		return fmt.Errorf("mint: encoding public key: %w", err)
@@ -266,7 +297,7 @@ func WritePublicKey(pub *rsa.PublicKey, path string) error {
 		return fmt.Errorf("mint: writing public key: %w", err)
 	}
 	defer f.Close()
-	return pem.Encode(f, &pem.Block{Type: "PUBLIC KEY", Bytes: der})
+	return pem.Encode(f, &pem.Block{Type: publicKeyPEMType, Bytes: der})
 }
 
 // LoadPublicKey reads a mint's verification key.
@@ -279,6 +310,9 @@ func LoadPublicKey(path string) (*rsa.PublicKey, error) {
 	if block == nil {
 		return nil, fmt.Errorf("mint: %s contains no PEM block", path)
 	}
+	if block.Type != publicKeyPEMType {
+		return nil, fmt.Errorf("mint: %s is a legacy or non-Osanwe mint key (%q); publish a dedicated RFC 9474 key", path, block.Type)
+	}
 	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("mint: parsing public key: %w", err)
@@ -287,8 +321,8 @@ func LoadPublicKey(path string) (*rsa.PublicKey, error) {
 	if !ok {
 		return nil, fmt.Errorf("mint: %s holds a %T, not an RSA public key", path, parsed)
 	}
-	if pub.N.BitLen() < MinKeyBits {
-		return nil, fmt.Errorf("mint: %s holds a %d-bit key, below the %d minimum", path, pub.N.BitLen(), MinKeyBits)
+	if err := validatePublicKey(pub); err != nil {
+		return nil, fmt.Errorf("mint: %s holds an invalid RSA public key: %w", path, err)
 	}
 	return pub, nil
 }

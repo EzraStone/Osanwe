@@ -19,11 +19,14 @@ import (
 
 // marshalPublicPEM encodes a verification key for publication.
 func marshalPublicPEM(pub *rsa.PublicKey) ([]byte, error) {
+	if err := validatePublicKey(pub); err != nil {
+		return nil, fmt.Errorf("mint: refusing to marshal an invalid public key: %w", err)
+	}
 	der, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
 		return nil, err
 	}
-	return pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), nil
+	return pem.EncodeToMemory(&pem.Block{Type: publicKeyPEMType, Bytes: der}), nil
 }
 
 func errorIs(err, target error) bool { return errors.Is(err, target) }
@@ -93,6 +96,9 @@ func (c *Client) fetchKey(ctx context.Context) (*rsa.PublicKey, error) {
 	if block == nil {
 		return nil, errors.New("mint: published key is not PEM")
 	}
+	if block.Type != publicKeyPEMType {
+		return nil, fmt.Errorf("mint: published key uses legacy or unexpected PEM type %q; refusing a key not dedicated to RFC 9474", block.Type)
+	}
 	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("mint: parsing the published key: %w", err)
@@ -101,8 +107,8 @@ func (c *Client) fetchKey(ctx context.Context) (*rsa.PublicKey, error) {
 	if !ok {
 		return nil, fmt.Errorf("mint: published a %T, not an RSA key", parsed)
 	}
-	if pub.N.BitLen() < MinKeyBits {
-		return nil, fmt.Errorf("mint: published a %d-bit key, below the %d minimum", pub.N.BitLen(), MinKeyBits)
+	if err := validatePublicKey(pub); err != nil {
+		return nil, fmt.Errorf("mint: published an invalid RSA key: %w", err)
 	}
 	if got := KeyID(pub); got != c.ExpectKeyID {
 		return nil, fmt.Errorf("mint: published key is %s, expected %s. "+

@@ -57,6 +57,27 @@ func TestSignAndParseRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDescriptorValidityAcrossConsensusWindow(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	d := &Descriptor{
+		Published: now.Add(-time.Hour),
+		Expires:   now.Add(4 * time.Hour),
+	}
+	if !d.ValidThroughout(now, now.Add(3*time.Hour)) {
+		t.Fatal("descriptor valid for the complete consensus window was rejected")
+	}
+	if d.ValidThroughout(now, now.Add(5*time.Hour)) {
+		t.Fatal("descriptor expiring inside the consensus window was accepted")
+	}
+	future := &Descriptor{Published: now.Add(clockSkew + time.Second), Expires: now.Add(4 * time.Hour)}
+	if future.ValidThroughout(now, now.Add(3*time.Hour)) {
+		t.Fatal("descriptor published beyond the clock-skew allowance was accepted")
+	}
+	if d.ValidThroughout(now, now) {
+		t.Fatal("empty consensus window was accepted")
+	}
+}
+
 // TestAnyMutationInvalidatesTheSignature is the important one. Signing covers
 // the exact received bytes, so changing any byte of the body must break it.
 func TestAnyMutationInvalidatesTheSignature(t *testing.T) {

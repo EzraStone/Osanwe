@@ -84,6 +84,34 @@ func startRanger(t *testing.T, allow []string) (*Server, string, string) {
 	return srv, srv.Addr().String(), pin
 }
 
+func TestHTTPServerDoesNotUseAddressLoggingDefaultErrorLogger(t *testing.T) {
+	cert, _, err := certs.SelfSigned([]string{"localhost", "127.0.0.1"}, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	al, err := policy.Parse([]string{"provider.example:443"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	au, err := auth.New(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(Config{
+		Addr: "127.0.0.1:0", TLS: &tls.Config{Certificates: []tls.Certificate{cert}},
+		Allowlist: al, Auth: au,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.http.ErrorLog == nil {
+		t.Fatal("nil ErrorLog would send TLS handshake failures and remote addresses to log.Default")
+	}
+	if got := srv.http.ErrorLog.Writer(); got != io.Discard {
+		t.Fatalf("HTTP server errors go to %T instead of io.Discard; TLS failures can reveal client addresses", got)
+	}
+}
+
 // dialRanger opens a TLS connection to the relay, verifying by pin.
 func dialRanger(t *testing.T, addr, wantPin string) *tls.Conn {
 	t.Helper()

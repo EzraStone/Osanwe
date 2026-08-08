@@ -98,6 +98,17 @@ func (d *Descriptor) Expired(now time.Time) bool {
 	return now.After(d.Expires) || now.Before(d.Published.Add(-clockSkew))
 }
 
+// ValidThroughout reports whether a descriptor is usable for an entire
+// consensus window. Authorities evaluate this against deterministic epoch
+// boundaries, not their individual wall-clock sampling times, so identical
+// descriptor directories produce identical relay sets throughout an epoch.
+func (d *Descriptor) ValidThroughout(validAfter, validUntil time.Time) bool {
+	if validAfter.IsZero() || validUntil.IsZero() || !validUntil.After(validAfter) {
+		return false
+	}
+	return !d.Expired(validAfter) && !validUntil.After(d.Expires)
+}
+
 // clockSkew is the tolerance applied to validity windows, so a client whose
 // clock is a little fast does not reject a descriptor published seconds ago.
 const clockSkew = 5 * time.Minute

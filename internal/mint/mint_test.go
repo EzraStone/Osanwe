@@ -117,7 +117,9 @@ func TestEveryPairingIsAlgebraicallyConsistent(t *testing.T) {
 
 			// If that r is genuine, it reproduces exactly the blinded message
 			// the mint was handed.
-			want := hashToRange(tok.KeyID, tok.Nonce, n)
+			// A finalized RFC 9474 signature is an ordinary RSA-PSS
+			// signature, so raising it to e recovers the encoded message.
+			want := new(big.Int).Exp(sig, e, n)
 			got := new(big.Int).Exp(r, e, n)
 			got.Mul(got, want)
 			got.Mod(got, n)
@@ -161,7 +163,9 @@ func TestTheObviousLinkingAttacksFail(t *testing.T) {
 		for j, tok := range tokens {
 			// Attack one: is the blinded message simply the hash of a nonce
 			// that later showed up at redemption?
-			if h := hashToRange(tok.KeyID, tok.Nonce, pub.N); b.Cmp(h) == 0 {
+			encoded := new(big.Int).Exp(new(big.Int).SetBytes(tok.Sig),
+				big.NewInt(int64(pub.E)), pub.N)
+			if b.Cmp(encoded) == 0 {
 				t.Fatalf("issuance %d handed the mint H(nonce) of token %d directly; "+
 					"the mint can link every buyer to their token with a lookup table", i, j)
 			}
@@ -193,12 +197,14 @@ func TestTheSameNonceBlindsDifferentlyEachTime(t *testing.T) {
 	if bytes.Equal(first.Blinded, second.Blinded) {
 		t.Fatal("blinding the same nonce twice produced the same value; the blinding factor is not random")
 	}
+	if bytes.Equal(first.prepared, second.prepared) {
+		t.Fatal("RFC 9474 randomized preparation reused its prefix")
+	}
 
-	// And neither reveals the nonce's hash.
-	h := hashToRange(KeyID(pub), nonce, pub.N)
+	// Neither blinded message carries the nonce or prepared message in clear.
 	for _, bl := range []*Blinding{first, second} {
-		if new(big.Int).SetBytes(bl.Blinded).Cmp(h) == 0 {
-			t.Fatal("the blinded value equals H(nonce); nothing is being hidden from the mint")
+		if bytes.Contains(bl.Blinded, nonce) || bytes.Contains(bl.Blinded, bl.prepared) {
+			t.Fatal("the blinded value exposes client token material")
 		}
 	}
 }

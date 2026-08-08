@@ -41,10 +41,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -57,11 +59,35 @@ import (
 // belongs to the provider credential this gateway substitutes.
 const TokenHeader = "X-Osanwe-Token"
 
+// TokenOutcomeHeader tells a token-paying client what happened to the token it
+// presented. The gateway always removes a provider-supplied value and writes
+// this itself, so a provider cannot pretend that a spent token was refunded.
+//
+// A client may trust this only from the gateway it authenticated (bearer does
+// so over TLS with system or explicitly configured roots), never from an
+// arbitrary provider.
+const TokenOutcomeHeader = "X-Osanwe-Token-Outcome"
+
+const (
+	TokenOutcomeSpent    = "spent"
+	TokenOutcomeRefunded = "refunded"
+	TokenOutcomeRejected = "rejected"
+	TokenOutcomeInvalid  = "invalid"
+
+	canonicalAccept           = "application/json"
+	canonicalContentType      = "application/json"
+	canonicalAnthropicVersion = "2023-06-01"
+)
+
 // Timeouts. As in bearer, no overall response timeout is set: a model thinking
 // for a long time and then streaming for longer is ordinary traffic here.
 const (
 	DefaultResponseHeaderTimeout = 5 * time.Minute
 	DefaultReadHeaderTimeout     = 30 * time.Second
+	DefaultMaxRequestBody        = 1 << 20
+	MaximumMaxRequestBody        = 16 << 20
+	DefaultMaxOutputTokens       = 4096
+	MaximumMaxOutputTokens       = 65536
 )
 
 // Credential is how the gateway authenticates to the provider.
@@ -78,13 +104,31 @@ type Credential struct {
 }
 
 func (c Credential) valid() error {
-	if strings.TrimSpace(c.Header) == "" {
-		return errors.New("gateway: Credential.Header is required")
+	header := strings.TrimSpace(c.Header)
+	switch {
+	case strings.EqualFold(header, "authorization"),
+		strings.EqualFold(header, "x-api-key"),
+		strings.EqualFold(header, "api-key"):
+		// These are the credential shapes the gateway deliberately supports.
+	default:
+		return errors.New("gateway: Credential.Header must be Authorization, X-Api-Key, or Api-Key")
 	}
-	if c.Value == "" {
+	if c.Value == "" || strings.TrimSpace(c.Value) != c.Value {
 		return errors.New("gateway: Credential.Value is required; a gateway with no provider credential cannot answer anything")
 	}
+	if !safeHeaderFragment(c.Prefix) || !safeHeaderFragment(c.Value) {
+		return errors.New("gateway: credential prefix and value must not contain control characters")
+	}
 	return nil
+}
+
+func safeHeaderFragment(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if value[i] < 0x20 || value[i] == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // Config configures a Server.
@@ -102,7 +146,7 @@ type Config struct {
 
 	// Spent records redeemed tokens. Required: without it every token is
 	// infinitely reusable.
-	Spent *mint.SpentSet
+	Spent mint.RedemptionStore
 
 	// Credential authenticates the gateway to the provider, when there is a
 	// single one. Ignored if Routes is set.
@@ -112,6 +156,18 @@ type Config struct {
 	// for. Upstream and Credential are then unused, and a model with no route
 	// is refused rather than sent somewhere surprising.
 	Routes *Routes
+
+	// Models is the exact allowlist a single-upstream gateway will pay for.
+	// It is required without Routes. A pooled credential paired with an open
+	// model selector lets one cheap token buy the provider's most expensive
+	// model, which is not a defensible payment boundary.
+	Models []string
+
+	// MaxRequestBody and MaxOutputTokens bound what one token can buy. Zero
+	// selects conservative defaults. These are per-request guardrails, not a
+	// replacement for an account budget and aggregate rate/cost limiting.
+	MaxRequestBody  int64
+	MaxOutputTokens int
 
 	// UpstreamRootCAs overrides the roots used to verify the provider.
 	//
@@ -134,9 +190,9 @@ type Metrics struct {
 	NoToken     atomic.Int64
 	BadToken    atomic.Int64
 	Replayed    atomic.Int64
-	Refunded    atomic.Int64
 	UpstreamErr atomic.Int64
 	NoRoute     atomic.Int64
+	Rejected    atomic.Int64
 }
 
 // Server is the gateway.
@@ -144,16 +200,13 @@ type Server struct {
 	cfg      Config
 	log      *slog.Logger
 	upstream *url.URL
+	models   map[string]struct{}
 	metrics  Metrics
 
 	http     *http.Server
 	proxy    *httputil.ReverseProxy
 	listener net.Listener
 }
-
-// tokenKey carries the spent token to the response hooks, so a request that
-// produced nothing can be refunded.
-type tokenKey struct{}
 
 // routeKey carries the chosen provider from the handler to the rewrite hook,
 // which cannot look it up itself: the body has already been consumed by then.
@@ -183,12 +236,30 @@ func New(cfg Config) (*Server, error) {
 		return nil, errors.New("gateway: at least one mint key is required; a gateway with none would accept no token, or worse, any")
 	}
 	if cfg.Spent == nil {
-		return nil, errors.New("gateway: a SpentSet is required; without one every token can be spent forever")
+		return nil, errors.New("gateway: a RedemptionStore is required; without one every token can be spent forever")
 	}
 	if cfg.Routes == nil {
 		if err := cfg.Credential.valid(); err != nil {
 			return nil, err
 		}
+		cfg.Credential.Header = http.CanonicalHeaderKey(strings.TrimSpace(cfg.Credential.Header))
+		if len(cfg.Models) == 0 {
+			return nil, errors.New("gateway: Models is required without Routes; a pooled credential must not pay for arbitrary models")
+		}
+	} else if len(cfg.Models) != 0 {
+		return nil, errors.New("gateway: Models and Routes cannot both be set; route model names are already the allowlist")
+	}
+	if cfg.MaxRequestBody == 0 {
+		cfg.MaxRequestBody = DefaultMaxRequestBody
+	}
+	if cfg.MaxRequestBody < 1 || cfg.MaxRequestBody > MaximumMaxRequestBody {
+		return nil, fmt.Errorf("gateway: MaxRequestBody must be between 1 and %d bytes", MaximumMaxRequestBody)
+	}
+	if cfg.MaxOutputTokens == 0 {
+		cfg.MaxOutputTokens = DefaultMaxOutputTokens
+	}
+	if cfg.MaxOutputTokens < 1 || cfg.MaxOutputTokens > MaximumMaxOutputTokens {
+		return nil, fmt.Errorf("gateway: MaxOutputTokens must be between 1 and %d", MaximumMaxOutputTokens)
 	}
 	if cfg.ResponseHeaderTimeout <= 0 {
 		cfg.ResponseHeaderTimeout = DefaultResponseHeaderTimeout
@@ -211,6 +282,9 @@ func New(cfg Config) (*Server, error) {
 		if parsed.Host == "" {
 			return nil, fmt.Errorf("gateway: upstream %q has no host", cfg.Upstream)
 		}
+		if parsed.User != nil || parsed.ForceQuery || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return nil, fmt.Errorf("gateway: upstream %q must not contain user information, a query, or a fragment", cfg.Upstream)
+		}
 		up = parsed
 	}
 
@@ -224,7 +298,24 @@ func New(cfg Config) (*Server, error) {
 		}
 	}
 
-	s := &Server{cfg: cfg, log: cfg.Logger, upstream: up}
+	models := make(map[string]struct{})
+	if cfg.Routes != nil {
+		for _, model := range cfg.Routes.Models() {
+			models[model] = struct{}{}
+		}
+	} else {
+		for _, model := range cfg.Models {
+			if model == "" || strings.TrimSpace(model) != model {
+				return nil, fmt.Errorf("gateway: model allowlist contains an empty or whitespace-padded name %q", model)
+			}
+			if _, duplicate := models[model]; duplicate {
+				return nil, fmt.Errorf("gateway: model %q appears twice in the allowlist", model)
+			}
+			models[model] = struct{}{}
+		}
+	}
+
+	s := &Server{cfg: cfg, log: cfg.Logger, upstream: up, models: models}
 	s.proxy = &httputil.ReverseProxy{
 		Rewrite:   s.rewrite,
 		Transport: s.transport(),
@@ -255,12 +346,19 @@ func (s *Server) transport() *http.Transport {
 	}
 }
 
-// ServeHTTP takes payment, then proxies.
+// ServeHTTP verifies payment, proves that the request is within the narrow
+// inference policy, reserves the token, and only then proxies it.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The catalog is free and needs no token. Charging to find out what is on
 	// offer, or making a client spend one to discover a typo, would be an odd
 	// way to run a shop.
-	if s.cfg.Routes != nil && r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+		if r.URL.ForceQuery || r.URL.RawQuery != "" {
+			s.metrics.Rejected.Add(1)
+			s.refuseToken(w, http.StatusBadRequest, "query_not_allowed", TokenOutcomeRejected,
+				"The local model catalog does not accept a query string.")
+			return
+		}
 		s.handleModels(w)
 		return
 	}
@@ -270,7 +368,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	raw := r.Header.Get(TokenHeader)
 	if raw == "" {
 		s.metrics.NoToken.Add(1)
-		s.refuse(w, http.StatusUnauthorized, "no_token",
+		s.refuseToken(w, http.StatusUnauthorized, "no_token",
+			TokenOutcomeInvalid,
 			"This gateway takes a token, not an API key. Present one in "+TokenHeader+".")
 		return
 	}
@@ -281,20 +380,39 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// The parse error is not echoed. It describes bytes the client sent,
 		// so it tells them nothing they do not know, and reflecting attacker
 		// input into a response is a habit worth not having.
-		s.refuse(w, http.StatusUnauthorized, "bad_token", "That token could not be read.")
+		s.refuseToken(w, http.StatusUnauthorized, "bad_token", TokenOutcomeInvalid,
+			"That token could not be read.")
 		return
 	}
 
 	key, ok := s.cfg.MintKeys[tok.KeyID]
 	if !ok {
 		s.metrics.BadToken.Add(1)
-		s.refuse(w, http.StatusUnauthorized, "unknown_mint",
+		s.refuseToken(w, http.StatusUnauthorized, "unknown_mint", TokenOutcomeInvalid,
 			"That token was signed by a mint this gateway does not accept, or by a key that has been retired.")
 		return
 	}
 	if err := mint.Verify(key, tok); err != nil {
 		s.metrics.BadToken.Add(1)
-		s.refuse(w, http.StatusUnauthorized, "bad_token", "That token is not valid.")
+		s.refuseToken(w, http.StatusUnauthorized, "bad_token", TokenOutcomeInvalid,
+			"That token is not valid.")
+		return
+	}
+
+	// Validate the paid surface before reserving the token. This gateway is an
+	// inference endpoint, not a general authenticated proxy into the provider
+	// account: only an exact Messages request can ever receive the pooled key.
+	pick, requestBody, policyErr := s.prepareRequest(r)
+	if policyErr != nil {
+		s.metrics.Rejected.Add(1)
+		if policyErr.noRoute {
+			s.metrics.NoRoute.Add(1)
+		}
+		if policyErr.status == http.StatusMethodNotAllowed {
+			w.Header().Set("Allow", http.MethodPost)
+		}
+		s.refuseToken(w, policyErr.status, policyErr.kind,
+			TokenOutcomeRejected, policyErr.message)
 		return
 	}
 
@@ -302,26 +420,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// a window in which the same token, sent concurrently, buys several
 	// requests -- and that window is exactly what an attacker would aim for.
 	if err := s.cfg.Spent.Spend(tok); err != nil {
-		s.metrics.Replayed.Add(1)
-		s.refuse(w, http.StatusConflict, "token_spent", "That token has already been used.")
+		if errors.Is(err, mint.ErrAlreadySpent) {
+			s.metrics.Replayed.Add(1)
+			s.refuseToken(w, http.StatusConflict, "token_spent", TokenOutcomeInvalid,
+				"That token has already been used.")
+			return
+		}
+		s.log.Error("redemption store refused a token reservation", "error", err)
+		s.refuseToken(w, http.StatusServiceUnavailable, "redemption_unavailable", TokenOutcomeInvalid,
+			"The gateway could not safely reserve that token. It was not forwarded; do not retry it until the operator confirms the redemption store is healthy.")
 		return
 	}
 
-	r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, tok))
-
+	r.Body = requestBody
+	r.ContentLength = int64(requestBody.size)
 	if s.cfg.Routes != nil {
-		pick, body, err := s.pickRoute(r)
-		if err != nil {
-			// The token was spent a moment ago and this request is going
-			// nowhere, so it goes straight back.
-			s.cfg.Spent.Refund(tok)
-			s.metrics.Refunded.Add(1)
-			s.metrics.NoRoute.Add(1)
-			s.refuse(w, http.StatusNotFound, "no_route", err.Error())
-			return
-		}
-		r.Body = body
-		r.ContentLength = int64(body.size)
 		r = r.WithContext(context.WithValue(r.Context(), routeKey{}, pick))
 	}
 
@@ -334,41 +447,280 @@ type body struct {
 	size int
 }
 
-// pickRoute reads the model out of the request, finds its provider, and
-// converts the request if that provider speaks another API.
-func (s *Server) pickRoute(r *http.Request) (chosen, *body, error) {
-	model, buf, err := modelOf(r.Body)
+type policyError struct {
+	status  int
+	kind    string
+	message string
+	noRoute bool
+}
+
+// prepareRequest is the credential boundary. A value returned from here is
+// the only request rewrite is allowed to send to a provider.
+func (s *Server) prepareRequest(r *http.Request) (chosen, *body, *policyError) {
+	reject := func(status int, kind, message string) (chosen, *body, *policyError) {
+		return chosen{}, nil, &policyError{status: status, kind: kind, message: message}
+	}
+	if r.Method != http.MethodPost {
+		return reject(http.StatusMethodNotAllowed, "method_not_allowed",
+			"This gateway pays only for POST /v1/messages inference requests.")
+	}
+	if r.URL.Path != "/v1/messages" {
+		return reject(http.StatusNotFound, "unsupported_endpoint",
+			"This gateway pays only for /v1/messages inference requests; provider account, file, batch, fine-tuning, and administrative endpoints are not exposed.")
+	}
+	if r.URL.ForceQuery || r.URL.RawQuery != "" {
+		return reject(http.StatusBadRequest, "query_not_allowed",
+			"Inference requests must not contain a query string.")
+	}
+	if r.Header.Get("Content-Encoding") != "" {
+		return reject(http.StatusUnsupportedMediaType, "content_encoding_not_allowed",
+			"Compressed request bodies are not accepted because their expanded cost cannot be bounded before reading them.")
+	}
+	if len(r.Trailer) != 0 || r.Header.Get("Trailer") != "" {
+		return reject(http.StatusBadRequest, "trailers_not_allowed",
+			"Inference requests must not contain HTTP trailers; no token was spent.")
+	}
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		return reject(http.StatusUnsupportedMediaType, "content_type",
+			"Inference requests must use Content-Type: application/json.")
+	}
+	if r.ContentLength > s.cfg.MaxRequestBody {
+		return reject(http.StatusRequestEntityTooLarge, "request_too_large",
+			fmt.Sprintf("The request is over this gateway's %d-byte limit.", s.cfg.MaxRequestBody))
+	}
+
+	defer r.Body.Close()
+	buf, err := io.ReadAll(io.LimitReader(r.Body, s.cfg.MaxRequestBody+1))
 	if err != nil {
-		return chosen{}, nil, err
+		return reject(http.StatusBadRequest, "request_read", "The request body could not be read.")
 	}
-	if model == "" {
-		return chosen{}, nil, fmt.Errorf(
-			"this request names no model, and this gateway routes by model. It carries: %s",
-			strings.Join(s.cfg.Routes.Models(), ", "))
+	if int64(len(buf)) > s.cfg.MaxRequestBody {
+		return reject(http.StatusRequestEntityTooLarge, "request_too_large",
+			fmt.Sprintf("The request is over this gateway's %d-byte limit.", s.cfg.MaxRequestBody))
 	}
-	route, ok := s.cfg.Routes.Lookup(model)
-	if !ok {
-		// Naming what is available turns a typo into a one-line fix rather
-		// than a support conversation.
-		return chosen{}, nil, fmt.Errorf("this gateway does not carry %q. It carries: %s",
-			model, strings.Join(s.cfg.Routes.Models(), ", "))
-	}
-
-	pick := chosen{route: route, path: r.URL.Path}
-
-	// Clients speak the Messages API. A provider that speaks OpenAI's needs
-	// the request converted, and its answer converted back, or routing is only
-	// a credential swap wearing the word.
-	if route.Style == StyleOpenAI && strings.HasSuffix(r.URL.Path, "/v1/messages") {
-		path, converted, err := toOpenAI(buf)
-		if err != nil {
-			return chosen{}, nil, err
+	if err := rejectDuplicateJSONNames(buf); err != nil {
+		if errors.Is(err, errDuplicateJSONField) {
+			return reject(http.StatusBadRequest, "duplicate_json_field",
+				"The request contains a duplicate JSON field. No token was spent.")
 		}
-		pick.path, pick.translated = path, true
-		buf = converted
+		return reject(http.StatusBadRequest, "bad_json", "The request body is not one valid JSON object.")
+	}
+
+	// Decode to raw fields and marshal it again before forwarding. The recursive
+	// duplicate-name pass above removes parser ambiguity at every object level;
+	// re-encoding then removes alternate whitespace and escape spellings too.
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(buf, &fields); err != nil || fields == nil {
+		return reject(http.StatusBadRequest, "bad_json", "The request body is not one valid JSON object.")
+	}
+	allowedFields := map[string]struct{}{
+		"model": {}, "max_tokens": {}, "messages": {}, "system": {},
+		"stream": {}, "temperature": {}, "top_p": {}, "stop_sequences": {},
+	}
+	var unsupported []string
+	for name := range fields {
+		if _, ok := allowedFields[name]; !ok {
+			unsupported = append(unsupported, name)
+		}
+	}
+	if len(unsupported) != 0 {
+		slices.Sort(unsupported)
+		name := unsupported[0]
+		if len(name) > 80 {
+			name = name[:80] + "..."
+		}
+		return reject(http.StatusUnprocessableEntity, "unsupported_field",
+			fmt.Sprintf("The top-level request field %q is not supported by this gateway; no token was spent.", name))
+	}
+	badType := func(name, expectation string) (chosen, *body, *policyError) {
+		return reject(http.StatusUnprocessableEntity, "invalid_field",
+			fmt.Sprintf("The request field %q must be %s; no token was spent.", name, expectation))
+	}
+	isNull := func(raw json.RawMessage) bool {
+		return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
+	}
+
+	// Validate the deliberately small Messages subset before redemption. Text
+	// only is an economic boundary, not merely a first implementation: a short
+	// remote-image URL can make a provider fetch and tokenize content far larger
+	// than this gateway's JSON byte limit, and nested cache controls can change
+	// billing. Rich content needs explicit source/type validation and pricing
+	// before it can safely be added.
+	messageBytes, ok := fields["messages"]
+	if !ok {
+		return badType("messages", "an array")
+	}
+	var messages []json.RawMessage
+	if json.Unmarshal(messageBytes, &messages) != nil || isNull(messageBytes) || len(messages) == 0 {
+		return badType("messages", "a non-empty array")
+	}
+	for i, raw := range messages {
+		var message map[string]json.RawMessage
+		if json.Unmarshal(raw, &message) != nil || message == nil {
+			return badType("messages", fmt.Sprintf("an array of message objects (item %d is invalid)", i))
+		}
+		for name := range message {
+			if name != "role" && name != "content" {
+				return badType("messages", fmt.Sprintf("text-only role/content objects (item %d has unsupported field %q)", i, name))
+			}
+		}
+		var role, content string
+		roleRaw, hasRole := message["role"]
+		contentRaw, hasContent := message["content"]
+		if !hasRole || json.Unmarshal(roleRaw, &role) != nil || (role != "user" && role != "assistant") {
+			return badType("messages", fmt.Sprintf("an array of message objects with user/assistant roles (item %d is invalid)", i))
+		}
+		if !hasContent || json.Unmarshal(contentRaw, &content) != nil || isNull(contentRaw) {
+			return badType("messages", fmt.Sprintf("text content as a string (item %d is invalid)", i))
+		}
+	}
+	if raw, ok := fields["system"]; ok {
+		var text string
+		if json.Unmarshal(raw, &text) != nil || isNull(raw) {
+			return badType("system", "a text string")
+		}
+	}
+	if raw, ok := fields["stream"]; ok {
+		var value bool
+		if json.Unmarshal(raw, &value) != nil || isNull(raw) {
+			return badType("stream", "true or false")
+		}
+	}
+	for _, name := range []string{"temperature", "top_p"} {
+		if raw, ok := fields[name]; ok {
+			var value float64
+			if json.Unmarshal(raw, &value) != nil || isNull(raw) || value < 0 || value > 1 {
+				return badType(name, "a number from 0 through 1")
+			}
+		}
+	}
+	if raw, ok := fields["stop_sequences"]; ok {
+		var values []json.RawMessage
+		if json.Unmarshal(raw, &values) != nil || isNull(raw) {
+			return badType("stop_sequences", "an array of strings")
+		}
+		for _, valueRaw := range values {
+			var value string
+			if json.Unmarshal(valueRaw, &value) != nil || isNull(valueRaw) {
+				return badType("stop_sequences", "an array of strings")
+			}
+		}
+	}
+	var model string
+	if raw, ok := fields["model"]; !ok || json.Unmarshal(raw, &model) != nil || model == "" {
+		return reject(http.StatusBadRequest, "no_model", "The request names no model.")
+	}
+	var maxTokens int
+	if raw, ok := fields["max_tokens"]; !ok || json.Unmarshal(raw, &maxTokens) != nil || maxTokens < 1 {
+		return reject(http.StatusBadRequest, "max_tokens_required",
+			"The request must set max_tokens to a positive integer so one token has an explicit cost ceiling.")
+	}
+	if maxTokens > s.cfg.MaxOutputTokens {
+		return reject(http.StatusUnprocessableEntity, "output_limit",
+			fmt.Sprintf("The request asks for %d output tokens; this gateway permits at most %d per paid request.",
+				maxTokens, s.cfg.MaxOutputTokens))
+	}
+	if _, ok := s.models[model]; !ok {
+		models := s.modelNames()
+		return chosen{}, nil, &policyError{
+			status: http.StatusNotFound, kind: "no_route", noRoute: true,
+			message: fmt.Sprintf("This gateway does not carry %q. It carries: %s",
+				model, strings.Join(models, ", ")),
+		}
+	}
+	buf, err = json.Marshal(fields)
+	if err != nil {
+		return reject(http.StatusBadRequest, "bad_json", "The request body could not be normalized safely.")
+	}
+
+	pick := chosen{path: "/v1/messages"}
+	if s.cfg.Routes != nil {
+		pick.route, _ = s.cfg.Routes.Lookup(model)
+		// Clients speak the Messages API. A provider that speaks OpenAI's
+		// receives the one supported translation, never a caller-selected path.
+		if pick.route.Style == StyleOpenAI {
+			path, converted, err := toOpenAI(buf)
+			if err != nil {
+				return reject(http.StatusUnprocessableEntity, "translation", err.Error())
+			}
+			pick.path, pick.translated = path, true
+			buf = converted
+		}
 	}
 
 	return pick, &body{ReadCloser: replay(buf), size: len(buf)}, nil
+}
+
+// rejectDuplicateJSONNames walks every object, including nested messages and
+// content, before any policy decision is made. Go's ordinary map/struct
+// decoding keeps the last duplicate name; another provider parser may keep the
+// first. Rejecting duplicates prevents the two sides from enforcing different
+// meanings while looking at the same signed-token request.
+func rejectDuplicateJSONNames(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	if err := walkJSONValue(dec); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		if err == nil {
+			return errors.New("gateway: JSON has trailing values")
+		}
+		return err
+	}
+	return nil
+}
+
+var errDuplicateJSONField = errors.New("gateway: duplicate JSON field")
+
+func walkJSONValue(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, composite := tok.(json.Delim)
+	if !composite {
+		return nil
+	}
+	switch delim {
+	case '{':
+		seen := make(map[string]struct{})
+		for dec.More() {
+			keyToken, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return errors.New("gateway: JSON object name is not a string")
+			}
+			if _, duplicate := seen[key]; duplicate {
+				return fmt.Errorf("%w %q", errDuplicateJSONField, key)
+			}
+			seen[key] = struct{}{}
+			if err := walkJSONValue(dec); err != nil {
+				return err
+			}
+		}
+		end, err := dec.Token()
+		if err != nil || end != json.Delim('}') {
+			return errors.New("gateway: malformed JSON object")
+		}
+	case '[':
+		for dec.More() {
+			if err := walkJSONValue(dec); err != nil {
+				return err
+			}
+		}
+		end, err := dec.Token()
+		if err != nil || end != json.Delim(']') {
+			return errors.New("gateway: malformed JSON array")
+		}
+	default:
+		return errors.New("gateway: unexpected JSON delimiter")
+	}
+	return nil
 }
 
 // rewrite points the request at the provider and replaces the client's
@@ -383,66 +735,179 @@ func (s *Server) rewrite(pr *httputil.ProxyRequest) {
 		path = pick.path
 	}
 
+	// Clear every caller-controlled alternate URL representation before the
+	// credential is attached. net/url and transports may prefer Opaque or
+	// RawPath over Path; leaving residue makes an exact path check illusory.
 	pr.Out.URL.Scheme = upstream.Scheme
+	pr.Out.URL.Opaque = ""
+	pr.Out.URL.User = nil
 	pr.Out.URL.Host = upstream.Host
-	pr.Out.Host = upstream.Host
 	pr.Out.URL.Path = path
+	pr.Out.URL.RawPath = ""
+	pr.Out.URL.OmitHost = false
+	pr.Out.URL.ForceQuery = false
+	pr.Out.URL.RawQuery = ""
+	pr.Out.URL.Fragment = ""
+	pr.Out.URL.RawFragment = ""
+	pr.Out.Host = upstream.Host
 
 	if base := strings.TrimSuffix(upstream.Path, "/"); base != "" {
 		pr.Out.URL.Path = base + pr.Out.URL.Path
 	}
 
-	// The token stops here. Forwarding it would hand the provider a stable
-	// identifier for one request and, worse, a bearer instrument.
-	pr.Out.Header.Del(TokenHeader)
-
-	// Anything the client sent that looks like a credential is dropped before
-	// the pooled one is set. A client must not be able to override the
-	// gateway's credential, and must not be able to smuggle their own account
-	// through a service whose entire purpose is that they do not use one.
-	pr.Out.Header.Del("Authorization")
-	pr.Out.Header.Del("Proxy-Authorization")
-	pr.Out.Header.Del("X-Api-Key")
-	pr.Out.Header.Del("Api-Key")
-
-	// Deliberately not calling SetXForwarded. The provider must not learn
-	// where the request came from, and that is the whole point of this hop.
-	pr.Out.Header.Del("X-Forwarded-For")
-	pr.Out.Header.Del("X-Forwarded-Host")
-	pr.Out.Header.Del("X-Forwarded-Proto")
-	pr.Out.Header.Del("Forwarded")
-
-	// Client hints and identifying metadata a tool may have attached.
-	pr.Out.Header.Del("X-Real-Ip")
-	pr.Out.Header.Del("Cookie")
+	// Start over from a small API-semantic allowlist. A blacklist inevitably
+	// misses SDK versions, trace ids, runtime names, custom request ids, and
+	// the next identifying header somebody invents. Credentials, cookies,
+	// forwarding metadata, the Osanwe token, and its outcome all disappear by
+	// construction.
+	pr.Out.Header = allowedHeaders(pr.Out.Header,
+		"Accept", "Content-Type", "Anthropic-Version")
+	// Trailers and the parsed TransferEncoding field live outside Header. The
+	// inbound body has already been read and rebuilt with a known length, so
+	// neither is needed; retaining them would let a chunked caller smuggle
+	// arbitrary identifying or credential-shaped trailer fields around the
+	// positive header allowlist.
+	pr.Out.Trailer = nil
+	pr.Out.TransferEncoding = nil
+	// These are gateway policy, not caller metadata. Keeping the three header
+	// names while forwarding arbitrary values would leave a stable covert
+	// identifier (for example a Content-Type parameter) on the anonymous path.
+	pr.Out.Header.Set("Accept", canonicalAccept)
+	pr.Out.Header.Set("Content-Type", canonicalContentType)
+	if pick, routed := pr.In.Context().Value(routeKey{}).(chosen); !routed || pick.route.Style == StyleAnthropic {
+		pr.Out.Header.Set("Anthropic-Version", canonicalAnthropicVersion)
+	} else {
+		pr.Out.Header.Del("Anthropic-Version")
+	}
+	// net/http otherwise manufactures Go-http-client/1.1 after Rewrite. An
+	// explicitly empty value suppresses that default without forwarding the
+	// caller's User-Agent.
+	pr.Out.Header["User-Agent"] = []string{""}
 
 	pr.Out.Header.Set(credential.Header, credential.Prefix+credential.Value)
 }
 
-// modifyResponse refunds a token when the provider produced nothing usable.
-//
-// It runs after the response head arrives and before any body is copied, which
-// is the last moment a refund is honest: past this point the client is getting
-// output and has had what they paid for.
+func allowedHeaders(source http.Header, names ...string) http.Header {
+	kept := make(http.Header, len(names)+1)
+	for _, name := range names {
+		if values, ok := source[http.CanonicalHeaderKey(name)]; ok {
+			kept[http.CanonicalHeaderKey(name)] = append([]string(nil), values...)
+		}
+	}
+	return kept
+}
+
+// modifyResponse records the outcome asserted to the client. Once forwarding
+// begins the token is spent, including on 5xx: a provider may have processed
+// and billed the request before returning an error, and HTTP gives the gateway
+// no proof otherwise.
 func (s *Server) modifyResponse(resp *http.Response) error {
+	credential := s.cfg.Credential
+	if pick, ok := resp.Request.Context().Value(routeKey{}).(chosen); ok && s.cfg.Routes != nil {
+		credential = pick.route.credential()
+	}
+	stripProviderCredentialHeaders(resp.Header, credential)
+	stripNetworkTriggerHeaders(resp.Header)
+	// Trailer values arrive while the body is being streamed, after this hook
+	// runs, so they cannot be inspected safely here. This API needs none: drop
+	// the declaration and map rather than let response trailers bypass the
+	// ordinary response-header policy.
+	resp.Header.Del("Trailer")
+	resp.Trailer = nil
+	resp.TransferEncoding = nil
+
+	// A provider must not get to decide whether the client's wallet reuses a
+	// token. Delete any value it supplied before setting the gateway's result.
+	resp.Header.Del(TokenOutcomeHeader)
+	if redirectsAutomatically(resp.StatusCode) {
+		status := resp.StatusCode
+		replaceRedirectResponse(resp,
+			"The provider attempted to redirect this request. Redirects are blocked because following one from the local client would bypass the anonymity relay.")
+		resp.Header.Set(TokenOutcomeHeader, TokenOutcomeSpent)
+		s.metrics.UpstreamErr.Add(1)
+		s.log.Warn("provider redirect blocked after dispatch; token remains spent", "status", status)
+		return nil
+	}
 	if pick, ok := resp.Request.Context().Value(routeKey{}).(chosen); ok && pick.translated {
 		if err := translateBack(resp); err != nil {
 			return err
 		}
 	}
 	if resp.StatusCode < 500 {
+		resp.Header.Set(TokenOutcomeHeader, TokenOutcomeSpent)
 		return nil
 	}
 	s.metrics.UpstreamErr.Add(1)
-	if tok, ok := resp.Request.Context().Value(tokenKey{}).(*mint.Token); ok {
-		s.cfg.Spent.Refund(tok)
-		s.metrics.Refunded.Add(1)
-		// Status only. Logging the token would create a record that a
-		// particular token was used at a particular moment, which is half of
-		// the link this design removes.
-		s.log.Warn("provider failed; token refunded", "status", resp.StatusCode)
-	}
+	resp.Header.Set(TokenOutcomeHeader, TokenOutcomeSpent)
+	// Status only. Logging the token would create a record that a particular
+	// token was used at a particular moment, which is half of the link this
+	// design removes.
+	s.log.Warn("provider failed after dispatch; token remains spent", "status", resp.StatusCode)
 	return nil
+}
+
+func redirectsAutomatically(status int) bool {
+	switch status {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
+		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return true
+	default:
+		return false
+	}
+}
+
+func replaceRedirectResponse(resp *http.Response, message string) {
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	body := []byte(fmt.Sprintf(`{"type":"error","error":{"type":"osanwe_redirect_blocked","message":%q}}`+"\n", message))
+	resp.StatusCode = http.StatusBadGateway
+	resp.Status = fmt.Sprintf("%d %s", http.StatusBadGateway, http.StatusText(http.StatusBadGateway))
+	resp.Header = make(http.Header)
+	resp.Header.Set("Content-Type", "application/json")
+	resp.Header.Set("Cache-Control", "no-store")
+	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.ContentLength = int64(len(body))
+	resp.TransferEncoding = nil
+	resp.Trailer = nil
+}
+
+func stripNetworkTriggerHeaders(header http.Header) {
+	for _, name := range []string{
+		"Location", "Refresh", "Link", "Alt-Svc", "Set-Cookie",
+		"Report-To", "Reporting-Endpoints", "NEL", "Expect-CT",
+		"Public-Key-Pins", "Public-Key-Pins-Report-Only",
+		"Content-Security-Policy", "Content-Security-Policy-Report-Only",
+	} {
+		header.Del(name)
+	}
+	for name := range header {
+		if strings.HasPrefix(strings.ToLower(name), "access-control-") {
+			header.Del(name)
+		}
+	}
+}
+
+// stripProviderCredentialHeaders catches the accidental response-echo cases a
+// gateway can prevent without buffering or rewriting model output. A provider
+// necessarily knows its own credential and could encode it into an arbitrary
+// response body, so this is defense against ordinary header reflection, not a
+// claim that a malicious provider can be made to forget a secret it received.
+func stripProviderCredentialHeaders(header http.Header, credential Credential) {
+	for _, name := range []string{"Authorization", "X-Api-Key", "Api-Key"} {
+		header.Del(name)
+	}
+	want := credential.Prefix + credential.Value
+	for name, values := range header {
+		for _, value := range values {
+			trimmed := strings.TrimSpace(value)
+			if trimmed == credential.Value || trimmed == want {
+				header.Del(name)
+				break
+			}
+		}
+	}
 }
 
 // translateBack converts a provider's answer into the shape the client asked
@@ -481,17 +946,15 @@ func translateBack(resp *http.Response) error {
 	return nil
 }
 
-// handleError refunds and reports a transport failure.
+// handleError reports a transport failure. It deliberately does not refund:
+// EOF, reset, and timeout cannot prove the provider did not receive, process,
+// or bill the request before the connection failed.
 func (s *Server) handleError(w http.ResponseWriter, r *http.Request, err error) {
 	s.metrics.UpstreamErr.Add(1)
-	if tok, ok := r.Context().Value(tokenKey{}).(*mint.Token); ok {
-		s.cfg.Spent.Refund(tok)
-		s.metrics.Refunded.Add(1)
-	}
 	// The path is logged; the body never is, and neither is the token.
 	s.log.Error("upstream request failed", "path", r.URL.Path, "error", err)
-	s.refuse(w, http.StatusBadGateway, "upstream_error",
-		"The provider could not be reached. Your token has not been used.")
+	s.refuseToken(w, http.StatusBadGateway, "upstream_error", TokenOutcomeSpent,
+		"The provider connection failed after dispatch. Your token remains spent because the gateway cannot prove the provider did no work.")
 }
 
 // refuse writes an error in the shape a model client expects, so an existing
@@ -502,9 +965,14 @@ func (s *Server) refuse(w http.ResponseWriter, status int, kind, message string)
 	fmt.Fprintf(w, `{"type":"error","error":{"type":%q,"message":%q}}`+"\n", "osanwe_"+kind, message)
 }
 
+func (s *Server) refuseToken(w http.ResponseWriter, status int, kind, outcome, message string) {
+	w.Header().Set(TokenOutcomeHeader, outcome)
+	s.refuse(w, status, kind, message)
+}
+
 // handleModels lists what this gateway carries, in the shape a provider does.
 func (s *Server) handleModels(w http.ResponseWriter) {
-	models := s.cfg.Routes.Models()
+	models := s.modelNames()
 	out := struct {
 		Data []map[string]string `json:"data"`
 	}{Data: make([]map[string]string, 0, len(models))}
@@ -518,6 +986,15 @@ func (s *Server) handleModels(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (s *Server) modelNames() []string {
+	if s.cfg.Routes != nil {
+		return s.cfg.Routes.Models()
+	}
+	models := append([]string(nil), s.cfg.Models...)
+	slices.Sort(models)
+	return models
 }
 
 // Metrics returns the counters.

@@ -152,6 +152,7 @@ func newChain(t *testing.T) *chain {
 		Upstream: "https://" + providerLn.Addr().String(),
 		MintKeys: map[string]*rsa.PublicKey{m.KeyID(): m.PublicKey()},
 		Spent:    spent,
+		Models:   []string{"test"},
 		// The stand-in provider is self-signed, so the gateway needs its root.
 		// There is no option anywhere to skip verification.
 		UpstreamRootCAs: providerRoots,
@@ -252,7 +253,7 @@ func newChain(t *testing.T) *chain {
 func (c *chain) ask(t *testing.T, prompt string) (*http.Response, string) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, "http://"+c.toolEndpoint+"/v1/messages",
-		strings.NewReader(fmt.Sprintf(`{"prompt":%q}`, prompt)))
+		strings.NewReader(fmt.Sprintf(`{"model":"test","max_tokens":16,"messages":[{"role":"user","content":%q}]}`, prompt)))
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}

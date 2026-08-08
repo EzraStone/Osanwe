@@ -12,14 +12,17 @@
 package bearer
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/http/httputil"
 	"net/url"
 	"strings"
@@ -38,6 +41,26 @@ const DefaultUpstream = "https://api.anthropic.com"
 // built together.
 const gatewayTokenHeader = "X-Osanwe-Token"
 
+// gatewayTokenOutcomeHeader is authored by the TLS-authenticated configured
+// gateway, which strips any provider value before answering. It is deliberately
+// duplicated here so the independently deployed client and gateway packages
+// stay decoupled.
+const gatewayTokenOutcomeHeader = "X-Osanwe-Token-Outcome"
+
+const (
+	tokenOutcomeSpent    = "spent"
+	tokenOutcomeRefunded = "refunded"
+	tokenOutcomeRejected = "rejected"
+	tokenOutcomeInvalid  = "invalid"
+
+	// Token mode has one JSON API contract. Pinning these values prevents a
+	// local tool from turning otherwise allowed semantic headers into stable
+	// identifying metadata visible to the gateway.
+	canonicalAccept           = "application/json"
+	canonicalContentType      = "application/json"
+	canonicalAnthropicVersion = "2023-06-01"
+)
+
 // Timeouts. ResponseHeaderTimeout is generous because a model may think for a
 // long time before emitting its first token, and no overall response timeout
 // is set at all: a long stream is normal traffic here, not a stuck request.
@@ -51,8 +74,9 @@ type Dialer interface {
 	DialContext(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
-// TokenSource supplies one token per request. internal/mint.Wallet satisfies
-// it.
+// TokenSource supplies one token per paid inference request.
+// internal/mint.Wallet satisfies it; free catalog and local refusal paths do
+// not call Take.
 //
 // Setting one switches bearer from bring-your-own-key to paying with tokens:
 // the upstream becomes a gateway rather than the provider, and the user's own
@@ -80,10 +104,10 @@ type Config struct {
 	// Dialer opens tunnels. Required.
 	Dialer Dialer
 
-	// Tokens, when set, pays for each request with a blind-signed token and
-	// strips the user's own credentials before forwarding. Upstream must then
-	// be a gateway, not a provider directly: a provider would reject a token
-	// and has no idea what to do with one.
+	// Tokens, when set, pays for each accepted inference request with a
+	// blind-signed token and strips the user's own credentials before
+	// forwarding. Upstream must then be a gateway, not a provider directly: a
+	// provider would reject a token and has no idea what to do with one.
 	Tokens TokenSource
 
 	// Relays, when set, lets the client report which relay it is using.
@@ -159,7 +183,10 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Dialer == nil {
 		return nil, errors.New("bearer: Dialer is required")
 	}
-	if cfg.Upstream == "" {
+	if strings.TrimSpace(cfg.Upstream) == "" {
+		if cfg.Tokens != nil {
+			return nil, errors.New("bearer: token mode requires an explicit gateway -upstream; refusing to send a paid token to the default provider")
+		}
 		cfg.Upstream = DefaultUpstream
 	}
 	if cfg.ResponseHeaderTimeout <= 0 {
@@ -179,6 +206,9 @@ func New(cfg Config) (*Server, error) {
 	if up.Host == "" {
 		return nil, fmt.Errorf("bearer: upstream %q has no host", cfg.Upstream)
 	}
+	if up.User != nil || up.ForceQuery || up.RawQuery != "" || up.Fragment != "" || up.RawFragment != "" || up.RawPath != "" {
+		return nil, fmt.Errorf("bearer: upstream %q must not contain user information, a query, a fragment, or an encoded path", cfg.Upstream)
+	}
 
 	if !cfg.AllowNonLoopback {
 		if err := requireLoopback(cfg.Addr); err != nil {
@@ -190,8 +220,9 @@ func New(cfg Config) (*Server, error) {
 	s.tr = s.transport()
 
 	proxy := &httputil.ReverseProxy{
-		Rewrite:   s.rewrite,
-		Transport: s.tr,
+		Rewrite:        s.rewrite,
+		Transport:      s.tr,
+		ModifyResponse: s.modifyResponse,
 		// -1 flushes each write immediately, which is what makes server-sent
 		// events arrive token by token. Any buffering here would turn a
 		// streaming response into one long pause followed by a wall of text.
@@ -219,6 +250,21 @@ func New(cfg Config) (*Server, error) {
 // unreachable would surface as a request forwarded without payment.
 func (s *Server) withToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The gateway's locally generated model catalog is free. Bypassing Take
+		// is important: sending a wallet token and relying on the gateway not to
+		// spend it would still remove it from the local wallet.
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/models" && !r.URL.ForceQuery && r.URL.RawQuery == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Token mode deliberately exposes one paid operation, not an arbitrary
+		// credential-bearing provider proxy. Refuse locally so an unsupported
+		// request cannot even take a token out of the wallet.
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" || r.URL.ForceQuery || r.URL.RawQuery != "" {
+			s.refusePaidSurface(w, r)
+			return
+		}
+
 		tok, err := s.cfg.Tokens.Take(r.Context())
 		if err != nil {
 			s.metrics.NoToken.Add(1)
@@ -231,21 +277,35 @@ func (s *Server) withToken(next http.Handler) http.Handler {
 		}
 
 		tracked := &tokenTracker{token: tok}
-		r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, tracked))
+		ctx := context.WithValue(r.Context(), tokenKey{}, tracked)
+		// Rewrite only prepares an outgoing request; a dial or TLS failure can
+		// happen afterwards without sending one byte. WroteRequest is the
+		// boundary: once it fires (even with an error, after a partial write),
+		// the token may have reached and been spent by the gateway. Before it
+		// fires, returning the untouched token is safe.
+		ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+			WroteRequest: func(httptrace.WroteRequestInfo) {
+				tracked.presented.Store(true)
+			},
+		})
+		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
 
 		// If the request never made it far enough to hand the token over, it
 		// is still good and goes back in the wallet.
-		if !tracked.presented {
+		if !tracked.presented.Load() || tracked.reusable.Load() {
 			s.cfg.Tokens.Put(tok)
 		}
 	})
 }
 
-// tokenTracker records whether the token actually reached the gateway.
+// tokenTracker records whether the token left bearer and whether the pinned
+// gateway explicitly proved it reusable. Atomics keep this correct if a
+// transport invokes response hooks on a different goroutine.
 type tokenTracker struct {
 	token     *mint.Token
-	presented bool
+	presented atomic.Bool
+	reusable  atomic.Bool
 }
 
 // transport dials every upstream connection through the tunnel and runs TLS to
@@ -274,42 +334,188 @@ func (s *Server) transport() *http.Transport {
 func (s *Server) rewrite(pr *httputil.ProxyRequest) {
 	s.metrics.Requests.Add(1)
 
+	path := pr.In.URL.Path
 	pr.Out.URL.Scheme = s.upstream.Scheme
+	pr.Out.URL.Opaque = ""
+	pr.Out.URL.User = nil
 	pr.Out.URL.Host = s.upstream.Host
+	pr.Out.URL.Path = path
+	pr.Out.URL.RawPath = ""
+	pr.Out.URL.OmitHost = false
+	pr.Out.URL.Fragment = ""
+	pr.Out.URL.RawFragment = ""
+	if s.cfg.Tokens != nil {
+		// Token mode already refuses queries. Clear both representations here as
+		// defense in depth so only the exact paid/free gateway path is visible.
+		pr.Out.URL.ForceQuery = false
+		pr.Out.URL.RawQuery = ""
+	}
 	pr.Out.Host = s.upstream.Host
 
 	if base := strings.TrimSuffix(s.upstream.Path, "/"); base != "" {
-		pr.Out.URL.Path = base + pr.Out.URL.Path
+		pr.Out.URL.Path = base + path
 	}
 
-	// Deliberately not calling SetXForwarded. The whole point is that the
-	// provider does not learn where the request came from, and adding
-	// X-Forwarded-For would hand it a client address -- useless here, since it
-	// is always a loopback address, but the habit is exactly wrong and a
-	// future edit that binds a routable address would turn it into a real leak.
-	pr.Out.Header.Del("X-Forwarded-For")
-	pr.Out.Header.Del("X-Forwarded-Host")
-	pr.Out.Header.Del("X-Forwarded-Proto")
-	pr.Out.Header.Del("Forwarded")
-
-	// Proxy credentials are for the relay and were consumed by the tunnel;
-	// they must never reach the provider.
-	pr.Out.Header.Del("Proxy-Authorization")
-	pr.Out.Header.Del("Proxy-Connection")
+	// Keep only fields that change the API meaning. A positive allowlist drops
+	// caller addresses, cookies, browser hints, SDK/runtime versions, tracing
+	// ids and arbitrary custom metadata without having to predict every name.
+	allowed := []string{"Accept", "Content-Type", "Anthropic-Version"}
+	if s.cfg.Tokens == nil {
+		// BYOK has to preserve whichever standard credential shape the tool
+		// uses. Those are the only additional caller headers allowed out.
+		allowed = append(allowed, "Authorization", "X-Api-Key", "Api-Key")
+	}
+	pr.Out.Header = allowedHeaders(pr.Out.Header, allowed...)
+	// Trailer fields are carried outside Header and would otherwise bypass the
+	// allowlist on a chunked request. The transport may choose chunked framing
+	// again when the body length is unknown, but caller-supplied trailer names
+	// and values must not cross this privacy boundary.
+	pr.Out.Trailer = nil
+	pr.Out.TransferEncoding = nil
+	if s.cfg.Tokens != nil {
+		// The anonymous path has one protocol version and one JSON request
+		// shape. Do not forward caller-selected parameters or version strings:
+		// those are enough to act as a persistent fingerprint even though the
+		// header names themselves are legitimate API fields.
+		pr.Out.Header.Set("Accept", canonicalAccept)
+		if pr.In.Method == http.MethodPost && pr.In.URL.Path == "/v1/messages" {
+			pr.Out.Header.Set("Content-Type", canonicalContentType)
+			pr.Out.Header.Set("Anthropic-Version", canonicalAnthropicVersion)
+		} else {
+			pr.Out.Header.Del("Content-Type")
+			pr.Out.Header.Del("Anthropic-Version")
+		}
+	}
+	// Suppress net/http's automatic Go-http-client/1.1; replacing the caller's
+	// fingerprint with bearer's runtime fingerprint would still be a leak.
+	pr.Out.Header["User-Agent"] = []string{""}
 
 	if tracked, ok := pr.In.Context().Value(tokenKey{}).(*tokenTracker); ok {
-		// Paying with a token means the user has no account in play, so
-		// anything credential-shaped their tool attached is dropped here
-		// rather than at the gateway. A key that never leaves the machine
-		// cannot be logged by a gateway, leaked by one, or subpoenaed from
-		// one.
-		pr.Out.Header.Del("Authorization")
-		pr.Out.Header.Del("X-Api-Key")
-		pr.Out.Header.Del("Api-Key")
-
 		pr.Out.Header.Set(gatewayTokenHeader, tracked.token.Encode())
-		tracked.presented = true
 	}
+}
+
+func allowedHeaders(source http.Header, names ...string) http.Header {
+	kept := make(http.Header, len(names)+1)
+	for _, name := range names {
+		if values, ok := source[http.CanonicalHeaderKey(name)]; ok {
+			kept[http.CanonicalHeaderKey(name)] = append([]string(nil), values...)
+		}
+	}
+	return kept
+}
+
+// modifyResponse applies only a result asserted by the authenticated gateway.
+// Missing and unknown values fail closed for compatibility with old gateways:
+// bearer does not put the token back and risk a replay loop.
+func (s *Server) modifyResponse(resp *http.Response) error {
+	tracked, ok := resp.Request.Context().Value(tokenKey{}).(*tokenTracker)
+	trustedOutcome := ""
+	if ok {
+		switch outcome := resp.Header.Get(gatewayTokenOutcomeHeader); outcome {
+		case tokenOutcomeRefunded, tokenOutcomeRejected:
+			tracked.reusable.Store(true)
+			trustedOutcome = outcome
+		case tokenOutcomeSpent, tokenOutcomeInvalid:
+			// Intentionally retained as spent locally.
+			trustedOutcome = outcome
+		case "":
+			s.log.Warn("gateway response had no token outcome; retaining token as spent for safety")
+		default:
+			s.log.Warn("gateway response had an unknown token outcome; retaining token as spent for safety",
+				"outcome", outcome)
+		}
+	}
+
+	stripBearerResponseHeaders(resp)
+	if ok && trustedOutcome != "" {
+		resp.Header.Set(gatewayTokenOutcomeHeader, trustedOutcome)
+	} else {
+		resp.Header.Del(gatewayTokenOutcomeHeader)
+	}
+	if redirectsAutomatically(resp.StatusCode) {
+		replaceRedirectResponse(resp,
+			"The upstream attempted to redirect this request. Redirects are blocked because following one from this machine would bypass the anonymity relay.")
+		if trustedOutcome != "" {
+			resp.Header.Set(gatewayTokenOutcomeHeader, trustedOutcome)
+		}
+	}
+	return nil
+}
+
+func stripBearerResponseHeaders(resp *http.Response) {
+	for _, name := range []string{
+		"Authorization", "X-Api-Key", "Api-Key", gatewayTokenHeader,
+		"Location", "Refresh", "Link", "Alt-Svc", "Set-Cookie",
+		"Report-To", "Reporting-Endpoints", "NEL", "Expect-CT",
+		"Public-Key-Pins", "Public-Key-Pins-Report-Only",
+		"Content-Security-Policy", "Content-Security-Policy-Report-Only",
+	} {
+		resp.Header.Del(name)
+	}
+	for name := range resp.Header {
+		if strings.HasPrefix(strings.ToLower(name), "access-control-") {
+			resp.Header.Del(name)
+			continue
+		}
+		for _, value := range resp.Header.Values(name) {
+			for _, secretName := range []string{"Authorization", "X-Api-Key", "Api-Key", gatewayTokenHeader} {
+				for _, secret := range resp.Request.Header.Values(secretName) {
+					if secret != "" && strings.TrimSpace(value) == secret {
+						resp.Header.Del(name)
+					}
+				}
+			}
+		}
+	}
+	resp.Header.Del("Trailer")
+	resp.Trailer = nil
+	resp.TransferEncoding = nil
+}
+
+func redirectsAutomatically(status int) bool {
+	switch status {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
+		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return true
+	default:
+		return false
+	}
+}
+
+func replaceRedirectResponse(resp *http.Response, message string) {
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	body := []byte(fmt.Sprintf(`{"type":"error","error":{"type":"osanwe_redirect_blocked","message":%q}}`+"\n", message))
+	resp.StatusCode = http.StatusBadGateway
+	resp.Status = fmt.Sprintf("%d %s", http.StatusBadGateway, http.StatusText(http.StatusBadGateway))
+	resp.Header = make(http.Header)
+	resp.Header.Set("Content-Type", "application/json")
+	resp.Header.Set("Cache-Control", "no-store")
+	resp.Header.Set("Content-Length", fmt.Sprint(len(body)))
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.ContentLength = int64(len(body))
+	resp.TransferEncoding = nil
+	resp.Trailer = nil
+}
+
+func (s *Server) refusePaidSurface(w http.ResponseWriter, r *http.Request) {
+	status := http.StatusNotFound
+	kind := "unsupported_endpoint"
+	message := "Token mode exposes only GET /v1/models and POST /v1/messages. No token was taken."
+	if (r.URL.Path == "/v1/messages" || r.URL.Path == "/v1/models") && (r.URL.ForceQuery || r.URL.RawQuery != "") {
+		status = http.StatusBadRequest
+		kind = "query_not_allowed"
+	} else if r.URL.Path == "/v1/messages" && r.Method != http.MethodPost {
+		status = http.StatusMethodNotAllowed
+		kind = "method_not_allowed"
+		w.Header().Set("Allow", http.MethodPost)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	fmt.Fprintf(w, `{"type":"error","error":{"type":%q,"message":%q}}`+"\n",
+		"osanwe_"+kind, message)
 }
 
 // handleError reports a failure without leaking request content into logs.

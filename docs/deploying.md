@@ -10,8 +10,9 @@ is something a *user* does.
 
 ## Before anything: the thing that is not built
 
-**Nothing rate limits a gateway.** Anyone who reaches one spends the
-operator's provider credit, without limit, until the account is empty.
+**Nothing aggregate-rate-limits a gateway.** Anyone who can obtain valid
+tokens can spend the operator's provider credit one bounded request at a time,
+without an hourly or dollar cap, until the account is empty.
 
 Two consequences for everything below:
 
@@ -22,6 +23,55 @@ Two consequences for everything below:
   correct topology. A client reaches the gateway *through* a relay and never
   directly, so the gateway has no reason to accept a connection from anywhere
   else. It is the strongest control available today and it costs nothing.
+
+The pooled credential is no longer attached to arbitrary provider paths. A
+gateway answers exact, query-free `GET /v1/models` locally for free and pays only for exact
+`POST /v1/messages` requests. The model must be in `-models` or the route
+table, `max_tokens` must be present and no higher than
+`-max-output-tokens`, the JSON body is capped by `-max-request-bytes`, and
+unsupported top-level capabilities are rejected before redemption. The
+defaults are 4,096 output tokens and a 1 MiB request body. These limits bound a
+single token; they do not limit aggregate requests or dollars per hour.
+
+The accepted top-level Messages fields are `model`, `max_tokens`, `messages`,
+`system`, `stream`, `temperature`, `top_p`, and `stop_sequences`. Their
+provider-neutral types and sampling ranges are checked before spending. For
+now, each message must contain only a `user` or `assistant` role and text
+content as a JSON string; `system` must also be a string. Image, document,
+file, tool, cache-control, and other rich content blocks are rejected without
+spending. A short remote-media URL can make a provider fetch and tokenize far
+more than the JSON byte limit, so rich blocks cannot safely be admitted until
+their sources and prices are validated explicitly. Duplicate JSON object names
+are rejected recursively, not just at the top level.
+
+Bearer and gateway account for the token explicitly with
+`X-Osanwe-Token-Outcome`. A policy refusal returns the token to the local
+wallet. Once dispatch may have begun, the outcome is `spent` even if the
+provider returns 5xx or the connection resets: HTTP cannot prove that the
+provider did not already process and bill the request, so automatic refunds
+there would create free retries. Bearer trusts this header only over its
+TLS-authenticated configured gateway connection; provider-supplied values are
+removed by the gateway. This is CA/hostname authentication, not a separate
+SPKI-pin feature.
+
+Both proxy hops use a positive request-header allowlist. In token mode,
+`Accept` and `Content-Type` are rebuilt as `application/json`, and the gateway
+sets its own provider API version; caller-supplied parameters or duplicate
+values do not survive as identifiers. Bearer additionally allows the three
+supported credential header shapes in BYOK mode, and the gateway adds its
+pooled credential internally. Caller User-Agent, SDK/runtime headers, tracing
+and request IDs, cookies, browser hints, forwarding metadata, and arbitrary
+custom headers are removed. The Go HTTP stack's own default User-Agent is
+suppressed as well. HTTP trailers are rejected at the gateway and stripped at
+both proxy hops, and alternate URL spellings are rebuilt canonically before a
+token or provider credential is attached.
+
+Credential-shaped response headers and headers that exactly echo the pooled
+credential are removed. The provider necessarily receives and therefore knows
+its own credential; no streaming proxy can stop a malicious provider from
+encoding that secret into arbitrary model output. The fixed endpoint/model
+policy removes caller-selected debug endpoints, but the configured provider
+remains part of the credential trust boundary.
 
 ---
 
@@ -102,6 +152,11 @@ bearer -relay 127.0.0.1:8443 -pin sha256/... \
        -mint http://127.0.0.1:8445 -mint-key-id mint-...
 ```
 
+`-upstream` is mandatory whenever `-mint` enables token mode. Bearer will not
+guess a gateway or fall back to a real provider: a mistaken default would send
+the purchased bearer token to the wrong service and make its outcome
+unknowable.
+
 This is worth doing before anything else, because it is the first arrangement
 that achieves something the laptop-only setup could not: **the gateway process
 runs on the server, so the provider sees the server's address rather than your
@@ -180,12 +235,12 @@ problem away.
 
 ```bash
 sudo apt update && sudo apt install -y git curl
-curl -fsSL https://go.dev/dl/go1.24.7.linux-amd64.tar.gz | sudo tar -C /usr/local -xz
+curl -fsSL https://go.dev/dl/go1.26.5.linux-amd64.tar.gz | sudo tar -C /usr/local -xz
 echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh
 export PATH=$PATH:/usr/local/go/bin
 
 sudo useradd --system --home /var/lib/osanwe --create-home osanwe
-git clone https://github.com/EzraStone/Osanw- /tmp/osanwe && cd /tmp/osanwe
+git clone https://github.com/EzraStone/Osanwe /tmp/osanwe && cd /tmp/osanwe
 go build -o /usr/local/bin/mithlond ./cmd/mithlond
 go build -o /usr/local/bin/eregion  ./cmd/eregion
 ```
@@ -250,6 +305,7 @@ ExecStart=/usr/local/bin/mithlond \
   -addr 0.0.0.0:8444 \
   -routes /var/lib/osanwe/routes.conf \
   -mint-key /var/lib/osanwe/mint.pub \
+  -spent-db /var/lib/osanwe/spent.db \
   -cert /var/lib/osanwe/gateway.crt \
   -key /var/lib/osanwe/gateway.key
 Restart=always
@@ -266,10 +322,33 @@ ReadWritePaths=/var/lib/osanwe
 WantedBy=multi-user.target
 ```
 
-`Restart=always` has a consequence worth knowing before it surprises you: the
-spent-token set lives in memory, so every restart makes every token spent so
-far valid again. Until that state is shared and durable, a crash loop is a
-free-money loop.
+`-spent-db` is the gateway's double-spend boundary. A redemption is not
+accepted until its journal entry has reached disk, so ordinary restarts do not
+revive tokens. Keep it on a local filesystem, owned by the service account,
+and back it up only as part of the gateway's live state. Restoring an older
+copy revives every token redeemed after that copy was made.
+
+Several gateway processes on the same host may point at the same path when
+they run as the same OS user; local file locking makes each claim atomic. Treat
+the journal and its companion lock as one live database: do not unlink,
+replace, restore, rotate, or copy either path underneath running processes.
+Stop every process first. Do not put them on NFS or another network filesystem
+and assume its locking and `fsync` semantics are equivalent. Gateways on
+different hosts need a shared implementation of `mint.RedemptionStore` whose
+`Spend` is an atomic create-if-absent operation and whose `Refund` is durably
+committed before it returns. That backend is not shipped; until it is, run one
+gateway host per mint key.
+
+The companion-lock format is new. When upgrading a gateway that previously
+locked `spent.db` itself, stop **every** old process before starting this
+version; old and new binaries do not coordinate on the same lock inode. There
+is not yet a safe online migration or rebind tool.
+
+The local format is append-only and there is no online compactor yet. Budget
+disk for one small record per accepted request and alert on free space: a full
+or corrupt journal makes the gateway return 503 before forwarding, by design.
+Do not truncate or hand-edit it to recover space; removing a valid tail is
+indistinguishable from restoring an old snapshot and revives those tokens.
 
 ### Firewall it to your relays, not to the world
 
@@ -293,6 +372,20 @@ Open port 8444 to the world only once rate limiting exists.
 
 It can share this machine at first. Bind it to loopback, so nothing outside
 reaches it directly.
+
+If this machine ran the pre-RFC mint, rotate its key before starting this
+version. The old file has PEM type `PRIVATE KEY`; the RFC 9474 implementation
+deliberately accepts only `OSANWE RSABSSA PRIVATE KEY`, because RFC 9474 forbids
+reusing a signing key across blind-signature protocols. Move the legacy key and
+public key aside, generate a fresh pair, publish the new key id, and treat every
+legacy token as retired. This is intentionally a breaking security migration,
+not an in-place conversion.
+
+The protocol primitive now comes from Cloudflare CIRCL and produces the
+standard randomized SHA-384 RSA-PSS form defined by RFC 9474. That removes the
+project's hand-written RSA operation; it does not substitute for an independent
+review of Osanwe's payment, key-rotation, and redemption integration before real
+money is put behind it.
 
 ```bash
 sudo -u osanwe eregion \
@@ -346,7 +439,7 @@ They need a machine with a public address and about 200 MB of memory. Send them
 this:
 
 ```bash
-git clone https://github.com/EzraStone/Osanw- && cd Osanw-
+git clone https://github.com/EzraStone/Osanwe && cd Osanwe
 go build -o ranger ./cmd/ranger
 
 SECRET=$(./ranger -gen-secret)          # send this back

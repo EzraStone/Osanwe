@@ -116,6 +116,7 @@ func TestAnthropicRequestReachesAnOpenAIProvider(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodPost, front.URL+"/v1/messages", strings.NewReader(
 		`{"model":"llama-3.1-8b-instant","max_tokens":64,"messages":[{"role":"user","content":"who are you"}]}`))
 	req.Header.Set(TokenHeader, tokenFor(t, m))
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := front.Client().Do(req)
 	if err != nil {
 		t.Fatalf("Do: %v", err)
@@ -164,6 +165,7 @@ func TestStreamingSurvivesTranslation(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodPost, front.URL+"/v1/messages", strings.NewReader(
 		`{"model":"llama-3.1-8b-instant","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set(TokenHeader, tokenFor(t, m))
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := front.Client().Do(req)
 	if err != nil {
 		t.Fatalf("Do: %v", err)

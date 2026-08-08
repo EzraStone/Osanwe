@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -181,6 +182,9 @@ func TestEachProviderGetsItsOwnCredential(t *testing.T) {
 	if got := anth[0].Get("authorization"); got != "" {
 		t.Fatalf("anthropic also saw an authorization header: %q", got)
 	}
+	if got := anth[0].Get("Anthropic-Version"); got != canonicalAnthropicVersion {
+		t.Fatalf("anthropic API version = %q, want gateway-owned %q", got, canonicalAnthropicVersion)
+	}
 
 	oa := h.seen("openai")
 	if len(oa) != 1 {
@@ -191,6 +195,9 @@ func TestEachProviderGetsItsOwnCredential(t *testing.T) {
 	}
 	if got := oa[0].Get("x-api-key"); got != "" {
 		t.Fatalf("openai was sent an x-api-key: %q; that is another vendor's credential", got)
+	}
+	if got := oa[0].Get("Anthropic-Version"); got != "" {
+		t.Fatalf("OpenAI-style provider received Anthropic-Version %q", got)
 	}
 }
 
@@ -217,6 +224,9 @@ func TestAnUnknownModelIsRefusedAndTheTokenReturned(t *testing.T) {
 	if h.spent.Len() != 0 {
 		t.Fatal("the token stayed spent on a request that went nowhere")
 	}
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeRejected {
+		t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeRejected)
+	}
 	if len(h.seen("anthropic"))+len(h.seen("openai")) != 0 {
 		t.Fatal("an unroutable request still reached a provider")
 	}
@@ -228,14 +238,17 @@ func TestARequestWithNoModelIsRefused(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
 	if !strings.Contains(string(body), "names no model") {
 		t.Fatalf("refusal %s does not explain the problem", body)
 	}
 	if h.spent.Len() != 0 {
 		t.Fatal("the token stayed spent")
+	}
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeRejected {
+		t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeRejected)
 	}
 }
 
@@ -331,6 +344,7 @@ func TestBadRouteTablesAreRefused(t *testing.T) {
 		{"wrong field count", "claude anthropic https://x\n", "want 4"},
 		{"unknown style", "claude carrier-pigeon https://x K\n", "unknown style"},
 		{"plaintext upstream", "claude anthropic http://x K\n", "must use https"},
+		{"upstream query", "claude anthropic https://x?admin=true K\n", "must not contain"},
 		{"duplicate model", "c anthropic https://x K\nc openai https://y K\n", "routed twice"},
 		{"empty table", "# nothing but a comment\n", "empty"},
 	}
@@ -344,25 +358,37 @@ func TestBadRouteTablesAreRefused(t *testing.T) {
 	}
 }
 
+func TestRouteCredentialControlCharactersAreRefused(t *testing.T) {
+	_, err := ParseRoutes(strings.NewReader("claude anthropic https://api.anthropic.com KEY\n"),
+		func(string) string { return "secret\r\nX-Leak: yes" })
+	if err == nil || !strings.Contains(err.Error(), "control characters") {
+		t.Fatalf("ParseRoutes error = %v, want a control-character refusal", err)
+	}
+}
+
 // Routing means reading the body, so it must be bounded: without a cap a
 // client could make the gateway hold anything it liked in memory.
 func TestAnOversizedBodyIsRefused(t *testing.T) {
 	h := newRoutedHarness(t)
 
-	huge := strings.Repeat("x", MaxRoutedBody+1024)
+	huge := strings.Repeat("x", DefaultMaxRequestBody+1024)
 	req, _ := http.NewRequest(http.MethodPost, h.url+"/v1/messages",
 		strings.NewReader(`{"model":"claude-sonnet-5","pad":"`+huge+`"}`))
 	req.Header.Set(TokenHeader, h.token(t).Encode())
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := h.client.Do(req)
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", resp.StatusCode)
 	}
 	if h.spent.Len() != 0 {
 		t.Fatal("the token stayed spent on a request that was never forwarded")
+	}
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeRejected {
+		t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeRejected)
 	}
 }
 
@@ -404,9 +430,10 @@ func TestTheBodySurvivesRouting(t *testing.T) {
 	sig, _ := m.Issue(context.Background(), nil, bl.Blinded)
 	tok, _ := bl.Unblind(sig)
 
-	sent := `{"model":"m","messages":[{"role":"user","content":"a distinctive phrase"}]}`
+	sent := `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"a distinctive phrase"}],"system":"preserve-me","temperature":0.25}`
 	req, _ := http.NewRequest(http.MethodPost, front.URL+"/v1/messages", strings.NewReader(sent))
 	req.Header.Set(TokenHeader, tok.Encode())
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := front.Client().Do(req)
 	if err != nil {
 		t.Fatalf("Do: %v", err)
@@ -416,7 +443,14 @@ func TestTheBodySurvivesRouting(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if string(got) != sent {
-		t.Fatalf("the provider received %q, want the original %q", got, sent)
+	var gotJSON, sentJSON any
+	if err := json.Unmarshal(got, &gotJSON); err != nil {
+		t.Fatalf("provider body is not JSON: %v", err)
+	}
+	if err := json.Unmarshal([]byte(sent), &sentJSON); err != nil {
+		t.Fatalf("test body is not JSON: %v", err)
+	}
+	if !reflect.DeepEqual(gotJSON, sentJSON) {
+		t.Fatalf("provider received %#v, want semantic body %#v", gotJSON, sentJSON)
 	}
 }

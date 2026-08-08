@@ -155,11 +155,12 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 // them.
 //
 // This is not tidiness, it is a leak. A browser pointed at this port asks for
-// /favicon.ico unprompted, and forwarding that buys a token, opens a tunnel,
-// spends the token at the gateway and receives a 404 from the provider -- so
-// merely opening the interface cost the user money, and a 404 is not a failure
-// the gateway refunds. The same is true of apple-touch-icon, robots.txt and
-// whatever a browser decides to fetch next.
+// /favicon.ico unprompted; forwarding browser resources would expose needless
+// traffic in BYOK mode and used to spend wallet tokens. Token mode now also
+// restricts its paid surface to /v1/messages, but this earlier browser-specific
+// refusal gives a precise explanation and keeps both modes fail closed. The
+// same is true of apple-touch-icon, robots.txt and whatever a browser decides
+// to fetch next.
 //
 // Sec-Fetch-Dest is what separates the cases. A fetch or XHR -- which is what
 // an API call is -- reports "empty". A favicon reports "image", a navigation

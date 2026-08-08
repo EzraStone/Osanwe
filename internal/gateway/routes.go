@@ -3,7 +3,6 @@ package gateway
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -42,13 +41,8 @@ const (
 	StyleOpenAI Style = "openai"
 )
 
-// MaxRoutedBody bounds a request that has to be read before it can be routed.
-//
-// Routing means finding the model name, and JSON does not promise it comes
-// first, so the body is buffered. A cap is therefore mandatory: without one, a
-// client could hand the gateway an arbitrarily large body and make it hold all
-// of it in memory. Sixteen megabytes is far above any real prompt, including
-// ones carrying images.
+// MaxRoutedBody bounds a translated provider response held for conversion.
+// Incoming requests use Config.MaxRequestBody, whose default is smaller.
 const MaxRoutedBody = 16 << 20
 
 // Route sends one model to one provider.
@@ -96,6 +90,9 @@ func NewRoutes(list []Route) (*Routes, error) {
 			return nil, fmt.Errorf("gateway: route %q has no credential; set %s in the environment",
 				r.Model, r.CredentialEnv)
 		}
+		if err := r.credential().valid(); err != nil {
+			return nil, fmt.Errorf("gateway: route %q credential is invalid: %w", r.Model, err)
+		}
 		u, err := url.Parse(r.Upstream)
 		if err != nil || u.Host == "" {
 			return nil, fmt.Errorf("gateway: route %q has an unusable upstream %q", r.Model, r.Upstream)
@@ -103,6 +100,9 @@ func NewRoutes(list []Route) (*Routes, error) {
 		if u.Scheme != "https" {
 			return nil, fmt.Errorf("gateway: route %q must use https, got %q; the pooled credential would otherwise cross the network in the clear",
 				r.Model, r.Upstream)
+		}
+		if u.User != nil || u.ForceQuery || u.RawQuery != "" || u.Fragment != "" {
+			return nil, fmt.Errorf("gateway: route %q upstream must not contain user information, a query, or a fragment", r.Model)
 		}
 		if _, dup := rt.byModel[r.Model]; dup {
 			return nil, fmt.Errorf("gateway: model %q is routed twice", r.Model)
@@ -179,31 +179,6 @@ func ParseRoutes(r io.Reader, lookupEnv func(string) string) (*Routes, error) {
 		return nil, fmt.Errorf("gateway: no credential in the environment for: %s", strings.Join(missing, ", "))
 	}
 	return NewRoutes(list)
-}
-
-// modelOf finds the model a request is asking for, returning the body it read
-// so the caller can forward it.
-//
-// The body is consumed to do this, which is why it is handed back rather than
-// left for the proxy to re-read.
-func modelOf(body io.ReadCloser) (model string, buffered []byte, err error) {
-	defer body.Close()
-
-	buf, err := io.ReadAll(io.LimitReader(body, MaxRoutedBody+1))
-	if err != nil {
-		return "", nil, fmt.Errorf("reading the request: %w", err)
-	}
-	if len(buf) > MaxRoutedBody {
-		return "", nil, fmt.Errorf("request is over %d bytes, which is more than this gateway will hold in memory to route", MaxRoutedBody)
-	}
-
-	var probe struct {
-		Model string `json:"model"`
-	}
-	// A body that is not JSON, or carries no model, is not an error here: the
-	// caller decides what to do about it, and says so in one place.
-	_ = json.Unmarshal(buf, &probe)
-	return probe.Model, buf, nil
 }
 
 // replay returns a body the proxy can send.

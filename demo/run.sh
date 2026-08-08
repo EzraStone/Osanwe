@@ -45,6 +45,16 @@ wait_for_port() {
   bad "nothing came up on $hostport"; return 1
 }
 
+wait_for_relay_consensus() {
+  for _ in $(seq 50); do
+    if curl -fsS http://127.0.0.1:18900/consensus | grep -q '^relay '; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  bad "the next directory epoch did not include the admitted relay"; return 1
+}
+
 PROMPT="the-secret-question-swordfish-42"
 APIKEY="sk-ant-demo-key-do-not-use-me"
 
@@ -54,7 +64,7 @@ go build -o "$WORK/ranger"  ./cmd/ranger
 go build -o "$WORK/bearer"  ./cmd/bearer
 go build -o "$WORK/council" ./cmd/council
 go build -o "$WORK/mockprovider" ./demo/mockprovider
-good "ranger, bearer, council built (no third-party dependencies)"
+good "ranger, bearer, council built"
 
 mkdir -p "$WORK/relay" "$WORK/authority" "$WORK/descriptors"
 
@@ -127,7 +137,7 @@ note "added the fingerprint to the accept list (no restart needed)"
   -nickname northrelay -advertise 127.0.0.1:18443 \
   -contact ops@example.com \
   -publish http://127.0.0.1:18900/publish 2>&1 | sed 's/^/   /'
-good "accepted and signed into a consensus"
+good "accepted for the next consensus epoch"
 
 step "4b. Replaying the same descriptor"
 # Descriptor timestamps have one-second resolution, so wait before minting a
@@ -140,6 +150,11 @@ curl -s -o /dev/null -w "   fresh submission: %{http_code}  (accepted)\n" \
 curl -s -o /dev/null -w "   same one again:   %{http_code}  (refused)\n" \
   -X POST --data-binary @"$WORK/replay.desc" http://127.0.0.1:18900/publish
 good "409 on replay, so an old descriptor cannot roll the relay backwards"
+
+# A directory authority freezes the first body it signs in each epoch. Wait for
+# the next five-second boundary instead of asking it to equivocate immediately
+# after a descriptor changes.
+wait_for_relay_consensus
 
 # ── 5. the consensus ──────────────────────────────────────────────────────
 step "5. What the authority is publishing"

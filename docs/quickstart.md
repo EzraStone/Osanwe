@@ -1,13 +1,14 @@
 # Quickstart
 
-Phase 2, bring-your-own-key. Two binaries: `ranger` runs on a VPS somewhere
-else, `bearer` runs on your machine.
+The smallest bring-your-own-key deployment uses two binaries: `ranger` runs on
+a VPS somewhere else, and `bearer` runs on your machine.
 
 **What this gets you.** The provider stops learning your IP address and the
 location it implies, and no relay operator can read your prompts. **What it does
 not get you:** the provider still knows which account is asking, because you are
-using your own API key. Unlinking the account is Phase 3 and is not built. See
-[ADR 0001](decisions/0001-byok-first.md) for why it ships in that order.
+using your own API key. For the account-unlinked token path, run
+`./demo/tokens.sh` locally and then follow [the deployment guide](deploying.md).
+[ADR 0001](decisions/0001-byok-first.md) records why BYOK shipped first.
 
 ## Build
 
@@ -15,7 +16,8 @@ using your own API key. Unlinking the account is Phase 3 and is not built. See
 make build        # produces bin/ranger and bin/bearer
 ```
 
-Go 1.24 or newer. No dependencies beyond the standard library.
+Go 1.26 or newer. The blind-signature implementation uses Cloudflare CIRCL;
+`go build` downloads the version pinned in `go.mod`.
 
 ## 1. Run a relay
 
@@ -113,7 +115,7 @@ leaves your machine.
 | `-pin` | ranger | Print this relay's pin and exit |
 | `-log-destinations` | ranger | **Off by default.** See below |
 | `-metrics ADDR` | ranger | Loopback by default; empty disables |
-| `-upstream URL` | bearer | Another provider or a self-hosted gateway |
+| `-upstream URL` | bearer | Another provider in BYOK mode; required and must name the gateway in token (`-mint`) mode |
 | `-allow-exposed` | bearer | Binds a routable address. Puts prompts on the network in plaintext |
 
 ### On `-log-destinations`
@@ -139,7 +141,10 @@ so scraping it cannot reconstruct who talked to whom.
 
 ## What is not built
 
-`eregion` (the token mint), `mithlond` (the attested gateway) and `council` (the
-directory) do not exist yet. Until they do, you trust one relay operator that
-you chose, rather than a network — and you still authenticate to the provider as
-yourself. The [design document](index.html) describes where this goes.
+This two-process quickstart deliberately stops at BYOK. The repository also
+contains `eregion` (the blind-token mint), `mithlond` (the token gateway), and
+`council` (the threshold directory workflow), but several production pieces
+remain: the mint has no real payment authorizer, the gateway is not yet isolated
+in an attested enclave, aggregate rate/cost limiting is not implemented, and
+the shipped durable redemption journal coordinates only processes on one host.
+See [the deployment guide](deploying.md) for those boundaries.

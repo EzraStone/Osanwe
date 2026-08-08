@@ -25,10 +25,9 @@ import (
 // # What is not translated
 //
 // Tool use, images, extended thinking and structured output all differ between
-// the two APIs in ways a field rename does not cover. They are passed through
-// unchanged, which means they will fail against an OpenAI-style provider
-// rather than silently arriving wrong. That is the right failure: a tool call
-// that quietly became a no-op would be far worse than one that errored.
+// the two APIs in ways a field rename does not cover. The paid gateway policy
+// rejects those before this translator runs; silently passing or dropping them
+// would make both behavior and provider cost ambiguous.
 
 // anthropicRequest is the subset of the Messages API worth translating.
 type anthropicRequest struct {

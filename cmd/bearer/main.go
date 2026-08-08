@@ -53,7 +53,7 @@ func run() error {
 	fs.Var(&dirURLs, "directory", "directory URL to fetch a consensus from (repeatable). An alternative to -relay/-pin")
 	fs.Var(&authKeys, "authority", "trusted directory authority key (repeatable)")
 	threshold := fs.Int("threshold", 2, "how many authorities must have signed the consensus")
-	upstream := fs.String("upstream", bearer.DefaultUpstream, "provider base URL")
+	upstream := fs.String("upstream", "", "provider or gateway base URL (defaults to Anthropic in BYOK mode; required with -mint)")
 	upstreamCA := fs.String("upstream-ca", "", "PEM file of extra roots for verifying the provider. For a self-hosted gateway with a private CA; there is deliberately no option to skip verification")
 	allowExposed := fs.Bool("allow-exposed", false, "permit binding a non-loopback address. Traffic between your tools and bearer is plaintext, so this puts prompts on the network in the clear")
 	mintURL := fs.String("mint", "", "mint to buy tokens from. Switches to paying with tokens instead of your own API key, and -upstream must then be a gateway")
@@ -96,6 +96,9 @@ func run() error {
 		}
 		fmt.Println(tok.Encode())
 		return nil
+	}
+	if *mintURL != "" && strings.TrimSpace(*upstream) == "" {
+		return errors.New("bearer: -mint requires an explicit gateway -upstream; the default Anthropic provider does not accept Osanwe tokens")
 	}
 
 	usingDirectory := len(dirURLs) > 0
@@ -253,9 +256,9 @@ func run() error {
 	if relays != nil {
 		// No relay has been chosen yet: the pool picks one on the first
 		// request, so naming one here would be a guess.
-		log.Info("bearer listening", "addr", srv.Addr().String(), "relays", relays.Len(), "upstream", *upstream)
+		log.Info("bearer listening", "addr", srv.Addr().String(), "relays", relays.Len(), "upstream", srv.UpstreamAddr())
 	} else {
-		log.Info("bearer listening", "addr", srv.Addr().String(), "relay", relayAddr, "upstream", *upstream)
+		log.Info("bearer listening", "addr", srv.Addr().String(), "relay", relayAddr, "upstream", srv.UpstreamAddr())
 	}
 	if !*noUI {
 		fmt.Fprintf(os.Stderr, "\n  Open this:\n    http://%s%s\n", srv.Addr().String(), bearer.Prefix)
@@ -264,7 +267,7 @@ func run() error {
 		"  The relay must allow %s; its operator sets that with -allow.\n\n",
 		srv.Addr().String(), srv.UpstreamAddr())
 	if wallet != nil {
-		fmt.Fprintf(os.Stderr, "  Each request buys and spends one token. Your own API key is not used\n"+
+		fmt.Fprintf(os.Stderr, "  Each accepted inference request spends one token; the model catalog is free. Your own API key is not used\n"+
 			"  and is stripped before anything leaves this machine.\n\n")
 	}
 	if *allowExposed {

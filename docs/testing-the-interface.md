@@ -29,6 +29,8 @@ OSANWE_PROVIDER_KEY="sk-ant-..." "$WORK/mithlond" \
   -addr "127.0.0.1:$GATEWAY_PORT" \
   -upstream https://api.anthropic.com \
   -mint-key "$WORK/mint.pub" \
+  -spent-db "$WORK/spent.db" \
+  -models YOUR_EXACT_MODEL_ID \
   -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" &
 ```
 
@@ -36,9 +38,11 @@ Drop `-upstream-ca`, since Anthropic's certificate verifies against the system
 roots, and change the relay's `-allow` to `api.anthropic.com:443`.
 
 **Before doing this, know what you are agreeing to.** The gateway now holds a
-real key that pays for everyone who reaches it, and its spent-token set lives in
-memory — restarting it makes every token spent so far valid again. That is fine
-on your own machine and is not fine anywhere else.
+real key that pays for every accepted token request. Its spent-token journal
+survives restarts, but restoring an old copy would revive newer redemptions,
+and a local file is not shared state for gateways on different machines. The paid request
+surface is intentionally text-only; rich message blocks such as remote images,
+files, tools, and cache-control are rejected before a token is spent.
 
 ## 3. Your own key, no mint
 
@@ -126,7 +130,10 @@ stayed green through several bugs that only those caught.
   enclave so its operator provably cannot. That is not built, so running a
   gateway means asking users to trust whoever runs it.
 - **The mint sells nothing.** Payment is one interface away and unimplemented.
-- **Spent tokens are held in memory.** Restart the gateway and every token
-  spent so far becomes valid again.
-- **Model routing.** The client speaks to one provider; asking for a model by
-  name and having it reach whoever serves it does not exist.
+- **Cross-host redemption storage is not shipped.** The local journal survives
+  restarts and coordinates processes on one host. Several gateway hosts need a
+  shared `mint.RedemptionStore` with an atomic claim operation.
+- **Production route operations.** Exact model-to-provider routing is built and
+  covered by tests, but operators still have to maintain the route table and
+  provider credentials themselves; there is no automated marketplace or
+  provider discovery service.

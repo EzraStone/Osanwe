@@ -61,7 +61,7 @@ echo
 echo "${B}Building${N}"
 for b in ranger bearer eregion mithlond; do go build -o "$WORK/$b" "./cmd/$b"; done
 go build -o "$WORK/mockprovider" ./demo/mockprovider
-good "built (no third-party dependencies)"
+good "built"
 mkdir -p "$WORK/relay"
 
 echo
@@ -87,6 +87,8 @@ if [ -z "$ROUTES" ]; then
   OSANWE_PROVIDER_KEY="sk-the-gateways-pooled-key" "$WORK/mithlond" \
     -addr "127.0.0.1:$GATEWAY_PORT" -upstream "https://$PROVIDER" \
     -mint-key "$WORK/mint.pub" -upstream-ca "$WORK/provider.crt" \
+    -spent-db "$WORK/spent.db" \
+    -models demo \
     -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" >"$WORK/mithlond.log" 2>&1 &
 else
   # Real providers verify against the system roots, so no extra CA is needed.
@@ -94,6 +96,7 @@ else
   "$WORK/mithlond" \
     -addr "127.0.0.1:$GATEWAY_PORT" -routes "$ROUTES" \
     -mint-key "$WORK/mint.pub" \
+    -spent-db "$WORK/spent.db" \
     -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" >"$WORK/mithlond.log" 2>&1 &
 fi
 if ! wait_for_port "127.0.0.1:$GATEWAY_PORT"; then

@@ -60,7 +60,7 @@ go build -o "$WORK/bearer"   ./cmd/bearer
 go build -o "$WORK/eregion"  ./cmd/eregion
 go build -o "$WORK/mithlond" ./cmd/mithlond
 go build -o "$WORK/mockprovider" ./demo/mockprovider
-good "ranger, bearer, eregion, mithlond built (no third-party dependencies)"
+good "ranger, bearer, eregion, mithlond built"
 mkdir -p "$WORK/relay"
 
 # ── 0. the provider ───────────────────────────────────────────────────────
@@ -97,6 +97,8 @@ OSANWE_PROVIDER_KEY="$POOLKEY" "$WORK/mithlond" \
   -addr 127.0.0.1:18444 \
   -upstream "https://$PROVIDER" \
   -mint-key "$WORK/mint.pub" \
+  -spent-db "$WORK/spent.db" \
+  -models demo \
   -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" \
   -upstream-ca "$WORK/provider.crt" \
   >"$WORK/mithlond.log" 2>&1 &
@@ -145,7 +147,7 @@ echo
 curl -s http://127.0.0.1:18080/v1/messages \
   -H "x-api-key: $USERKEY" \
   -H "content-type: application/json" \
-  -d "{\"model\":\"demo\",\"messages\":[{\"role\":\"user\",\"content\":\"$PROMPT\"}]}" \
+  -d "{\"model\":\"demo\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"$PROMPT\"}]}" \
   | head -c 400 | sed 's/^/   /'
 echo; echo
 good "the reply came back, bought with a token"
@@ -187,7 +189,7 @@ echo
 SPEND1=$(curl -s -o /dev/null -w '%{http_code}' --cacert "$WORK/gateway.crt" \
   https://127.0.0.1:18444/v1/messages \
   -H "X-Osanwe-Token: $TOKEN" -H 'content-type: application/json' \
-  -d "{\"model\":\"demo\",\"messages\":[{\"role\":\"user\",\"content\":\"$PROMPT\"}]}")
+  -d "{\"model\":\"demo\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"$PROMPT\"}]}")
 if [ "$SPEND1" = "200" ]; then
   good "spent once, accepted ($SPEND1)"
 else
@@ -198,7 +200,7 @@ fi
 SPEND2=$(curl -s -o /dev/null -w '%{http_code}' --cacert "$WORK/gateway.crt" \
   https://127.0.0.1:18444/v1/messages \
   -H "X-Osanwe-Token: $TOKEN" -H 'content-type: application/json' \
-  -d "{\"model\":\"demo\",\"messages\":[{\"role\":\"user\",\"content\":\"$PROMPT\"}]}")
+  -d "{\"model\":\"demo\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"$PROMPT\"}]}")
 if [ "$SPEND2" = "409" ]; then
   good "spent again with the same token, refused ($SPEND2)"
 else
@@ -232,7 +234,7 @@ step "8. Every request buys its own token"
 for i in 1 2 3; do
   curl -s -o /dev/null http://127.0.0.1:18080/v1/messages \
     -H "content-type: application/json" \
-    -d "{\"model\":\"demo\",\"messages\":[{\"role\":\"user\",\"content\":\"request $i\"}]}"
+    -d "{\"model\":\"demo\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"request $i\"}]}"
 done
 good "three more requests, three more tokens"
 note "a session is not one long-lived credential tying its requests together"
@@ -265,7 +267,7 @@ echo "${B}What this demo does not show, because it is not built:${N}"
 echo "  - the gateway reads prompts. The design calls for it to run in an attested"
 echo "    enclave so its operator provably cannot. That does not exist yet, so"
 echo "    running a gateway means asking users to trust whoever runs it."
-echo "  - the gateway's spent-token set is in memory. Restarting it makes every"
-echo "    previously spent token valid again."
+echo "  - the local spent-token journal is not a cross-host database. Several"
+echo "    gateway hosts need a shared atomic redemption-store implementation."
 echo "  - the mint sells nothing. Payment is one interface away and unimplemented."
 echo

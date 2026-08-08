@@ -4,7 +4,7 @@
 // using a pooled credential the client never holds:
 //
 //	export OSANWE_PROVIDER_KEY=sk-ant-...
-//	mithlond -mint-key mint.pub -upstream https://api.anthropic.com
+//	mithlond -mint-key mint.pub -spent-db spent.db -models claude-sonnet-4 -upstream https://api.anthropic.com
 //
 // A relay in front of this hides who is asking. This hides what they are
 // asking with. Neither component sits on both sides of that split, and the
@@ -53,9 +53,13 @@ func run() error {
 	credHeader := fs.String("credential-header", "x-api-key", "header the provider expects its credential in. Use `authorization` for OpenAI-compatible providers")
 	credPrefix := fs.String("credential-prefix", "", "prefix before the credential, e.g. `Bearer ` for OpenAI-compatible providers")
 	routesPath := fs.String("routes", "", "route table mapping models to providers. With one, -upstream and the single credential are unused")
+	modelsCSV := fs.String("models", "", "comma-separated exact model allowlist for a single upstream (required without -routes)")
+	maxRequestBytes := fs.Int64("max-request-bytes", gateway.DefaultMaxRequestBody, "largest request body accepted in bytes")
+	maxOutputTokens := fs.Int("max-output-tokens", gateway.DefaultMaxOutputTokens, "largest max_tokens value accepted")
 	upstreamCA := fs.String("upstream-ca", "", "PEM file of extra roots for verifying the provider. For a self-hosted provider with a private CA; there is deliberately no option to skip verification")
 	certPath := fs.String("cert", "mithlond.crt", "TLS certificate path, created if absent")
 	keyPath := fs.String("key", "mithlond.key", "TLS key path, created if absent")
+	spentDB := fs.String("spent-db", "", "local durable spent-token journal (required; put it on a local filesystem, not NFS)")
 	hosts := fs.String("hosts", "", "comma-separated names or IPs for a generated certificate")
 	plaintext := fs.Bool("insecure-plaintext", false, "serve without TLS. Only correct behind a TLS terminator you control; otherwise the relay in front reads every prompt")
 	verbose := fs.Bool("v", false, "verbose logging")
@@ -63,7 +67,7 @@ func run() error {
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "mithlond — the Osanwë gateway.\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n  export OSANWE_PROVIDER_KEY=sk-...\n"+
-			"  mithlond -mint-key mint.pub -upstream https://api.anthropic.com\n\nFlags:\n")
+			"  mithlond -mint-key mint.pub -spent-db spent.db -models MODEL -upstream https://api.anthropic.com\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -71,6 +75,9 @@ func run() error {
 			return nil
 		}
 		return err
+	}
+	if strings.TrimSpace(*spentDB) == "" {
+		return errors.New("mithlond: -spent-db is required; redemption state must survive restarts")
 	}
 
 	level := slog.LevelInfo
@@ -153,11 +160,24 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "\n  Gateway pin: %s\n", pin)
 	}
 
+	spent, err := mint.OpenFileSpentSet(*spentDB)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := spent.Close(); err != nil {
+			log.Error("closing spent-token database", "error", err)
+		}
+	}()
+
 	srv, err := gateway.New(gateway.Config{
 		Addr:            *addr,
 		Upstream:        *upstream,
 		MintKeys:        keys,
-		Spent:           mint.NewSpentSet(),
+		Spent:           spent,
+		Models:          commaList(*modelsCSV),
+		MaxRequestBody:  *maxRequestBytes,
+		MaxOutputTokens: *maxOutputTokens,
 		Routes:          routes,
 		Credential:      gateway.Credential{Header: *credHeader, Prefix: *credPrefix, Value: providerKey},
 		UpstreamRootCAs: roots,
@@ -170,14 +190,8 @@ func run() error {
 		return err
 	}
 
-	log.Info("mithlond listening", "addr", srv.Addr().String(), "upstream", *upstream, "mint_keys", len(keys))
-
-	// The spent set is in memory, which is a real limit and not a detail to
-	// discover in production: restarting the gateway makes every token issued
-	// before the restart spendable again, and two gateways sharing a mint do
-	// not see each other's redemptions.
-	log.Warn("spent tokens are held in memory only; a restart makes every previously spent token valid again, " +
-		"and running more than one gateway needs shared state for this")
+	log.Info("mithlond listening", "addr", srv.Addr().String(), "upstream", *upstream,
+		"mint_keys", len(keys), "spent_db", *spentDB)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(tlsConf) }()
@@ -195,6 +209,16 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(ctx)
+}
+
+func commaList(value string) []string {
+	var values []string
+	for _, part := range strings.Split(value, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			values = append(values, part)
+		}
+	}
+	return values
 }
 
 // stringList collects a repeatable, comma-separated flag.

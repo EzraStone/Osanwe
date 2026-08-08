@@ -26,14 +26,14 @@ the server.
 ```bash
 sudo apt update && sudo apt install -y git curl python3 openssh-client
 
-curl -fsSL https://go.dev/dl/go1.24.7.linux-amd64.tar.gz | sudo tar -C /usr/local -xz
+curl -fsSL https://go.dev/dl/go1.26.5.linux-amd64.tar.gz | sudo tar -C /usr/local -xz
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 export PATH=$PATH:/usr/local/go/bin
 
 go version
 ```
 
-Expect `go1.24.7` or newer. Ubuntu's own `golang-go` package is 1.22 and will
+Expect `go1.26.5` or newer. Ubuntu's own `golang-go` package may be older and
 not build this, which is why the tarball is used instead.
 
 The `>> ~/.bashrc` line matters. Without it the `export` lasts only for the
@@ -42,8 +42,8 @@ current terminal, and the next one says `go: command not found`.
 ## 2. Get the code
 
 ```bash
-git clone https://github.com/EzraStone/Osanw-
-cd Osanw-
+git clone https://github.com/EzraStone/Osanwe
+cd Osanwe
 ```
 
 ## 3. Save the gateway's certificate
@@ -90,7 +90,7 @@ ssh -i ~/.ssh/osanwe -N \
 In a second terminal:
 
 ```bash
-cd Osanw-
+cd Osanwe
 ./demo/client.sh THE_MINT_KEY_ID
 ```
 

@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +26,11 @@ var (
 	keyOnce sync.Once
 	testKey *rsa.PrivateKey
 )
+
+type failingRedemptionStore struct{ err error }
+
+func (s failingRedemptionStore) Spend(*mint.Token) error  { return s.err }
+func (s failingRedemptionStore) Refund(*mint.Token) error { return s.err }
 
 func mintKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
@@ -56,12 +64,13 @@ func (s *seen) snapshot() (http.Header, string, int) {
 
 // harness is a gateway in front of a stand-in provider over TLS.
 type harness struct {
-	gw       *Server
-	m        *mint.Mint
-	spent    *mint.SpentSet
-	provider *seen
-	client   *http.Client
-	url      string
+	gw           *Server
+	m            *mint.Mint
+	spent        *mint.SpentSet
+	provider     *seen
+	providerHTTP *httptest.Server
+	client       *http.Client
+	url          string
 }
 
 func newHarness(t *testing.T, handler http.HandlerFunc) *harness {
@@ -99,6 +108,7 @@ func newHarness(t *testing.T, handler http.HandlerFunc) *harness {
 	gw, err := New(Config{
 		Addr:            "127.0.0.1:0",
 		Upstream:        provider.URL,
+		Models:          []string{"demo"},
 		MintKeys:        map[string]*rsa.PublicKey{m.KeyID(): m.PublicKey()},
 		Spent:           spent,
 		UpstreamRootCAs: roots,
@@ -115,7 +125,10 @@ func newHarness(t *testing.T, handler http.HandlerFunc) *harness {
 	front := httptest.NewServer(gw.Handler())
 	t.Cleanup(front.Close)
 
-	return &harness{gw: gw, m: m, spent: spent, provider: obs, client: front.Client(), url: front.URL}
+	return &harness{
+		gw: gw, m: m, spent: spent, provider: obs, providerHTTP: provider,
+		client: front.Client(), url: front.URL,
+	}
 }
 
 func (h *harness) token(t *testing.T) *mint.Token {
@@ -137,7 +150,8 @@ func (h *harness) token(t *testing.T) *mint.Token {
 
 func (h *harness) post(t *testing.T, tok *mint.Token, extra http.Header) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, h.url+"/v1/messages", strings.NewReader(`{"prompt":"hello"}`))
+	req, err := http.NewRequest(http.MethodPost, h.url+"/v1/messages",
+		strings.NewReader(`{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`))
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
@@ -194,9 +208,9 @@ func TestTokenNeverReachesTheProvider(t *testing.T) {
 	}
 }
 
-// The pooled credential is the gateway's, and a client that could read it
-// would have stolen everyone's inference budget.
-func TestPooledCredentialIsUsedAndNeverReturned(t *testing.T) {
+// The pooled credential is the gateway's, and only its fixed provider request
+// should be decorated with it.
+func TestPooledCredentialIsUsedForTheProviderRequest(t *testing.T) {
 	h := newHarness(t, nil)
 	resp := h.post(t, h.token(t), nil)
 	defer resp.Body.Close()
@@ -206,17 +220,26 @@ func TestPooledCredentialIsUsedAndNeverReturned(t *testing.T) {
 		t.Fatalf("provider saw x-api-key %q, want the pooled key", got)
 	}
 
-	// Nothing coming back to the client may contain it.
-	body, _ := io.ReadAll(resp.Body)
-	if strings.Contains(string(body), pooledKey) {
-		t.Fatal("the pooled credential came back in the response body")
-	}
-	for name, values := range resp.Header {
-		for _, v := range values {
-			if strings.Contains(v, pooledKey) {
-				t.Fatalf("the pooled credential came back in response header %s", name)
-			}
+	_, _ = io.Copy(io.Discard, resp.Body)
+}
+
+func TestProviderCredentialEchoHeadersAreRemoved(t *testing.T) {
+	h := newHarness(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Api-Key", pooledKey)
+		w.Header().Set("Authorization", "Bearer "+pooledKey)
+		w.Header().Set("X-Debug-Credential", pooledKey)
+		w.Header().Set("X-Safe-Provider-Header", "safe")
+		fmt.Fprint(w, `{"ok":true}`)
+	})
+	resp := h.post(t, h.token(t), nil)
+	defer resp.Body.Close()
+	for _, name := range []string{"X-Api-Key", "Authorization", "X-Debug-Credential"} {
+		if got := resp.Header.Get(name); got != "" {
+			t.Fatalf("provider credential echo survived in %s: %q", name, got)
 		}
+	}
+	if got := resp.Header.Get("X-Safe-Provider-Header"); got != "safe" {
+		t.Fatalf("unrelated provider header = %q, want safe", got)
 	}
 }
 
@@ -228,8 +251,16 @@ func TestClientCredentialsAreStrippedNotForwarded(t *testing.T) {
 	extra := http.Header{}
 	extra.Set("Authorization", "Bearer sk-the-clients-own-account")
 	extra.Set("X-Api-Key", "sk-attempted-override")
+	extra.Set("Api-Key", "sk-another-client-credential")
 	extra.Set("Cookie", "session=identifying")
 	extra.Set("X-Forwarded-For", "203.0.113.7")
+	extra.Set("User-Agent", "caller-sdk/9.8.7")
+	extra.Set("Traceparent", "00-caller-trace-id-caller-span-id-01")
+	extra.Set("X-Request-Id", "stable-caller-request-id")
+	extra.Set("X-Stainless-Lang", "python")
+	extra.Set("Anthropic-Version", "caller-specific-version")
+	extra.Set("Accept", "application/json; caller-id=alice")
+	extra.Set("Content-Type", "application/json; caller-id=alice")
 
 	resp := h.post(t, h.token(t), extra)
 	defer resp.Body.Close()
@@ -238,10 +269,283 @@ func TestClientCredentialsAreStrippedNotForwarded(t *testing.T) {
 	if got := headers.Get("x-api-key"); got != pooledKey {
 		t.Fatalf("x-api-key = %q; a client overrode the gateway's credential", got)
 	}
-	for _, h := range []string{"Authorization", "Cookie", "X-Forwarded-For", "X-Real-Ip"} {
+	for _, h := range []string{
+		"Authorization", "Api-Key", "Cookie", "X-Forwarded-For", "X-Real-Ip", "User-Agent",
+		"Traceparent", "X-Request-Id", "X-Stainless-Lang",
+	} {
 		if got := headers.Get(h); got != "" {
 			t.Fatalf("the provider received %s: %q, which identifies the caller", h, got)
 		}
+	}
+	for name, want := range map[string]string{
+		"Accept": canonicalAccept, "Content-Type": canonicalContentType, "Anthropic-Version": canonicalAnthropicVersion,
+	} {
+		if got := headers.Get(name); got != want {
+			t.Fatalf("allowed API header %s = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// A blind-signed token authorizes one bounded inference call. It must never
+// turn the pooled account into a general provider API credential.
+func TestOnlyMessagesInferenceCanReceiveThePooledCredential(t *testing.T) {
+	h := newHarness(t, nil)
+	cases := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/v1/messages"},
+		{http.MethodDelete, "/v1/models/demo"},
+		{http.MethodPost, "/v1/files"},
+		{http.MethodPost, "/v1/batches"},
+		{http.MethodPost, "/v1/fine_tuning/jobs"},
+		{http.MethodPost, "/v1/messages?dangerous=true"},
+		{http.MethodPost, "/v1/messages?"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req, _ := http.NewRequest(tc.method, h.url+tc.path,
+				strings.NewReader(`{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(TokenHeader, h.token(t).Encode())
+			resp, err := h.client.Do(req)
+			if err != nil {
+				t.Fatalf("Do: %v", err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode < 400 {
+				t.Fatalf("status = %d, want a policy refusal", resp.StatusCode)
+			}
+			if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeRejected {
+				t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeRejected)
+			}
+		})
+	}
+	if _, _, hits := h.provider.snapshot(); hits != 0 {
+		t.Fatalf("provider received %d non-inference requests", hits)
+	}
+	if h.spent.Len() != 0 {
+		t.Fatalf("policy refusals reserved %d tokens", h.spent.Len())
+	}
+}
+
+func TestSingleUpstreamEnforcesModelAndOutputCostLimits(t *testing.T) {
+	h := newHarness(t, nil)
+	cases := []struct {
+		name, body, namedField string
+	}{
+		{"model not allowed", `{"model":"most-expensive-unapproved-model","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`, ""},
+		{"output cap", `{"model":"demo","max_tokens":4097,"messages":[{"role":"user","content":"hello"}]}`, ""},
+		{"missing output cap", `{"model":"demo","messages":[{"role":"user","content":"hello"}]}`, ""},
+		{"zero output cap", `{"model":"demo","max_tokens":0,"messages":[{"role":"user","content":"hello"}]}`, ""},
+		{"body cap", `{"model":"demo","max_tokens":1,"pad":"` + strings.Repeat("x", DefaultMaxRequestBody) + `"}`, ""},
+		{"tools unsupported", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"tools":[]}`, "tools"},
+		{"service tier unsupported", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"service_tier":"priority"}`, "service_tier"},
+		{"messages empty", `{"model":"demo","max_tokens":64,"messages":[]}`, "messages"},
+		{"messages wrong type", `{"model":"demo","max_tokens":64,"messages":{}}`, "messages"},
+		{"message role invalid", `{"model":"demo","max_tokens":64,"messages":[{"role":"system","content":"x"}]}`, "messages"},
+		{"message content invalid", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":null}]}`, "messages"},
+		{"remote image content refused", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":[{"type":"image","source":{"type":"url","url":"https://example.com/huge.jpg"}}]}]}`, "messages"},
+		{"message cache control refused", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello","cache_control":{"type":"ephemeral"}}]}`, "messages"},
+		{"stream wrong type", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"stream":"yes"}`, "stream"},
+		{"temperature out of range", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"temperature":2}`, "temperature"},
+		{"top p wrong type", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"top_p":"all"}`, "top_p"},
+		{"stop sequences wrong type", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"stop_sequences":"stop"}`, "stop_sequences"},
+		{"stop sequence null element", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"stop_sequences":["stop",null]}`, "stop_sequences"},
+		{"system wrong type", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"system":42}`, "system"},
+		{"system blocks refused", `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"system":[{"type":"text","text":"hello"}]}`, "system"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodPost, h.url+"/v1/messages", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(TokenHeader, h.token(t).Encode())
+			resp, err := h.client.Do(req)
+			if err != nil {
+				t.Fatalf("Do: %v", err)
+			}
+			responseBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode < 400 {
+				t.Fatalf("body %s returned %d, want a policy refusal", tc.body, resp.StatusCode)
+			}
+			if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeRejected {
+				t.Fatalf("token outcome = %q, want rejected", got)
+			}
+			if tc.namedField != "" && !strings.Contains(string(responseBody), tc.namedField) {
+				t.Fatalf("refusal %s does not name unsupported field %q", responseBody, tc.namedField)
+			}
+		})
+	}
+	if _, _, hits := h.provider.snapshot(); hits != 0 {
+		t.Fatalf("provider received %d requests outside the configured cost policy", hits)
+	}
+	if h.spent.Len() != 0 {
+		t.Fatalf("cost policy refusals reserved %d tokens", h.spent.Len())
+	}
+}
+
+func TestProviderCannotForgeARefundOutcome(t *testing.T) {
+	h := newHarness(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(TokenOutcomeHeader, TokenOutcomeRefunded)
+		fmt.Fprint(w, `{"ok":true}`)
+	})
+	extra := http.Header{TokenOutcomeHeader: []string{"client-made-this-up"}}
+	resp := h.post(t, h.token(t), extra)
+	defer resp.Body.Close()
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeSpent {
+		t.Fatalf("provider forged outcome %q through gateway; want %q", got, TokenOutcomeSpent)
+	}
+	headers, _, _ := h.provider.snapshot()
+	if got := headers.Get(TokenOutcomeHeader); got != "" {
+		t.Fatalf("client outcome header reached provider as %q", got)
+	}
+}
+
+func TestChunkedTrailersAreRejectedBeforeSpendingOrForwarding(t *testing.T) {
+	h := newHarness(t, nil)
+	req, _ := http.NewRequest(http.MethodPost, h.url+"/v1/messages",
+		strings.NewReader(`{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`))
+	req.ContentLength = -1
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(TokenHeader, h.token(t).Encode())
+	req.Trailer = http.Header{
+		"Authorization": []string{"Bearer trailer-credential"},
+		"X-Api-Key":     []string{"trailer-api-key"},
+		"X-Stable-Id":   []string{"caller-alice"},
+	}
+	resp, err := h.client.Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeRejected {
+		t.Fatalf("outcome = %q, want rejected", got)
+	}
+	if _, _, hits := h.provider.snapshot(); hits != 0 {
+		t.Fatalf("provider received a trailer-bearing request %d times", hits)
+	}
+	if h.spent.Len() != 0 {
+		t.Fatalf("trailer-bearing request reserved %d tokens", h.spent.Len())
+	}
+}
+
+func TestDuplicateJSONNamesAreRejectedBeforeSpendingAtEveryDepth(t *testing.T) {
+	h := newHarness(t, nil)
+	cases := map[string]string{
+		"top-level model":  `{"model":"unapproved-expensive","model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`,
+		"nested role":      `{"model":"demo","max_tokens":64,"messages":[{"role":"assistant","role":"user","content":"hello"}]}`,
+		"nested content":   `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"first","content":"second"}]}`,
+		"unsupported tree": `{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"metadata":{"id":1,"id":2}}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodPost, h.url+"/v1/messages", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(TokenHeader, h.token(t).Encode())
+			resp, err := h.client.Do(req)
+			if err != nil {
+				t.Fatalf("Do: %v", err)
+			}
+			responseBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", resp.StatusCode)
+			}
+			if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeRejected {
+				t.Fatalf("outcome = %q, want rejected", got)
+			}
+			if !strings.Contains(string(responseBody), "duplicate") {
+				t.Fatalf("response %q does not explain the duplicate", responseBody)
+			}
+		})
+	}
+	if _, _, hits := h.provider.snapshot(); hits != 0 {
+		t.Fatalf("provider saw %d ambiguous requests", hits)
+	}
+	if h.spent.Len() != 0 {
+		t.Fatalf("duplicate requests reserved %d tokens", h.spent.Len())
+	}
+}
+
+func TestRewriteClearsAlternateCallerURLRepresentations(t *testing.T) {
+	h := newHarness(t, nil)
+	inURL := &url.URL{
+		Scheme: "http", Opaque: "//attacker.example/v1/files", User: url.UserPassword("u", "p"),
+		Host: "attacker.example", Path: "/v1/messages", RawPath: "/v1/%66iles", OmitHost: true,
+		ForceQuery: true, RawQuery: "admin=true", Fragment: "fragment", RawFragment: "raw-fragment",
+	}
+	in := &http.Request{Method: http.MethodPost, URL: inURL, Header: http.Header{TokenHeader: []string{"token"}}}
+	out := in.Clone(context.Background())
+	out.URL = new(url.URL)
+	*out.URL = *inURL
+	out.Header = in.Header.Clone()
+	out.Trailer = http.Header{"Authorization": []string{"Bearer trailer"}}
+	out.TransferEncoding = []string{"chunked"}
+	h.gw.rewrite(&httputil.ProxyRequest{In: in, Out: out})
+
+	if out.URL.Scheme != h.gw.upstream.Scheme || out.URL.Host != h.gw.upstream.Host || out.URL.Path != "/v1/messages" {
+		t.Fatalf("rewritten URL = %#v", out.URL)
+	}
+	if out.URL.Opaque != "" || out.URL.User != nil || out.URL.RawPath != "" || out.URL.OmitHost || out.URL.ForceQuery ||
+		out.URL.RawQuery != "" || out.URL.Fragment != "" || out.URL.RawFragment != "" {
+		t.Fatalf("caller URL residue survived rewrite: %#v", out.URL)
+	}
+	if got := out.Header.Get(TokenHeader); got != "" {
+		t.Fatalf("token survived rewrite: %q", got)
+	}
+	if got := out.Header.Get("x-api-key"); got != pooledKey {
+		t.Fatalf("pooled credential = %q", got)
+	}
+	if len(out.Trailer) != 0 || len(out.TransferEncoding) != 0 {
+		t.Fatalf("trailer state survived rewrite: trailers=%v transfer_encoding=%v", out.Trailer, out.TransferEncoding)
+	}
+}
+
+func TestSingleUpstreamCatalogIsFreeAndUsesTheAllowlist(t *testing.T) {
+	h := newHarness(t, nil)
+	resp, err := h.client.Get(h.url + "/v1/models")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"id":"demo"`) {
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	}
+	if _, _, hits := h.provider.snapshot(); hits != 0 {
+		t.Fatal("local model catalog was forwarded to the provider")
+	}
+	if h.spent.Len() != 0 {
+		t.Fatal("free model catalog spent a token")
+	}
+}
+
+func TestCatalogQueryIsRejectedLocallyWithoutSpending(t *testing.T) {
+	h := newHarness(t, nil)
+	for _, target := range []string{"http://gateway.test/v1/models?caller=alice", "http://gateway.test/v1/models?"} {
+		t.Run(target, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, target, nil)
+			req.Header.Set(TokenHeader, h.token(t).Encode())
+			rec := httptest.NewRecorder()
+			h.gw.Handler().ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", rec.Code)
+			}
+			if got := rec.Header().Get(TokenOutcomeHeader); got != TokenOutcomeRejected {
+				t.Fatalf("outcome = %q, want rejected", got)
+			}
+		})
+	}
+	if _, _, hits := h.provider.snapshot(); hits != 0 {
+		t.Fatalf("catalog query reached provider %d times", hits)
+	}
+	if h.spent.Len() != 0 {
+		t.Fatalf("catalog query reserved %d tokens", h.spent.Len())
 	}
 }
 
@@ -259,6 +563,22 @@ func TestRequestWithoutATokenIsRefused(t *testing.T) {
 	}
 	if _, _, hits := h.provider.snapshot(); hits != 0 {
 		t.Fatal("an unpaid request reached the provider")
+	}
+}
+
+func TestRedemptionStoreFailureFailsClosedBeforeForwarding(t *testing.T) {
+	h := newHarness(t, nil)
+	h.gw.cfg.Spent = failingRedemptionStore{err: errors.New("disk is full")}
+	resp := h.post(t, h.token(t), nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeInvalid {
+		t.Fatalf("token outcome = %q, want fail-closed %q", got, TokenOutcomeInvalid)
+	}
+	if _, _, hits := h.provider.snapshot(); hits != 0 {
+		t.Fatal("request reached provider after redemption store failed")
 	}
 }
 
@@ -346,8 +666,10 @@ func TestConcurrentReplayBuysExactlyOneRequest(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			req, _ := http.NewRequest(http.MethodPost, h.url+"/v1/messages", strings.NewReader(`{}`))
+			req, _ := http.NewRequest(http.MethodPost, h.url+"/v1/messages",
+				strings.NewReader(`{"model":"demo","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`))
 			req.Header.Set(TokenHeader, tok.Encode())
+			req.Header.Set("Content-Type", "application/json")
 			resp, err := h.client.Do(req)
 			if err != nil {
 				codes[i] = -1
@@ -376,10 +698,13 @@ func TestConcurrentReplayBuysExactlyOneRequest(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// refunds
+// outcomes after dispatch
 // --------------------------------------------------------------------------
 
-func TestTokenIsRefundedWhenTheProviderFails(t *testing.T) {
+// A 5xx is not proof that the provider did no work. It may have processed and
+// billed the request before failing, so refunding here would enable free
+// retries at the gateway operator's expense.
+func TestProviderFailureStillSpendsTheToken(t *testing.T) {
 	h := newHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream is having a bad day", http.StatusBadGateway)
 	})
@@ -389,22 +714,49 @@ func TestTokenIsRefundedWhenTheProviderFails(t *testing.T) {
 	io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
-	if h.spent.Len() != 0 {
-		t.Fatal("the token stayed spent after the provider returned nothing usable")
+	if h.spent.Len() != 1 {
+		t.Fatal("the token was refunded even though the provider may already have processed the request")
 	}
-	if got := h.gw.Metrics().Refunded.Load(); got != 1 {
-		t.Fatalf("Refunded = %d, want 1", got)
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeSpent {
+		t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeSpent)
 	}
 
-	// And it can be used again, which is the point of refunding it.
+	// It cannot be used again: the uncertain dispatch fails closed.
 	h.provider.mu.Lock()
 	h.provider.hits = 0
 	h.provider.mu.Unlock()
 
 	retry := h.post(t, tok, nil)
 	defer retry.Body.Close()
-	if retry.StatusCode == http.StatusConflict {
-		t.Fatal("a refunded token was refused as already spent")
+	if retry.StatusCode != http.StatusConflict {
+		t.Fatalf("retry status = %d, want 409 for a spent token", retry.StatusCode)
+	}
+}
+
+func TestTransportFailureStillSpendsTheToken(t *testing.T) {
+	h := newHarness(t, nil)
+	// Closing before the first request makes the reverse proxy's transport
+	// fail without receiving any HTTP response. Even then it cannot prove that
+	// a real upstream did not process the request just before a reset/timeout.
+	h.providerHTTP.Close()
+	tok := h.token(t)
+
+	resp := h.post(t, tok, nil)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", resp.StatusCode)
+	}
+	if h.spent.Len() != 1 {
+		t.Fatalf("spent set holds %d, want 1 after uncertain dispatch", h.spent.Len())
+	}
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeSpent {
+		t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeSpent)
+	}
+	retry := h.post(t, tok, nil)
+	retry.Body.Close()
+	if retry.StatusCode != http.StatusConflict {
+		t.Fatalf("retry status = %d, want 409", retry.StatusCode)
 	}
 }
 
@@ -422,6 +774,9 @@ func TestTokenIsNotRefundedOnAProviderRefusal(t *testing.T) {
 
 	if h.spent.Len() != 1 {
 		t.Fatalf("spent set holds %d, want 1: a 4xx is an answer, not a failure to answer", h.spent.Len())
+	}
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeSpent {
+		t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeSpent)
 	}
 }
 
@@ -476,6 +831,7 @@ func TestNewRefusesAnUnsafeConfig(t *testing.T) {
 	good := Config{
 		Addr:       "127.0.0.1:0",
 		Upstream:   "https://api.anthropic.com",
+		Models:     []string{"demo"},
 		MintKeys:   map[string]*rsa.PublicKey{mint.KeyID(pub): pub},
 		Spent:      mint.NewSpentSet(),
 		Credential: Credential{Header: "x-api-key", Value: "k"},
@@ -488,8 +844,15 @@ func TestNewRefusesAnUnsafeConfig(t *testing.T) {
 	}{
 		{"plaintext upstream", func(c *Config) { c.Upstream = "http://api.anthropic.com" }, "must be https"},
 		{"no mint keys", func(c *Config) { c.MintKeys = nil }, "at least one mint key"},
-		{"no spent set", func(c *Config) { c.Spent = nil }, "SpentSet is required"},
+		{"no redemption store", func(c *Config) { c.Spent = nil }, "RedemptionStore is required"},
 		{"no credential", func(c *Config) { c.Credential.Value = "" }, "Credential.Value is required"},
+		{"unsupported credential header", func(c *Config) { c.Credential.Header = "Cookie" }, "Credential.Header must be"},
+		{"credential value newline", func(c *Config) { c.Credential.Value = "k\r\nX-Leak: yes" }, "control characters"},
+		{"credential prefix newline", func(c *Config) { c.Credential.Prefix = "Bearer\n" }, "control characters"},
+		{"no model allowlist", func(c *Config) { c.Models = nil }, "Models is required"},
+		{"request limit too high", func(c *Config) { c.MaxRequestBody = MaximumMaxRequestBody + 1 }, "MaxRequestBody"},
+		{"output limit too high", func(c *Config) { c.MaxOutputTokens = MaximumMaxOutputTokens + 1 }, "MaxOutputTokens"},
+		{"upstream query", func(c *Config) { c.Upstream = "https://api.anthropic.com?key=value" }, "must not contain"},
 		{"misfiled key", func(c *Config) {
 			c.MintKeys = map[string]*rsa.PublicKey{"mint-wrong": pub}
 		}, "is actually"},

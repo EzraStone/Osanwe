@@ -10,9 +10,10 @@ import (
 	"time"
 )
 
-// MaxConsensusSize bounds what a client will read from a directory. Without a
-// limit, a hostile or broken authority could exhaust a client's memory simply
-// by never stopping.
+// MaxConsensusSize is the consensus wire-format limit. Producers enforce it
+// before committing a signature and clients enforce it before parsing; without
+// the latter, a hostile or broken authority could exhaust a client's memory by
+// never stopping.
 const MaxConsensusSize = 8 << 20 // 8 MiB
 
 // Fetcher retrieves and verifies a consensus.

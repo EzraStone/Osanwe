@@ -166,7 +166,7 @@ echo
 say "Not checked by this script, because it is not built:"
 say "  the gateway reads prompts. The enclave that would stop its operator"
 say "  reading them does not exist, so a gateway is a party you trust."
-say "  spent tokens are held in memory; restarting the gateway revalidates them."
-say "  nothing rate limits the gateway, so whatever reaches it spends your credit."
+say "  the local spent-token journal does not coordinate separate gateway hosts."
+say "  nothing aggregate-rate-limits accepted token requests, so account credit still needs a provider-side cap."
 echo
 exit "$FAILED"

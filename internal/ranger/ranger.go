@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -136,7 +137,10 @@ func New(cfg Config) (*Server, error) {
 		Handler:           s,
 		TLSConfig:         cfg.TLS,
 		ReadHeaderTimeout: cfg.HandshakeTimeout,
-		ErrorLog:          nil,
+		// A nil ErrorLog falls back to log.Default, and net/http includes the
+		// remote address in TLS handshake failures. That silently creates the
+		// per-client log this relay otherwise goes out of its way not to keep.
+		ErrorLog: log.New(io.Discard, "", 0),
 		// HTTP/2 cannot be hijacked, and hijacking is how a CONNECT tunnel is
 		// handed off to the byte pump. Restrict to HTTP/1.1 explicitly rather
 		// than relying on ALPN negotiation to happen to pick it.

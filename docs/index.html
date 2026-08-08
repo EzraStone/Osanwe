@@ -279,9 +279,8 @@ tension is the entire architecture in <a href="#s6">§6</a>.</p>
 <!-- ========================================================= -->
 <h2 id="s3"><span class="n">03</span>Naming</h2>
 
-<p>The repository was created as <code>Osanw-</code>. That trailing hyphen is not a typo — it is
-GitHub's repository-name sanitizer stripping a non-ASCII character. The intended name is almost
-certainly <b>Osanwë</b>.</p>
+<p>The repository is <code>Osanwe</code> in ASCII contexts. The intended prose name is
+<b>Osanwë</b>.</p>
 
 <p>The name is well chosen and is retained. In Tolkien's <em>Ósanwe-kenta</em> — "Enquiry into the
 Communication of Thought" — <i>ósanwë</i> is direct mind-to-mind transmission of thought. The
@@ -307,9 +306,8 @@ almost verbatim: a prompt is thought in transit, and the network is the barrier.
 </table>
 </div>
 
-<p><b>Action:</b> rename the GitHub repository <code>Osanw-</code> → <code>osanwe</code> before it
-acquires dependents, clones or inbound links. The hyphen will otherwise contaminate package
-names, module paths and URLs indefinitely.</p>
+<p>The repository and module use the same ASCII spelling so clones, imports and inbound links do
+not depend on the original sanitized name.</p>
 
 <!-- ========================================================= -->
 <h2 id="s4"><span class="n">04</span>Threat model</h2>
@@ -526,11 +524,12 @@ deployed, reviewed standards; do not invent a bespoke scheme.</p>
 
 <pre><code>ISSUANCE                                        (bearer ↔ eregion)
   1. bearer:   t_i     ← random nonce, for i in 1..N
-               b_i     ← Blind(H(t_i), r_i)          r_i random blinding factor
+               m_i     ← RFC9474.PrepareRandomize(domain ‖ key-id ‖ t_i)
+               b_i     ← RFC9474.Blind(PSS(m_i), r_i) r_i random blinding factor
   2. bearer  → eregion : payment, [b_1 … b_N]
   3. eregion → bearer  : [s_1 … s_N]  where s_i = Sign(sk_mint, b_i)
-  4. bearer:   σ_i     ← Unblind(s_i, r_i)
-               token_i = (t_i, σ_i)                  valid signature over H(t_i)
+  4. bearer:   σ_i     ← RFC9474.Finalize(s_i, r_i)
+               token_i = (m_i, σ_i)                  standard RSA-PSS signature
 
   The mint has seen b_i, never t_i. Given a redeemed (t_i, σ_i) it cannot
   determine which blinded value it signed. Anonymity set = all tokens issued

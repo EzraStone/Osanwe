@@ -25,7 +25,7 @@ func relay(t *testing.T, nickname string, dests ...string) *Descriptor {
 		TLSPin:       "sha256/" + strings.Repeat("A", 42) + "8=",
 		Identity:     id.Fingerprint(),
 		Destinations: dests,
-		Published:    now,
+		Published:    now.Add(-12 * time.Hour),
 		Expires:      now.Add(24 * time.Hour),
 	}
 	if _, err := d.Sign(id); err != nil {

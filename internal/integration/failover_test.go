@@ -100,7 +100,7 @@ func signedDirectory(t *testing.T, destination string, relays ...*liveRelay) (ur
 			Identity:     id.Fingerprint(),
 			Destinations: []string{destination},
 			Published:    now.Add(-time.Minute),
-			Expires:      now.Add(time.Hour),
+			Expires:      now.Add(2 * time.Hour),
 		}
 		encoded, err := d.Sign(id)
 		if err != nil {

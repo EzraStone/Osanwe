@@ -2,6 +2,7 @@ package directory
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
 	"fmt"
@@ -82,7 +83,13 @@ func (c *Consensus) body() []byte {
 	fmt.Fprintf(&b, "valid-until %s\n", c.ValidUntil.UTC().Format(time.RFC3339))
 
 	relays := append([]*Descriptor(nil), c.Relays...)
-	sort.Slice(relays, func(i, j int) bool { return relays[i].Nickname < relays[j].Nickname })
+	// Sort by the complete signed descriptor, not just the human-readable
+	// nickname. Nicknames are not identities, and two operators can choose the
+	// same one. A total byte ordering means authorities given the same set of
+	// descriptors always construct the same body regardless of directory order.
+	sort.Slice(relays, func(i, j int) bool {
+		return bytes.Compare(relays[i].Encoded(), relays[j].Encoded()) < 0
+	})
 
 	for _, d := range relays {
 		raw := d.Raw()
@@ -99,14 +106,14 @@ func (c *Consensus) body() []byte {
 // Sign adds one authority's signature. Building a consensus means calling this
 // once per authority, on the same document.
 func (c *Consensus) Sign(id *Identity) error {
-	if c.ValidAfter.IsZero() || c.ValidUntil.IsZero() {
-		return fmt.Errorf("directory: consensus has no validity window")
+	if id == nil || len(id.Private) != ed25519.PrivateKeySize {
+		return fmt.Errorf("directory: cannot sign a consensus without a valid authority identity")
 	}
-	if !c.ValidUntil.After(c.ValidAfter) {
-		return fmt.Errorf("directory: consensus expires at or before it becomes valid")
+	if err := c.validate(); err != nil {
+		return err
 	}
 	body := c.body()
-	if c.raw != nil && string(c.raw) != string(body) {
+	if c.raw != nil && !bytes.Equal(c.raw, body) {
 		return fmt.Errorf("directory: consensus changed after it was first signed; earlier signatures would be invalid")
 	}
 	c.raw = body
@@ -122,7 +129,14 @@ func (c *Consensus) Encode() ([]byte, error) {
 	if len(c.Signatures) == 0 {
 		return nil, fmt.Errorf("directory: refusing to encode an unsigned consensus")
 	}
-	out := append([]byte(nil), c.body()...)
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+	body := c.body()
+	if c.raw != nil && !bytes.Equal(c.raw, body) {
+		return nil, fmt.Errorf("directory: consensus changed after it was signed; refusing to invalidate its signatures")
+	}
+	out := append([]byte(nil), body...)
 
 	fps := make([]string, 0, len(c.Signatures))
 	for fp := range c.Signatures {
@@ -130,9 +144,55 @@ func (c *Consensus) Encode() ([]byte, error) {
 	}
 	sort.Strings(fps)
 	for _, fp := range fps {
+		pub, err := DecodeKey(fp)
+		if err != nil || EncodeKey(pub) != fp {
+			return nil, fmt.Errorf("directory: consensus signature has a non-canonical authority key %q", fp)
+		}
+		if !VerifySignature(pub, body, c.Signatures[fp]) {
+			return nil, fmt.Errorf("directory: consensus signature from %s is invalid", fp)
+		}
 		out = append(out, []byte(signatureKey+" "+fp+" "+c.Signatures[fp]+"\n")...)
 	}
+	if len(out) > MaxConsensusSize {
+		return nil, fmt.Errorf("directory: encoded consensus is %d bytes, larger than the %d-byte protocol limit", len(out), MaxConsensusSize)
+	}
 	return out, nil
+}
+
+// validate checks the parts of a consensus that must be true before anybody
+// signs it. In particular, one relay identity may appear only once. Otherwise
+// an authority could weight selection toward one operator by repeating its
+// descriptor under several entries.
+func (c *Consensus) validate() error {
+	if c.ValidAfter.IsZero() || c.ValidUntil.IsZero() {
+		return fmt.Errorf("directory: consensus has no validity window")
+	}
+	if !c.ValidUntil.After(c.ValidAfter) {
+		return fmt.Errorf("directory: consensus expires at or before it becomes valid")
+	}
+
+	identities := make(map[string]struct{}, len(c.Relays))
+	for i, d := range c.Relays {
+		if d == nil {
+			return fmt.Errorf("directory: consensus relay %d is nil", i)
+		}
+		encoded := d.Encoded()
+		if len(encoded) == 0 {
+			return fmt.Errorf("directory: relay %q is not a signed descriptor", d.Nickname)
+		}
+		if err := d.Validate(); err != nil {
+			return fmt.Errorf("directory: relay %q is invalid: %w", d.Nickname, err)
+		}
+		if !d.ValidThroughout(c.ValidAfter, c.ValidUntil) {
+			return fmt.Errorf("directory: relay %q is not valid throughout the consensus window %s to %s",
+				d.Nickname, c.ValidAfter.UTC().Format(time.RFC3339), c.ValidUntil.UTC().Format(time.RFC3339))
+		}
+		if _, duplicate := identities[d.Identity]; duplicate {
+			return fmt.Errorf("directory: relay identity %s appears more than once in the consensus", d.Identity)
+		}
+		identities[d.Identity] = struct{}{}
+	}
+	return nil
 }
 
 // ParseConsensus decodes a consensus and verifies it against a set of trusted
@@ -235,6 +295,16 @@ func ParseConsensus(data []byte, authorities map[string]ed25519.PublicKey, thres
 	}
 	if c.ValidAfter.IsZero() || c.ValidUntil.IsZero() {
 		return nil, fmt.Errorf("directory: consensus has no validity window")
+	}
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+	// Consensus production is deliberately canonical. Exact-byte signatures
+	// are still verified below, but refusing alternate whitespace, ordering and
+	// time spellings prevents two authorities from accidentally signing two
+	// byte-different bodies with identical meaning.
+	if canonical := c.body(); !bytes.Equal(body, canonical) {
+		return nil, fmt.Errorf("directory: consensus body is not in canonical order or encoding")
 	}
 
 	// Freshness before signatures: a correctly signed but expired consensus is
