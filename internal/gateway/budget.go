@@ -33,6 +33,10 @@ type BudgetRequest struct {
 	Model           string
 	InputBytes      int
 	MaxOutputTokens int
+	// CostMicros is a conservative, operator-supplied estimate in millionths
+	// of the configured billing currency. Zero is accepted only when the
+	// budget has no cost ceiling.
+	CostMicros uint64
 }
 
 // BudgetReservation represents capacity held for one request. Release is used
@@ -77,6 +81,9 @@ type FileBudgetConfig struct {
 	MaxRequests     uint64
 	MaxInputBytes   uint64
 	MaxOutputTokens uint64
+	// MaxCostMicros is optional because it requires model pricing. Zero keeps
+	// the three provider-independent hard ceilings and disables only this one.
+	MaxCostMicros uint64
 
 	// Now is overridable for tests.
 	Now func() time.Time
@@ -91,6 +98,7 @@ type FileBudget struct {
 	maxRequests     uint64
 	maxInputBytes   uint64
 	maxOutputTokens uint64
+	maxCostMicros   uint64
 	now             func() time.Time
 }
 
@@ -102,9 +110,11 @@ type BudgetUsage struct {
 	Requests        uint64
 	InputBytes      uint64
 	OutputTokens    uint64
+	CostMicros      uint64
 	MaxRequests     uint64
 	MaxInputBytes   uint64
 	MaxOutputTokens uint64
+	MaxCostMicros   uint64
 }
 
 // OpenFileBudget opens a durable single-node budget database. The database
@@ -152,7 +162,7 @@ func OpenFileBudget(cfg FileBudgetConfig) (*FileBudget, error) {
 	}
 	b := &FileBudget{
 		db: db, window: cfg.Window, maxRequests: cfg.MaxRequests, maxInputBytes: cfg.MaxInputBytes,
-		maxOutputTokens: cfg.MaxOutputTokens, now: cfg.Now,
+		maxOutputTokens: cfg.MaxOutputTokens, maxCostMicros: cfg.MaxCostMicros, now: cfg.Now,
 	}
 	if err := db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists(budgetBucket)
@@ -168,6 +178,9 @@ func (b *FileBudget) Reserve(ctx context.Context, req BudgetRequest) (BudgetRese
 	if req.InputBytes < 1 || req.MaxOutputTokens < 1 {
 		return nil, errors.New("gateway: budget reservation requires positive input bytes and max output tokens")
 	}
+	if b.maxCostMicros > 0 && req.CostMicros == 0 {
+		return nil, errors.New("gateway: cost-aware budget reservation requires a positive cost estimate")
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -181,23 +194,26 @@ func (b *FileBudget) Reserve(ctx context.Context, req BudgetRequest) (BudgetRese
 			return err
 		}
 		bucket := tx.Bucket(budgetBucket)
-		windowStart, requests, inputBytes, outputTokens, err := decodeBudget(bucket.Get(budgetCurrentKey))
+		windowStart, requests, inputBytes, outputTokens, costMicros, err := decodeBudget(bucket.Get(budgetCurrentKey))
 		if err != nil {
 			return err
 		}
 		if windowStart != start.Unix() {
-			requests, inputBytes, outputTokens = 0, 0, 0
+			requests, inputBytes, outputTokens, costMicros = 0, 0, 0, 0
 		}
 		if requests >= b.maxRequests || input > b.maxInputBytes || inputBytes > b.maxInputBytes-input ||
-			tokens > b.maxOutputTokens || outputTokens > b.maxOutputTokens-tokens {
+			tokens > b.maxOutputTokens || outputTokens > b.maxOutputTokens-tokens ||
+			b.maxCostMicros > 0 && (req.CostMicros > b.maxCostMicros || costMicros > b.maxCostMicros-req.CostMicros) {
 			return &BudgetLimitError{Reset: end}
 		}
-		return bucket.Put(budgetCurrentKey, encodeBudget(start.Unix(), requests+1, inputBytes+input, outputTokens+tokens))
+		return bucket.Put(budgetCurrentKey, encodeBudget(start.Unix(), requests+1, inputBytes+input,
+			outputTokens+tokens, costMicros+req.CostMicros))
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &fileBudgetReservation{budget: b, windowStart: start.Unix(), inputBytes: input, outputTokens: tokens}, nil
+	return &fileBudgetReservation{budget: b, windowStart: start.Unix(), inputBytes: input,
+		outputTokens: tokens, costMicros: req.CostMicros}, nil
 }
 
 func (b *FileBudget) Usage() (BudgetUsage, error) {
@@ -206,14 +222,15 @@ func (b *FileBudget) Usage() (BudgetUsage, error) {
 	usage := BudgetUsage{
 		WindowStart: start, WindowEnd: end,
 		MaxRequests: b.maxRequests, MaxInputBytes: b.maxInputBytes, MaxOutputTokens: b.maxOutputTokens,
+		MaxCostMicros: b.maxCostMicros,
 	}
 	err := b.db.View(func(tx *bolt.Tx) error {
-		windowStart, requests, inputBytes, outputTokens, err := decodeBudget(tx.Bucket(budgetBucket).Get(budgetCurrentKey))
+		windowStart, requests, inputBytes, outputTokens, costMicros, err := decodeBudget(tx.Bucket(budgetBucket).Get(budgetCurrentKey))
 		if err != nil {
 			return err
 		}
 		if windowStart == start.Unix() {
-			usage.Requests, usage.InputBytes, usage.OutputTokens = requests, inputBytes, outputTokens
+			usage.Requests, usage.InputBytes, usage.OutputTokens, usage.CostMicros = requests, inputBytes, outputTokens, costMicros
 		}
 		return nil
 	})
@@ -239,6 +256,7 @@ type fileBudgetReservation struct {
 	windowStart  int64
 	inputBytes   uint64
 	outputTokens uint64
+	costMicros   uint64
 	released     bool
 }
 
@@ -252,18 +270,19 @@ func (r *fileBudgetReservation) Release(ctx context.Context) error {
 		return err
 	}
 	err := r.budget.db.Update(func(tx *bolt.Tx) error {
-		windowStart, requests, inputBytes, outputTokens, err := decodeBudget(tx.Bucket(budgetBucket).Get(budgetCurrentKey))
+		windowStart, requests, inputBytes, outputTokens, costMicros, err := decodeBudget(tx.Bucket(budgetBucket).Get(budgetCurrentKey))
 		if err != nil {
 			return err
 		}
 		if windowStart != r.windowStart {
 			return nil
 		}
-		if requests == 0 || inputBytes < r.inputBytes || outputTokens < r.outputTokens {
+		if requests == 0 || inputBytes < r.inputBytes || outputTokens < r.outputTokens || costMicros < r.costMicros {
 			return errors.New("gateway: budget database contains counters smaller than the reservation being released")
 		}
 		return tx.Bucket(budgetBucket).Put(budgetCurrentKey,
-			encodeBudget(windowStart, requests-1, inputBytes-r.inputBytes, outputTokens-r.outputTokens))
+			encodeBudget(windowStart, requests-1, inputBytes-r.inputBytes,
+				outputTokens-r.outputTokens, costMicros-r.costMicros))
 	})
 	if err == nil {
 		r.released = true
@@ -271,25 +290,32 @@ func (r *fileBudgetReservation) Release(ctx context.Context) error {
 	return err
 }
 
-func encodeBudget(windowStart int64, requests, inputBytes, outputTokens uint64) []byte {
-	data := make([]byte, 32)
+func encodeBudget(windowStart int64, requests, inputBytes, outputTokens, costMicros uint64) []byte {
+	data := make([]byte, 40)
 	binary.BigEndian.PutUint64(data[0:8], uint64(windowStart))
 	binary.BigEndian.PutUint64(data[8:16], requests)
 	binary.BigEndian.PutUint64(data[16:24], inputBytes)
 	binary.BigEndian.PutUint64(data[24:32], outputTokens)
+	binary.BigEndian.PutUint64(data[32:40], costMicros)
 	return data
 }
 
-func decodeBudget(data []byte) (int64, uint64, uint64, uint64, error) {
+func decodeBudget(data []byte) (int64, uint64, uint64, uint64, uint64, error) {
 	if len(data) == 0 {
-		return 0, 0, 0, 0, nil
+		return 0, 0, 0, 0, 0, nil
 	}
-	if len(data) != 32 {
-		return 0, 0, 0, 0, errors.New("gateway: budget database contains a corrupt counter record")
+	// The 32-byte record is the pre-cost format. Preserve its three counters
+	// and begin cost accounting at zero on the first reservation after upgrade.
+	if len(data) != 32 && len(data) != 40 {
+		return 0, 0, 0, 0, 0, errors.New("gateway: budget database contains a corrupt counter record")
+	}
+	costMicros := uint64(0)
+	if len(data) == 40 {
+		costMicros = binary.BigEndian.Uint64(data[32:40])
 	}
 	return int64(binary.BigEndian.Uint64(data[0:8])),
 		binary.BigEndian.Uint64(data[8:16]), binary.BigEndian.Uint64(data[16:24]),
-		binary.BigEndian.Uint64(data[24:32]), nil
+		binary.BigEndian.Uint64(data[24:32]), costMicros, nil
 }
 
 var _ Budget = UnlimitedBudget{}

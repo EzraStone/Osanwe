@@ -2,12 +2,28 @@ package gateway
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestBudgetDecoderPreservesPreCostCounters(t *testing.T) {
+	legacy := make([]byte, 32)
+	binary.BigEndian.PutUint64(legacy[0:8], 123)
+	binary.BigEndian.PutUint64(legacy[8:16], 4)
+	binary.BigEndian.PutUint64(legacy[16:24], 5)
+	binary.BigEndian.PutUint64(legacy[24:32], 6)
+	start, requests, input, output, cost, err := decodeBudget(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if start != 123 || requests != 4 || input != 5 || output != 6 || cost != 0 {
+		t.Fatalf("decoded legacy record = %d, %d, %d, %d, %d", start, requests, input, output, cost)
+	}
+}
 
 func openTestBudget(t *testing.T, now *time.Time, requests, tokens uint64) *FileBudget {
 	t.Helper()
@@ -39,6 +55,48 @@ func TestFileBudgetRejectsInputVolumeIndependently(t *testing.T) {
 	}
 }
 
+func TestFileBudgetEnforcesCostIndependently(t *testing.T) {
+	now := time.Date(2026, 8, 9, 1, 15, 0, 0, time.UTC)
+	b, err := OpenFileBudget(FileBudgetConfig{
+		Path: filepath.Join(t.TempDir(), "budget.db"), Window: time.Hour,
+		MaxRequests: 100, MaxInputBytes: 100, MaxOutputTokens: 100, MaxCostMicros: 5,
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("OpenFileBudget: %v", err)
+	}
+	defer b.Close()
+	if _, err := b.Reserve(context.Background(), BudgetRequest{
+		Model: "demo", InputBytes: 1, MaxOutputTokens: 1, CostMicros: 4,
+	}); err != nil {
+		t.Fatalf("first Reserve: %v", err)
+	}
+	_, err = b.Reserve(context.Background(), BudgetRequest{
+		Model: "demo", InputBytes: 1, MaxOutputTokens: 1, CostMicros: 2,
+	})
+	if !errors.Is(err, ErrBudgetExhausted) {
+		t.Fatalf("second Reserve = %v, want ErrBudgetExhausted", err)
+	}
+}
+
+func TestCostAwareBudgetRejectsAnUnpricedReservation(t *testing.T) {
+	now := time.Date(2026, 8, 9, 1, 15, 0, 0, time.UTC)
+	b, err := OpenFileBudget(FileBudgetConfig{
+		Path: filepath.Join(t.TempDir(), "budget.db"), Window: time.Hour,
+		MaxRequests: 1, MaxInputBytes: 1, MaxOutputTokens: 1, MaxCostMicros: 1,
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("OpenFileBudget: %v", err)
+	}
+	defer b.Close()
+	if _, err := b.Reserve(context.Background(), BudgetRequest{
+		Model: "unpriced", InputBytes: 1, MaxOutputTokens: 1,
+	}); err == nil {
+		t.Fatal("cost-aware budget accepted an unpriced reservation")
+	}
+}
+
 func TestFileBudgetEnforcesBothAggregateCeilings(t *testing.T) {
 	now := time.Date(2026, 8, 9, 1, 15, 0, 0, time.UTC)
 	b := openTestBudget(t, &now, 2, 10)
@@ -65,7 +123,7 @@ func TestFileBudgetReleaseRestoresCapacityExactlyOnce(t *testing.T) {
 	b := openTestBudget(t, &now, 1, 10)
 	ctx := context.Background()
 
-	r, err := b.Reserve(ctx, BudgetRequest{Model: "demo", InputBytes: 10, MaxOutputTokens: 10})
+	r, err := b.Reserve(ctx, BudgetRequest{Model: "demo", InputBytes: 10, MaxOutputTokens: 10, CostMicros: 7})
 	if err != nil {
 		t.Fatalf("Reserve: %v", err)
 	}
@@ -75,15 +133,15 @@ func TestFileBudgetReleaseRestoresCapacityExactlyOnce(t *testing.T) {
 	if err := r.Release(ctx); err != nil {
 		t.Fatalf("second Release: %v", err)
 	}
-	if _, err := b.Reserve(ctx, BudgetRequest{Model: "demo", InputBytes: 10, MaxOutputTokens: 10}); err != nil {
+	if _, err := b.Reserve(ctx, BudgetRequest{Model: "demo", InputBytes: 10, MaxOutputTokens: 10, CostMicros: 7}); err != nil {
 		t.Fatalf("Reserve after release: %v", err)
 	}
 	usage, err := b.Usage()
 	if err != nil {
 		t.Fatalf("Usage: %v", err)
 	}
-	if usage.Requests != 1 || usage.InputBytes != 10 || usage.OutputTokens != 10 {
-		t.Fatalf("usage = %+v, want one request, ten input bytes, and ten output tokens", usage)
+	if usage.Requests != 1 || usage.InputBytes != 10 || usage.OutputTokens != 10 || usage.CostMicros != 7 {
+		t.Fatalf("usage = %+v, want one request, ten input bytes, ten output tokens, and seven cost micros", usage)
 	}
 }
 
