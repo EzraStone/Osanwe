@@ -48,3 +48,20 @@ jobs:
 
       - name: demo — buy a token, spend it, get an answer
         run: ./demo/tokens.sh
+
+      # What one token buys. The unit tests assert each refusal, but only this
+      # counts the wallet across all of them, which is what proves the policy
+      # check runs before redemption rather than after it. That ordering is the
+      # difference between a malformed request being refused and a malformed
+      # request being refused after taking the user's money.
+      - name: demo — a token buys one inference request and nothing else
+        run: |
+          ./demo/ui.sh > /tmp/ui.log 2>&1 &
+          for _ in $(seq 60); do
+            curl -sf -o /dev/null http://127.0.0.1:8080/_osanwe/status && break
+            sleep 1
+          done
+          if ! curl -sf -o /dev/null http://127.0.0.1:8080/_osanwe/status; then
+            echo "the demo stack never came up:"; cat /tmp/ui.log; exit 1
+          fi
+          ./demo/harden.sh
