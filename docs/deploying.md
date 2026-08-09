@@ -254,6 +254,7 @@ sudo useradd --system --home /var/lib/osanwe --create-home osanwe
 git clone https://github.com/EzraStone/Osanwe /tmp/osanwe && cd /tmp/osanwe
 go build -o /usr/local/bin/mithlond ./cmd/mithlond
 go build -o /usr/local/bin/eregion  ./cmd/eregion
+go build -o /usr/local/bin/checkout ./cmd/checkout
 ```
 
 Running as its own user matters more than it looks: the gateway holds the
@@ -434,8 +435,9 @@ For paid issuance, configure the built-in self-hosted BTCPay authorizer. It
 requires a store-scoped view-invoices API key in `OSANWE_BTCPAY_API_KEY`, an
 exact token price, and a separate durable `-receipts-db`. One settled invoice
 can then issue exactly one token, including across restarts and concurrent
-requests. Follow [the payment guide](payments.md) for the complete command and
-the remaining checkout/TLS work.
+requests. The separate `checkout` process creates fixed-price invoices using a
+different create-only key. Follow [the payment guide](payments.md) for both
+commands, key permissions, buyer flow, and the remaining TLS work.
 
 ### Separating them later
 

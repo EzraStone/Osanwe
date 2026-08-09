@@ -4,7 +4,7 @@ A user runs one program on their own computer and nothing else. Everything in
 this document that is not `bearer` is somebody else's job.
 
 That distinction is easy to lose while developing, because one person testing
-the system runs all five parts on one laptop. That arrangement proves the
+the system runs all six processes on one laptop. That arrangement proves the
 software works and provides no anonymity at all: if the relay and the gateway
 are both yours, nobody stands between you and the provider.
 
@@ -14,6 +14,7 @@ are both yours, nobody stands between you and the provider.
 | `ranger` | relay operators | as many as will volunteer | Sees an address, never the words. Must not be the user's, or it hides nothing |
 | `council` | a few independent parties | 3–5 | Publishes which relays exist. Several, so no single one can hand you a relay it controls |
 | `eregion` | whoever sells tokens | one, or a few | Sees the payment receipt and blinded issuance, never what the token later buys |
+| `checkout` | whoever sells tokens | one per storefront | Creates fixed-price invoices without asking for buyer identity; uses a separate create-only payment key |
 | `mithlond` | gateway operators | a few | Holds the provider accounts. Sees the words, never the address |
 
 This is the shape Tor has. Most people run the client; a much smaller and more
@@ -62,6 +63,10 @@ separated later: the mint sees payment records and the gateway learns what was
 asked, and one machine holding both is one subpoena away from holding the link
 the whole design removes.
 
+**A checkout.** The public fixed-price page can share the mint operator, but it
+runs separately with a create-invoice-only key. The mint's view-invoices key is
+never exposed to the buyer-facing process.
+
 **At least one relay, ideally not yours.** A single operator running the relay
 and the gateway is the collusion the security assumption forbids. Early on
 this is unavoidable and should be stated plainly to users rather than implied
@@ -77,6 +82,6 @@ network: no public gateway, no mint anyone can buy from, no relay run by a
 stranger.
 
 The gap between here and a product is not more features. It is one gateway,
-one independently operated relay, a buyer-facing payment flow around the mint,
-provider cooperation, and the operational work that makes leaving the services
-running survivable.
+one independently operated relay, provider cooperation, independent review of
+the payment and redemption boundary, and the operational work that makes leaving
+the services running survivable.

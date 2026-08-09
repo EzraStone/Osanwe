@@ -14,18 +14,52 @@ recognize it later.
 ## Configure BTCPay
 
 1. Run a BTCPay Server instance you control and create a store.
-2. Create a store-scoped Greenfield API key with only **View invoices**
-   (`btcpay.store.canviewinvoices`). Do not grant wallet, refund, webhook, or server permissions.
-3. Create invoices for exactly the amount and currency configured on `eregion`. A BTCPay public
-   form with constant `invoice_amount` and `invoice_currency` fields is one simple first checkout.
-4. Give the settled invoice ID to the buyer as the one-time receipt. The current client accepts it
-   through `OSANWE_RECEIPT`.
+2. Create one store-scoped Greenfield API key for `checkout` with only **Create invoice**
+   (`btcpay.store.cancreateinvoice:STORE_ID`).
+3. Create a different store-scoped key for `eregion` with only **View invoices**
+   (`btcpay.store.canviewinvoices:STORE_ID`).
+4. Configure the same exact amount, currency, store, and BTCPay origin on both processes.
+
+Do not give either key wallet, refund, webhook, user-management, or server permissions. Keeping the
+processes and keys separate means a checkout compromise cannot inspect existing invoices and a mint
+compromise cannot create them.
 
 BTCPay's API-key authentication and least-privilege permissions are documented in its
 [Greenfield authorization guide](https://docs.btcpayserver.org/BTCPayServer/greenfield-authorization/).
 Do not put buyer names, email addresses, postal addresses, or Osanwe account identifiers in invoice
 metadata. Osanwe needs only the opaque invoice ID, exact price, currency, store, and settlement
 status.
+
+## Run the checkout
+
+```bash
+export OSANWE_BTCPAY_CREATE_API_KEY='<store-scoped create-invoice key>'
+
+checkout \
+  -addr 127.0.0.1:8446 \
+  -btcpay https://pay.example \
+  -btcpay-store STORE_ID \
+  -amount 1.00 \
+  -currency USD \
+  -max-invoices-per-minute 30
+```
+
+Put an HTTPS reverse proxy in front of the loopback listener. The checkout creates only this
+server-configured fixed-price product: its API accepts an empty JSON object, not buyer-selected
+amounts or metadata. It has no accounts, cookies, analytics, third-party page resources, or CORS.
+Its invoice ceiling is global rather than per-IP so enforcing it does not require a buyer identity
+database. The ceiling is intentionally in memory; a restart resets it, and multiple instances have
+independent ceilings.
+
+After checkout, the page displays the invoice ID. The buyer saves that one-shot bearer receipt,
+pays through BTCPay, waits for settlement, and supplies it to the client:
+
+```bash
+export OSANWE_RECEIPT='<settled BTCPay invoice ID>'
+bearer -mint https://mint.example -mint-key-id mint-... \
+       -relay relay.example:8443 -pin sha256/... \
+       -upstream https://gateway.example:8444
+```
 
 ## Run the mint
 
@@ -54,7 +88,8 @@ is deliberately single-process and single-host; a multi-host mint needs a shared
 
 ## Remaining product work
 
-The authorizer is the security boundary, not a complete checkout product. A public launch still
-needs a buyer-facing flow that creates fixed-price invoices and returns their IDs, HTTPS in front of
-the loopback mint, documented refund/support handling, API-key rotation, and operational monitoring
-that does not log issuance requests. `-open` remains exclusively for local demos.
+The checkout and authorizer are the implemented payment boundary, not an audited commerce system.
+A public launch still needs HTTPS in front of the loopback checkout and mint, documented
+refund/support handling, API-key rotation, backups, availability monitoring that does not record
+buyer or issuance identifiers, and independent security review. `-open` remains exclusively for
+local demos.

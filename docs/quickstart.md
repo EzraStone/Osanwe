@@ -14,7 +14,7 @@ instructions in the [deployment guide](deploying.md).
 ## Build
 
 ```bash
-make build        # produces all five client and operator binaries
+make build        # produces all six client and operator binaries
 # Or build only the runnable BYOK pair:
 make ranger bearer
 ```
@@ -145,10 +145,11 @@ so scraping it cannot reconstruct who talked to whom.
 ## What is not built
 
 This two-process quickstart deliberately stops at BYOK. The repository also
-contains `eregion` (the blind-token mint), `mithlond` (the token gateway), and
-`council` (the threshold directory workflow). The gateway now has durable
-single-node aggregate request/output ceilings and the mint can consume settled
-self-hosted BTCPay invoices, but several production pieces remain: the gateway
-is not isolated in an attested enclave, neither state store spans several hosts,
-and the payment authorizer is not yet a buyer-facing checkout flow. See the
+contains `checkout` (the fixed-price storefront), `eregion` (the blind-token
+mint), `mithlond` (the token gateway), and `council` (the threshold directory
+workflow). The gateway now has durable single-node aggregate limits, and the
+checkout and mint can create and consume self-hosted BTCPay invoices. Several
+production pieces remain: the gateway is not isolated in an attested enclave,
+neither state store spans several hosts, and the payment boundary has not had
+an independent security review. See the
 [deployment guide](deploying.md) and [payment guide](payments.md) for those boundaries.
