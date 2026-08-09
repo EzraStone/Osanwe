@@ -13,7 +13,7 @@ are both yours, nobody stands between you and the provider.
 | `bearer` | **the user** | one each, on their own machine | It holds the wallet and talks to a relay. It must be yours, or it is not your client |
 | `ranger` | relay operators | as many as will volunteer | Sees an address, never the words. Must not be the user's, or it hides nothing |
 | `council` | a few independent parties | 3–5 | Publishes which relays exist. Several, so no single one can hand you a relay it controls |
-| `eregion` | whoever sells tokens | one, or a few | Learns who paid, never what they asked |
+| `eregion` | whoever sells tokens | one, or a few | Sees the payment receipt and blinded issuance, never what the token later buys |
 | `mithlond` | gateway operators | a few | Holds the provider accounts. Sees the words, never the address |
 
 This is the shape Tor has. Most people run the client; a much smaller and more
@@ -58,7 +58,7 @@ limiting before it faces the public. Without that, anyone who finds the address
 spends the operator's credit.
 
 **A mint.** Can share the gateway's machine at first, though they should be
-separated later: the mint learns who paid and the gateway learns what was
+separated later: the mint sees payment records and the gateway learns what was
 asked, and one machine holding both is one subpoena away from holding the link
 the whole design removes.
 
@@ -77,5 +77,6 @@ network: no public gateway, no mint anyone can buy from, no relay run by a
 stranger.
 
 The gap between here and a product is not more features. It is one gateway,
-one mint, one relay run by somebody else, and the rate limiting that makes
-leaving them running survivable.
+one independently operated relay, a buyer-facing payment flow around the mint,
+provider cooperation, and the operational work that makes leaving the services
+running survivable.

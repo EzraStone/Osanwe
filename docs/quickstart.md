@@ -146,8 +146,9 @@ so scraping it cannot reconstruct who talked to whom.
 
 This two-process quickstart deliberately stops at BYOK. The repository also
 contains `eregion` (the blind-token mint), `mithlond` (the token gateway), and
-`council` (the threshold directory workflow), but several production pieces
-remain: the mint has no real payment authorizer, the gateway is not yet isolated
-in an attested enclave, aggregate rate/cost limiting is not implemented, and
-the shipped durable redemption journal coordinates only processes on one host.
-See [the deployment guide](deploying.md) for those boundaries.
+`council` (the threshold directory workflow). The gateway now has durable
+single-node aggregate request/output ceilings and the mint can consume settled
+self-hosted BTCPay invoices, but several production pieces remain: the gateway
+is not isolated in an attested enclave, neither state store spans several hosts,
+and the payment authorizer is not yet a buyer-facing checkout flow. See the
+[deployment guide](deploying.md) and [payment guide](payments.md) for those boundaries.

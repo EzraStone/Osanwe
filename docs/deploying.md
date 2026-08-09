@@ -423,11 +423,15 @@ would put each of them in an anonymity set of one while appearing to work
 perfectly. Put it on a web page, in a README, anywhere a user can compare
 against.
 
-Then a unit like the gateway's, with `-addr 127.0.0.1:8445 -open`.
+For local demos, a unit may use `-addr 127.0.0.1:8445 -open`. `-open` gives a
+token to anyone who asks and must never face the public.
 
-`-open` means it gives tokens to anyone who asks. On a loopback-bound mint that
-is only you; the moment it faces the public it is a machine that prints money.
-That is what a real `mint.Authorizer` is for, and it is not built.
+For paid issuance, configure the built-in self-hosted BTCPay authorizer. It
+requires a store-scoped view-invoices API key in `OSANWE_BTCPAY_API_KEY`, an
+exact token price, and a separate durable `-receipts-db`. One settled invoice
+can then issue exactly one token, including across restarts and concurrent
+requests. Follow [the payment guide](payments.md) for the complete command and
+the remaining checkout/TLS work.
 
 ### Separating them later
 

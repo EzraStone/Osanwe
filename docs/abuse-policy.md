@@ -54,7 +54,7 @@ picture, and an inflated claim in either direction damages us.
 
 | Component | Sees content? | Sees identity? | Can detect abuse? |
 |---|---|---|---|
-| `eregion` (mint) | Never | Billing identity | No — but can refuse to sell |
+| `eregion` (mint) | Never | Payment receipt and any metadata the chosen rail exposes | No — but can refuse to sell |
 | `ranger` (relay) | Never — ciphertext only | Client IP | No, by design |
 | `mithlond` (gateway) | Yes, inside the TEE | Never | Yes, in-enclave only |
 | Upstream provider | Yes | Pooled key only | Yes — their own systems |
