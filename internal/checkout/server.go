@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -75,10 +76,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /app.css", s.styles)
 	mux.HandleFunc("GET /app.js", s.script)
 	mux.HandleFunc("POST /api/checkout", s.create)
-	return securityHeaders(mux)
+	return securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.ForceQuery || r.URL.RawQuery != "" {
+			writeError(w, http.StatusBadRequest, "query strings are not accepted")
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 }
 
-func (s *Server) page(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) page(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	page := strings.Replace(checkoutPage, "__AMOUNT__", s.amount, 1)
@@ -101,6 +112,10 @@ func (s *Server) script(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		writeError(w, http.StatusForbidden, "cross-origin invoice creation is not allowed")
+		return
+	}
+	if origin := r.Header.Get("Origin"); origin != "" && !sameHostOrigin(origin, r.Host) {
 		writeError(w, http.StatusForbidden, "cross-origin invoice creation is not allowed")
 		return
 	}
@@ -141,6 +156,11 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "could not create a payment invoice")
 		return
 	}
+	if invoice == nil || !btcpay.SafeIdentifier(invoice.ID, 256) || invoice.CheckoutLink == "" {
+		s.log.Error("invoice creator returned an incomplete invoice")
+		writeError(w, http.StatusBadGateway, "could not create a payment invoice")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(struct {
 		InvoiceID   string `json:"invoice_id"`
@@ -148,6 +168,13 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		Amount      string `json:"amount"`
 		Currency    string `json:"currency"`
 	}{invoice.ID, invoice.CheckoutLink, s.amount, s.currency})
+}
+
+func sameHostOrigin(origin, host string) bool {
+	parsed, err := url.Parse(origin)
+	return err == nil && (parsed.Scheme == "https" || parsed.Scheme == "http") &&
+		parsed.User == nil && parsed.Path == "" && parsed.RawQuery == "" && parsed.Fragment == "" &&
+		strings.EqualFold(parsed.Host, host)
 }
 
 func securityHeaders(next http.Handler) http.Handler {

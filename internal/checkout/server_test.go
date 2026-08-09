@@ -119,6 +119,41 @@ func TestCreateRejectsBuyerFieldsAndCrossOriginRequests(t *testing.T) {
 	}
 }
 
+func TestCheckoutRejectsUnknownPathsQueriesAndForeignOrigins(t *testing.T) {
+	handler := newTestServer(t, &fakeCreator{}, 3)
+	tests := []struct {
+		method, target, origin string
+		want                   int
+	}{
+		{http.MethodGet, "/missing", "", http.StatusNotFound},
+		{http.MethodGet, "/?tracking=value", "", http.StatusBadRequest},
+		{http.MethodPost, "/api/checkout?price=0", "", http.StatusBadRequest},
+		{http.MethodPost, "/api/checkout", "https://other.example", http.StatusForbidden},
+	}
+	for _, tc := range tests {
+		request := httptest.NewRequest(tc.method, tc.target, strings.NewReader(`{}`))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Origin", tc.origin)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != tc.want {
+			t.Errorf("%s %s with origin %q = %d, want %d", tc.method, tc.target, tc.origin, recorder.Code, tc.want)
+		}
+	}
+}
+
+func TestCheckoutAcceptsItsOwnOrigin(t *testing.T) {
+	handler := newTestServer(t, &fakeCreator{}, 3)
+	request := httptest.NewRequest(http.MethodPost, "https://checkout.example/api/checkout", strings.NewReader(`{}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "https://checkout.example")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("same-origin status = %d, body %q", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestCreateHasAnIdentityFreeGlobalLimit(t *testing.T) {
 	creator := &fakeCreator{}
 	handler := newTestServer(t, creator, 1)
