@@ -17,9 +17,14 @@ allow 100 requests, 10 MiB of input, and 100,000 requested output tokens per hou
 A restart does not reset the window, and concurrent requests cannot race past
 any ceiling.
 
-This is a hard request/token ceiling, **not a dollar-denominated billing
-oracle**. Input-token cost and provider-specific model prices are not known
-exactly before dispatch. Two consequences for everything below:
+These are hard request/token ceilings. `mithlond` can additionally reserve a
+conservative USD estimate when the operator supplies current model prices and
+`-budget-cost-usd`. It treats every normalized input byte as one billable input
+token, adds 1,024 input tokens of framing padding, and reserves the caller's
+entire requested output. That estimate is deliberately high for ordinary text,
+but it is **not a billing oracle**: provider tokenizers, hidden reasoning,
+caching rules, and price changes remain outside the gateway. Two consequences
+for everything below:
 
 - **Do not put an unlimited-spend provider account behind a public gateway.**
   Pair the local budget with the provider's own account budget or a prepaid
@@ -36,9 +41,10 @@ table, `max_tokens` must be present and no higher than
 `-max-output-tokens`, the JSON body is capped by `-max-request-bytes`, and
 unsupported top-level capabilities are rejected before redemption. The
 defaults are 4,096 output tokens and a 1 MiB request body. These per-request
-limits compose with `-budget-requests`, `-budget-input-bytes`, and
-`-budget-output-tokens`; none of them
-replaces the provider account's own dollar ceiling.
+limits compose with `-budget-requests`, `-budget-input-bytes`,
+`-budget-output-tokens`, and the optional `-budget-cost-usd`; none of them
+replaces the provider account's own dollar ceiling. Cost reservations use
+integer millionths of a dollar internally and round input and output upward.
 
 The accepted top-level Messages fields are `model`, `max_tokens`, `messages`,
 `system`, `stream`, `temperature`, `top_p`, and `stop_sequences`. Their
@@ -280,13 +286,17 @@ and restarts the gateway, or you will find out the hard way.
 
 ```bash
 sudo -u osanwe tee /var/lib/osanwe/routes.conf <<'EOF'
-llama-3.1-8b-instant     openai  https://api.groq.com/openai  GROQ_API_KEY
-llama-3.3-70b-versatile  openai  https://api.groq.com/openai  GROQ_API_KEY
+# Prices below are illustrative USD per million tokens. Replace them with the
+# provider's current input and output prices before setting a cost ceiling.
+llama-3.1-8b-instant     openai  https://api.groq.com/openai  GROQ_API_KEY  0.50 1.00
+llama-3.3-70b-versatile  openai  https://api.groq.com/openai  GROQ_API_KEY  1.00 2.00
 EOF
 ```
 
-The credential is not in this file — the last field names an environment
-variable. That is deliberate, and it is what makes this file safe to commit.
+The credential is not in this file. The fourth field names an environment
+variable; with pricing enabled, the last two fields are input and output USD
+per million tokens. That is deliberate, and it is what makes this file safe to
+commit.
 
 ### Put the credential somewhere only the service reads
 
@@ -323,6 +333,7 @@ ExecStart=/usr/local/bin/mithlond \
   -budget-requests 100 \
   -budget-input-bytes 10485760 \
   -budget-output-tokens 100000 \
+  -budget-cost-usd 10.00 \
   -cert /var/lib/osanwe/gateway.crt \
   -key /var/lib/osanwe/gateway.key
 Restart=always
@@ -364,6 +375,15 @@ reservation and dispatch can therefore under-use the rest of that window, but
 cannot overspend it. The database is intentionally single-process and
 single-host; a future multi-host gateway needs a shared implementation of
 `gateway.Budget`.
+
+For a single upstream instead of `-routes`, enable the same cost ceiling with
+`-input-usd-per-million` and `-output-usd-per-million`. If
+`-budget-cost-usd` is present, startup fails unless both single-upstream prices
+are present or every route has both price columns. Older four-field route files
+remain valid only while the optional USD ceiling is disabled. The database
+upgrade preserves the request, input, and output counters already in the active
+window; cost accounting begins at zero for that one upgrade window because the
+old record did not contain a historical cost counter.
 
 The companion-lock format is new. When upgrading a gateway that previously
 locked `spent.db` itself, stop **every** old process before starting this

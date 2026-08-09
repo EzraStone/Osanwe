@@ -147,8 +147,9 @@ so scraping it cannot reconstruct who talked to whom.
 This two-process quickstart deliberately stops at BYOK. The repository also
 contains `checkout` (the fixed-price storefront), `eregion` (the blind-token
 mint), `mithlond` (the token gateway), and `council` (the threshold directory
-workflow). The gateway now has durable single-node aggregate limits, and the
-checkout and mint can create and consume self-hosted BTCPay invoices. Several
+workflow). The gateway now has durable single-node aggregate limits, including
+an optional conservative USD reservation when model prices are configured, and
+the checkout and mint can create and consume self-hosted BTCPay invoices. Several
 production pieces remain: the gateway is not isolated in an attested enclave,
 neither state store spans several hosts, and the payment boundary has not had
 an independent security review. See the
