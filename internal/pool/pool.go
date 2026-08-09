@@ -54,6 +54,19 @@ const (
 	// whatever broke it was fixed.
 	minBackoff = 15 * time.Second
 	maxBackoff = 10 * time.Minute
+
+	// DefaultMaxStale is how far past a consensus's expiry the relays it listed
+	// may still be used.
+	//
+	// It exists because the two obvious policies are both wrong. Refusing at the
+	// instant of expiry turns a directory outage into a client outage, which is
+	// backwards: the document is signed precisely so it stays trustworthy while
+	// held. But holding it forever is worse in a quieter way -- a client that
+	// loses the directory keeps dialing relays that may have been withdrawn,
+	// rotated their keys, or been removed for misbehaving, and nothing ever
+	// tells it. A bounded grace keeps a brief outage survivable and puts a
+	// ceiling on how far behind the network a client can silently drift.
+	DefaultMaxStale = 24 * time.Hour
 )
 
 // Dialer opens a tunnel. internal/tunnel.Dialer satisfies it, and tests
@@ -79,6 +92,12 @@ type Config struct {
 
 	// DialTimeout bounds a single relay attempt. Zero means DefaultDialTimeout.
 	DialTimeout time.Duration
+
+	// MaxStale is how long past a consensus's ValidUntil its relays remain
+	// usable. Zero means DefaultMaxStale. Negative disables the ceiling
+	// entirely, which is for tests and for an operator who has decided
+	// deliberately that never failing is worth drifting indefinitely.
+	MaxStale time.Duration
 
 	Logger *slog.Logger
 
@@ -121,6 +140,7 @@ type Pool struct {
 	guard      *relay
 	guardSince time.Time
 	signedBy   int
+	validUntil time.Time
 	stats      Stats
 }
 
@@ -137,6 +157,9 @@ func New(cfg Config) (*Pool, error) {
 	}
 	if cfg.DialTimeout <= 0 {
 		cfg.DialTimeout = DefaultDialTimeout
+	}
+	if cfg.MaxStale == 0 {
+		cfg.MaxStale = DefaultMaxStale
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
@@ -174,7 +197,11 @@ func (p *Pool) Refresh(ctx context.Context) error {
 	}
 
 	p.mu.Lock()
-	p.signedBy = len(c.Signatures)
+	// Verified signatures, not every signature present. Anyone can append a
+	// signature from a key nobody knows; counting those would let the client
+	// report more agreement than it actually checked.
+	p.signedBy = c.VerifiedBy()
+	p.validUntil = c.ValidUntil
 	p.mu.Unlock()
 
 	usable := c.Usable(p.now(), p.cfg.Destination)
@@ -334,6 +361,18 @@ func (p *Pool) candidates() ([]*relay, error) {
 	}
 	now := p.now()
 
+	// Refuse rather than dial relays from a consensus that expired long enough
+	// ago that the network has probably moved on without us. Failing loudly is
+	// the point: a client quietly using a year-old relay list has the security
+	// properties of that year-old list, and would never find out.
+	if stale, by := p.tooStale(now); stale {
+		return nil, fmt.Errorf(
+			"pool: the newest consensus this client holds expired %s ago, past the %s limit; "+
+				"no directory authority has been reachable since. Relays listed in it may have been "+
+				"withdrawn or had their keys rotated, so they are no longer used",
+			by.Round(time.Second), p.cfg.MaxStale)
+	}
+
 	var out []*relay
 	// The guard goes first whenever it is not in backoff, which is what makes
 	// the selection sticky rather than round-robin.
@@ -457,6 +496,32 @@ func (p *Pool) SignedBy() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.signedBy
+}
+
+// tooStale reports whether the held consensus has expired past the configured
+// grace, and by how far beyond expiry it is. Callers hold p.mu.
+//
+// A zero validUntil means no consensus has been installed -- a manually pinned
+// relay, or a pool that has not refreshed yet -- and there is nothing to expire.
+func (p *Pool) tooStale(now time.Time) (bool, time.Duration) {
+	if p.validUntil.IsZero() || p.cfg.MaxStale < 0 {
+		return false, 0
+	}
+	past := now.Sub(p.validUntil)
+	return past > p.cfg.MaxStale, past
+}
+
+// Staleness reports how far past expiry the held consensus is, and whether it
+// has gone beyond the point where this client will still use it. A zero
+// duration means the consensus is current.
+func (p *Pool) Staleness() (past time.Duration, refusing bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	refusing, past = p.tooStale(p.now())
+	if past < 0 {
+		past = 0
+	}
+	return past, refusing
 }
 
 // Len reports how many relays are currently known.

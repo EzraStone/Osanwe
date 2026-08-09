@@ -341,3 +341,45 @@ func TestEncodeRefusesUnsignedConsensus(t *testing.T) {
 		t.Fatal("encoded a consensus with no signatures")
 	}
 }
+
+// TestVerifiedByIgnoresSignaturesFromKeysNobodyKnows guards the number a user
+// is shown.
+//
+// Unknown signatures are kept rather than rejected, so that adding an
+// authority does not break clients that have not heard of it. The cost of that
+// choice is that anybody can append signatures to a consensus without breaking
+// a single check -- so len(Signatures) describes how many parties *claimed* to
+// vouch for the document, and only VerifiedBy describes how many actually did.
+// Reporting the former to a user overstates the agreement behind the relay
+// they are about to send traffic through.
+func TestVerifiedByIgnoresSignaturesFromKeysNobodyKnows(t *testing.T) {
+	known, set := authorities(t, 2)
+	stranger, err := GenerateIdentity()
+	if err != nil {
+		t.Fatalf("GenerateIdentity: %v", err)
+	}
+
+	// Two authorities this client trusts, plus three it has never heard of,
+	// all signing the same body perfectly validly.
+	strangers := []*Identity{stranger}
+	for i := 0; i < 2; i++ {
+		extra, err := GenerateIdentity()
+		if err != nil {
+			t.Fatalf("GenerateIdentity: %v", err)
+		}
+		strangers = append(strangers, extra)
+	}
+	data := buildConsensus(t, append(append([]*Identity{}, known...), strangers...), relay(t, "alpha"))
+
+	c, err := ParseConsensus(data, set, 2, time.Now())
+	if err != nil {
+		t.Fatalf("ParseConsensus: %v", err)
+	}
+
+	if got := len(c.Signatures); got != 5 {
+		t.Fatalf("the document should still carry all 5 signatures, got %d", got)
+	}
+	if got := c.VerifiedBy(); got != 2 {
+		t.Fatalf("VerifiedBy() = %d, want 2; a stranger's signature must not count as agreement", got)
+	}
+}

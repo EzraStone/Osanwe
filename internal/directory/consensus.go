@@ -33,10 +33,27 @@ type Consensus struct {
 	Relays []*Descriptor
 
 	// Signatures maps an authority fingerprint to its signature over the body.
+	//
+	// This is every signature present on the document, including ones from keys
+	// the verifier did not recognise. Do not count it to decide how much
+	// agreement the consensus carries; use VerifiedBy.
 	Signatures map[string]string
+
+	verifiedBy int
 
 	raw []byte
 }
+
+// VerifiedBy reports how many signatures came from authorities this client
+// knows and were checked successfully.
+//
+// It is deliberately not len(Signatures). Unknown signatures are kept rather
+// than rejected, so that adding an authority does not break clients that have
+// not heard of it -- which means anyone can append signatures to a consensus
+// and inflate that length without breaking a single check. Only this number
+// describes how many independent parties actually vouched for the document a
+// client is using.
+func (c *Consensus) VerifiedBy() int { return c.verifiedBy }
 
 // Raw returns the exact signed body, for forwarding a consensus unchanged.
 func (c *Consensus) Raw() []byte {
@@ -334,6 +351,7 @@ func ParseConsensus(data []byte, authorities map[string]ed25519.PublicKey, thres
 		return nil, fmt.Errorf("directory: consensus carries %d valid signatures from known authorities, need %d",
 			valid, threshold)
 	}
+	c.verifiedBy = valid
 	return c, nil
 }
 

@@ -581,3 +581,121 @@ func TestClientsDoNotAllStartOnTheSameRelay(t *testing.T) {
 		t.Fatalf("25 independent clients all chose %v; initial selection is not being randomised", seen)
 	}
 }
+
+// --------------------------------------------------------------------------
+// a held consensus does not stay usable forever
+//
+// The pool deliberately keeps its relays when a refresh fails, so a directory
+// outage is not a client outage. Without a ceiling on that, the same code path
+// also means a client which permanently loses the directory keeps dialing a
+// relay list that may have been withdrawn, rotated, or removed for
+// misbehaving -- with nothing ever saying so.
+// --------------------------------------------------------------------------
+
+// clockedHarness is newHarness with a movable clock and a short staleness
+// ceiling, so a test can age a consensus without waiting a day.
+func clockedHarness(t *testing.T, maxStale time.Duration, relays ...*directory.Descriptor) (*harness, func(time.Duration)) {
+	t.Helper()
+	url, authorities, set, _ := directoryServer(t, relays...)
+
+	var mu sync.Mutex
+	now := time.Now()
+	advance := func(d time.Duration) { mu.Lock(); now = now.Add(d); mu.Unlock() }
+
+	h := &harness{set: set, errs: map[string]error{}}
+	p, err := New(Config{
+		Fetcher:     &directory.Fetcher{URLs: []string{url}, Authorities: authorities, Threshold: 1},
+		Destination: dest,
+		Secret:      "s3cret",
+		MaxStale:    maxStale,
+		Logger:      quiet(),
+		Now: func() time.Time {
+			mu.Lock()
+			defer mu.Unlock()
+			return now
+		},
+		newDialer: func(addr, pin, secret string, timeout time.Duration) (Dialer, error) {
+			return &fakeDialer{addr: addr, mu: &h.mu, errs: h.errs, calls: &h.calls}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	h.pool = p
+	if err := p.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	return h, advance
+}
+
+func TestRelaysAreRefusedOnceTheConsensusIsFarPastExpiry(t *testing.T) {
+	// The served consensus is valid for an hour; allow one more hour past that.
+	h, advance := clockedHarness(t, time.Hour, descriptor(t, "alpha", "10.0.0.1:8443"))
+
+	mustDial(t, h.pool).Close()
+
+	// The authority falls over and never comes back.
+	h.set(nil)
+	advance(3 * time.Hour) // an hour to expiry, then two hours past it
+	if err := h.pool.Refresh(context.Background()); err == nil {
+		t.Fatal("the directory is down; Refresh should have failed")
+	}
+
+	_, err := h.pool.DialContext(context.Background(), "tcp", dest)
+	if err == nil {
+		t.Fatal("dialed a relay from a consensus two hours past its staleness ceiling")
+	}
+	if !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("the refusal should say the consensus expired, got: %v", err)
+	}
+	if dialed := h.dialed(); len(dialed) != 1 {
+		t.Fatalf("a stale relay was still dialed: %v", dialed)
+	}
+
+	past, refusing := h.pool.Staleness()
+	if !refusing || past < 2*time.Hour {
+		t.Fatalf("Staleness() = %s, refusing=%v; want at least 2h and refusing", past, refusing)
+	}
+}
+
+func TestABriefDirectoryOutageDoesNotStopTheClient(t *testing.T) {
+	// The same setup, aged past expiry but still inside the grace. This is the
+	// case the ceiling must not break: an authority down for a few minutes is
+	// ordinary, and refusing at the instant of expiry would turn every one of
+	// those into an outage for every client.
+	h, advance := clockedHarness(t, time.Hour, descriptor(t, "alpha", "10.0.0.1:8443"))
+
+	h.set(nil)
+	advance(90 * time.Minute) // half an hour past expiry, well inside the hour
+	if err := h.pool.Refresh(context.Background()); err == nil {
+		t.Fatal("the directory is down; Refresh should have failed")
+	}
+
+	conn, err := h.pool.DialContext(context.Background(), "tcp", dest)
+	if err != nil {
+		t.Fatalf("a consensus half an hour past expiry should still be used: %v", err)
+	}
+	conn.Close()
+
+	if past, refusing := h.pool.Staleness(); refusing || past < 25*time.Minute {
+		t.Fatalf("Staleness() = %s, refusing=%v; want ~30m and not refusing", past, refusing)
+	}
+}
+
+func TestAManuallyPinnedRelayNeverGoesStale(t *testing.T) {
+	// A pool that has never installed a consensus has nothing to expire. The
+	// zero ValidUntil must not read as "expired at the zero time", which would
+	// refuse every dial on a client using a directly pinned relay.
+	p, err := New(Config{
+		Fetcher:     &directory.Fetcher{URLs: []string{"http://127.0.0.1:1"}},
+		Destination: dest,
+		MaxStale:    time.Nanosecond,
+		Logger:      quiet(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, refusing := p.Staleness(); refusing {
+		t.Fatal("a pool holding no consensus reported itself too stale to use")
+	}
+}
