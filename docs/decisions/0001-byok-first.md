@@ -1,6 +1,7 @@
 # ADR 0001 — Ship bring-your-own-key first; pursue provider cooperation in parallel
 
-- **Status:** Accepted
+- **Status:** Accepted for the first deployable path. The repository also contains a pre-launch
+  token-path prototype; that does not change the v1 claim or make the pooled gateway public-ready.
 - **Decides:** Design document §10 (Existential risk I — Terms of Service)
 - **Supersedes:** nothing
 - **Revisit when:** a provider offers a sanctioned privacy-preserving access mode, or Phase 2

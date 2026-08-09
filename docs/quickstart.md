@@ -6,14 +6,17 @@ a VPS somewhere else, and `bearer` runs on your machine.
 **What this gets you.** The provider stops learning your IP address and the
 location it implies, and no relay operator can read your prompts. **What it does
 not get you:** the provider still knows which account is asking, because you are
-using your own API key. For the account-unlinked token path, run
-`./demo/tokens.sh` locally and then follow [the deployment guide](deploying.md).
+using your own API key. The account-unlinked token path is pre-launch software;
+exercise it with `./demo/tokens.sh` locally, then read the blockers and closed-network
+instructions in the [deployment guide](deploying.md).
 [ADR 0001](decisions/0001-byok-first.md) records why BYOK shipped first.
 
 ## Build
 
 ```bash
-make build        # produces bin/ranger and bin/bearer
+make build        # produces all five client and operator binaries
+# Or build only the runnable BYOK pair:
+make ranger bearer
 ```
 
 Go 1.26 or newer. The blind-signature implementation uses Cloudflare CIRCL;
