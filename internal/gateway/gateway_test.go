@@ -733,12 +733,55 @@ func TestProviderFailureStillSpendsTheToken(t *testing.T) {
 	}
 }
 
-func TestTransportFailureStillSpendsTheToken(t *testing.T) {
+// A connection that was never established is the one failure that proves the
+// provider did no work, so it is the one failure that may be refunded. Making
+// the user pay for the operator's outage would be charging for nothing.
+func TestAConnectionThatWasNeverMadeRefundsTheToken(t *testing.T) {
 	h := newHarness(t, nil)
-	// Closing before the first request makes the reverse proxy's transport
-	// fail without receiving any HTTP response. Even then it cannot prove that
-	// a real upstream did not process the request just before a reset/timeout.
+	// Closing before the first request means the dial is refused outright:
+	// there was no connection for a request to travel on.
 	h.providerHTTP.Close()
+	tok := h.token(t)
+
+	resp := h.post(t, tok, nil)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", resp.StatusCode)
+	}
+	if h.spent.Len() != 0 {
+		t.Fatalf("spent set holds %d, want 0: the provider was never reached", h.spent.Len())
+	}
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeRefunded {
+		t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeRefunded)
+	}
+	if got := h.gw.metrics.Refunded.Load(); got != 1 {
+		t.Fatalf("Refunded metric = %d, want 1", got)
+	}
+
+	// And the refund has to be real: the same token must buy a request again.
+	if err := h.spent.Spend(tok); err != nil {
+		t.Fatalf("the refunded token is still unusable: %v", err)
+	}
+}
+
+// A failure after the request is on the wire is not proof of anything. The
+// provider may have received, processed and billed it before the connection
+// died, so refunding here would let a client harvest free inference by cutting
+// the connection at the right moment.
+func TestAFailureAfterDispatchStillSpendsTheToken(t *testing.T) {
+	h := newHarness(t, func(w http.ResponseWriter, r *http.Request) {
+		// Read the whole request, then hang up without answering. From the
+		// gateway's side this is indistinguishable from a provider that did
+		// the work and lost the connection on the way back.
+		io.Copy(io.Discard, r.Body)
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Errorf("Hijack: %v", err)
+			return
+		}
+		conn.Close()
+	})
 	tok := h.token(t)
 
 	resp := h.post(t, tok, nil)
@@ -753,11 +796,43 @@ func TestTransportFailureStillSpendsTheToken(t *testing.T) {
 	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeSpent {
 		t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeSpent)
 	}
+	if got := h.gw.metrics.Refunded.Load(); got != 0 {
+		t.Fatalf("Refunded metric = %d, want 0: this failure proves nothing", got)
+	}
 	retry := h.post(t, tok, nil)
 	retry.Body.Close()
 	if retry.StatusCode != http.StatusConflict {
 		t.Fatalf("retry status = %d, want 409", retry.StatusCode)
 	}
+}
+
+// A refund that did not survive is not a refund. If the store cannot record
+// it, the client must be told the token is gone rather than put it back and
+// have the gateway refuse it later.
+func TestARefundThatCannotBeRecordedIsReportedAsSpent(t *testing.T) {
+	h := newHarness(t, nil)
+	h.providerHTTP.Close()
+	tok := h.token(t)
+
+	// Spend succeeds, refund fails: the store accepted the reservation and
+	// then lost its ability to write.
+	h.gw.cfg.Spent = halfBrokenStore{SpentSet: h.spent}
+
+	resp := h.post(t, tok, nil)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeSpent {
+		t.Fatalf("token outcome = %q, want %q when the refund could not be recorded", got, TokenOutcomeSpent)
+	}
+	if got := h.gw.metrics.Refunded.Load(); got != 0 {
+		t.Fatalf("Refunded metric = %d, want 0: nothing was refunded", got)
+	}
+}
+
+type halfBrokenStore struct{ *mint.SpentSet }
+
+func (s halfBrokenStore) Refund(*mint.Token) error {
+	return errors.New("the redemption journal is unwritable")
 }
 
 // A provider that answers normally consumes the token, even if the answer is a

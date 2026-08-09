@@ -193,6 +193,7 @@ type Metrics struct {
 	UpstreamErr atomic.Int64
 	NoRoute     atomic.Int64
 	Rejected    atomic.Int64
+	Refunded    atomic.Int64
 }
 
 // Server is the gateway.
@@ -211,6 +212,10 @@ type Server struct {
 // routeKey carries the chosen provider from the handler to the rewrite hook,
 // which cannot look it up itself: the body has already been consumed by then.
 type routeKey struct{}
+
+// tokenKey carries the redeemed token to the error hook, so the one failure
+// that proves the provider did no work can be refunded.
+type tokenKey struct{}
 
 // chosen is what the handler worked out and the hooks need.
 type chosen struct {
@@ -434,6 +439,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = requestBody
 	r.ContentLength = int64(requestBody.size)
+	r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, tok))
 	if s.cfg.Routes != nil {
 		r = r.WithContext(context.WithValue(r.Context(), routeKey{}, pick))
 	}
@@ -946,15 +952,59 @@ func translateBack(resp *http.Response) error {
 	return nil
 }
 
-// handleError reports a transport failure. It deliberately does not refund:
-// EOF, reset, and timeout cannot prove the provider did not receive, process,
-// or bill the request before the connection failed.
+// handleError reports a transport failure, refunding only when the failure
+// proves the request never reached the provider.
 func (s *Server) handleError(w http.ResponseWriter, r *http.Request, err error) {
 	s.metrics.UpstreamErr.Add(1)
 	// The path is logged; the body never is, and neither is the token.
 	s.log.Error("upstream request failed", "path", r.URL.Path, "error", err)
+
+	if neverDispatched(err) {
+		if tok, ok := r.Context().Value(tokenKey{}).(*mint.Token); ok {
+			if refundErr := s.cfg.Spent.Refund(tok); refundErr != nil {
+				// A refund that did not survive is not a refund. Say spent, so
+				// the wallet does not resurrect a token the store may still
+				// consider redeemed.
+				s.log.Error("refund failed; the token stays spent", "error", refundErr)
+				s.refuseToken(w, http.StatusBadGateway, "upstream_error", TokenOutcomeSpent,
+					"The provider could not be reached, and the refund could not be recorded. Your token is not usable again.")
+				return
+			}
+			s.metrics.Refunded.Add(1)
+			// Status only. Logging the token would create a record that a
+			// particular token was used at a particular moment, which is half
+			// of the link this design removes.
+			s.log.Warn("provider was never reached; token refunded")
+			s.refuseToken(w, http.StatusBadGateway, "upstream_unreachable", TokenOutcomeRefunded,
+				"The provider could not be reached. Your token has not been used.")
+			return
+		}
+	}
+
 	s.refuseToken(w, http.StatusBadGateway, "upstream_error", TokenOutcomeSpent,
 		"The provider connection failed after dispatch. Your token remains spent because the gateway cannot prove the provider did no work.")
+}
+
+// neverDispatched reports whether err proves no part of the request reached
+// the provider.
+//
+// Only a failure to obtain a connection does. Once bytes are on the wire, an
+// EOF, a reset, or a timeout is equally consistent with the provider having
+// received, processed and billed the request before the failure -- refunding
+// those would let a client harvest free inference by cutting the connection
+// after the request was sent. A dial or DNS failure has no such reading: there
+// was no connection to send anything on, so the provider did no work and the
+// user should not pay for the operator's outage.
+func neverDispatched(err error) bool {
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	var opErr *net.OpError
+	// "dial" covers connection refused, host unreachable and dial timeouts.
+	// Read and write ops are deliberately excluded: by then the request may
+	// already have been delivered.
+	return errors.As(err, &opErr) && opErr.Op == "dial"
 }
 
 // refuse writes an error in the shape a model client expects, so an existing
