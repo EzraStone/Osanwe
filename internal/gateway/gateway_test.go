@@ -32,6 +32,12 @@ type failingRedemptionStore struct{ err error }
 func (s failingRedemptionStore) Spend(*mint.Token) error  { return s.err }
 func (s failingRedemptionStore) Refund(*mint.Token) error { return s.err }
 
+type failingBudget struct{ err error }
+
+func (b failingBudget) Reserve(context.Context, BudgetRequest) (BudgetReservation, error) {
+	return nil, b.err
+}
+
 func mintKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
 	keyOnce.Do(func() {
@@ -111,6 +117,7 @@ func newHarness(t *testing.T, handler http.HandlerFunc) *harness {
 		Models:          []string{"demo"},
 		MintKeys:        map[string]*rsa.PublicKey{m.KeyID(): m.PublicKey()},
 		Spent:           spent,
+		Budget:          UnlimitedBudget{},
 		UpstreamRootCAs: roots,
 		Credential: Credential{
 			Header: "x-api-key",
@@ -169,6 +176,48 @@ func (h *harness) post(t *testing.T, tok *mint.Token, extra http.Header) *http.R
 		t.Fatalf("Do: %v", err)
 	}
 	return resp
+}
+
+func TestAggregateBudgetRefusalDoesNotSpendOrForwardTheToken(t *testing.T) {
+	h := newHarness(t, nil)
+	tok := h.token(t)
+	h.gw.cfg.Budget = failingBudget{err: &BudgetLimitError{Reset: time.Now().Add(time.Minute)}}
+
+	resp := h.post(t, tok, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", resp.StatusCode)
+	}
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeRejected {
+		t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeRejected)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Fatal("budget refusal omitted Retry-After")
+	}
+	if _, _, hits := h.provider.snapshot(); hits != 0 {
+		t.Fatalf("provider received %d requests, want none", hits)
+	}
+	if err := h.spent.Spend(tok); err != nil {
+		t.Fatalf("token was consumed by a budget refusal: %v", err)
+	}
+}
+
+func TestAggregateBudgetFailureFailsClosedWithoutTakingPayment(t *testing.T) {
+	h := newHarness(t, nil)
+	tok := h.token(t)
+	h.gw.cfg.Budget = failingBudget{err: errors.New("budget disk is unavailable")}
+
+	resp := h.post(t, tok, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+	if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeRejected {
+		t.Fatalf("token outcome = %q, want %q", got, TokenOutcomeRejected)
+	}
+	if err := h.spent.Spend(tok); err != nil {
+		t.Fatalf("token was consumed by a budget-store failure: %v", err)
+	}
 }
 
 // --------------------------------------------------------------------------
@@ -909,6 +958,7 @@ func TestNewRefusesAnUnsafeConfig(t *testing.T) {
 		Models:     []string{"demo"},
 		MintKeys:   map[string]*rsa.PublicKey{mint.KeyID(pub): pub},
 		Spent:      mint.NewSpentSet(),
+		Budget:     UnlimitedBudget{},
 		Credential: Credential{Header: "x-api-key", Value: "k"},
 	}
 
@@ -920,6 +970,7 @@ func TestNewRefusesAnUnsafeConfig(t *testing.T) {
 		{"plaintext upstream", func(c *Config) { c.Upstream = "http://api.anthropic.com" }, "must be https"},
 		{"no mint keys", func(c *Config) { c.MintKeys = nil }, "at least one mint key"},
 		{"no redemption store", func(c *Config) { c.Spent = nil }, "RedemptionStore is required"},
+		{"no aggregate budget", func(c *Config) { c.Budget = nil }, "Budget is required"},
 		{"no credential", func(c *Config) { c.Credential.Value = "" }, "Credential.Value is required"},
 		{"unsupported credential header", func(c *Config) { c.Credential.Header = "Cookie" }, "Credential.Header must be"},
 		{"credential value newline", func(c *Config) { c.Credential.Value = "k\r\nX-Leak: yes" }, "control characters"},

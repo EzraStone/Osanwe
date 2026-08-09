@@ -152,6 +152,7 @@ func newChain(t *testing.T) *chain {
 		Upstream: "https://" + providerLn.Addr().String(),
 		MintKeys: map[string]*rsa.PublicKey{m.KeyID(): m.PublicKey()},
 		Spent:    spent,
+		Budget:   gateway.UnlimitedBudget{},
 		Models:   []string{"test"},
 		// The stand-in provider is self-signed, so the gateway needs its root.
 		// There is no option anywhere to skip verification.

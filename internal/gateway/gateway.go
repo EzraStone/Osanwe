@@ -148,6 +148,10 @@ type Config struct {
 	// infinitely reusable.
 	Spent mint.RedemptionStore
 
+	// Budget atomically bounds aggregate provider work. Required: per-request
+	// limits alone still allow an unbounded number of individually valid calls.
+	Budget Budget
+
 	// Credential authenticates the gateway to the provider, when there is a
 	// single one. Ignored if Routes is set.
 	Credential Credential
@@ -194,6 +198,8 @@ type Metrics struct {
 	NoRoute     atomic.Int64
 	Rejected    atomic.Int64
 	Refunded    atomic.Int64
+	BudgetFull  atomic.Int64
+	BudgetErr   atomic.Int64
 }
 
 // Server is the gateway.
@@ -217,9 +223,15 @@ type routeKey struct{}
 // that proves the provider did no work can be refunded.
 type tokenKey struct{}
 
+// budgetKey carries the aggregate reservation to the transport error hook.
+type budgetKey struct{}
+
 // chosen is what the handler worked out and the hooks need.
 type chosen struct {
 	route Route
+	model string
+
+	maxOutputTokens int
 
 	// path is where the request should go, which differs from where it
 	// arrived when the provider speaks another API.
@@ -242,6 +254,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Spent == nil {
 		return nil, errors.New("gateway: a RedemptionStore is required; without one every token can be spent forever")
+	}
+	if cfg.Budget == nil {
+		return nil, errors.New("gateway: a Budget is required; without one aggregate provider spend is unbounded")
 	}
 	if cfg.Routes == nil {
 		if err := cfg.Credential.valid(); err != nil {
@@ -421,10 +436,36 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reserve aggregate provider capacity before spending the token. A full or
+	// unavailable budget is an operator-side refusal and must not take payment.
+	budgetReservation, err := s.cfg.Budget.Reserve(r.Context(), BudgetRequest{
+		Model: pick.model, MaxOutputTokens: pick.maxOutputTokens,
+	})
+	if err != nil {
+		var limitErr *BudgetLimitError
+		if errors.As(err, &limitErr) {
+			s.metrics.BudgetFull.Add(1)
+			retry := time.Until(limitErr.Reset)
+			if retry < time.Second {
+				retry = time.Second
+			}
+			w.Header().Set("Retry-After", strconv.FormatInt(int64(retry.Round(time.Second)/time.Second), 10))
+			s.refuseToken(w, http.StatusTooManyRequests, "gateway_budget_exhausted", TokenOutcomeRejected,
+				"The gateway has reached its aggregate provider budget. No token was spent; retry after the advertised interval.")
+			return
+		}
+		s.metrics.BudgetErr.Add(1)
+		s.log.Error("aggregate budget reservation failed", "error", err)
+		s.refuseToken(w, http.StatusServiceUnavailable, "gateway_budget_unavailable", TokenOutcomeRejected,
+			"The gateway could not safely reserve provider capacity. No token was spent.")
+		return
+	}
+
 	// Spend before forwarding, never after. Marking it afterwards would leave
 	// a window in which the same token, sent concurrently, buys several
 	// requests -- and that window is exactly what an attacker would aim for.
 	if err := s.cfg.Spent.Spend(tok); err != nil {
+		s.releaseBudget(budgetReservation, "token reservation failed")
 		if errors.Is(err, mint.ErrAlreadySpent) {
 			s.metrics.Replayed.Add(1)
 			s.refuseToken(w, http.StatusConflict, "token_spent", TokenOutcomeInvalid,
@@ -440,6 +481,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = requestBody
 	r.ContentLength = int64(requestBody.size)
 	r = r.WithContext(context.WithValue(r.Context(), tokenKey{}, tok))
+	r = r.WithContext(context.WithValue(r.Context(), budgetKey{}, budgetReservation))
 	if s.cfg.Routes != nil {
 		r = r.WithContext(context.WithValue(r.Context(), routeKey{}, pick))
 	}
@@ -640,7 +682,7 @@ func (s *Server) prepareRequest(r *http.Request) (chosen, *body, *policyError) {
 		return reject(http.StatusBadRequest, "bad_json", "The request body could not be normalized safely.")
 	}
 
-	pick := chosen{path: "/v1/messages"}
+	pick := chosen{path: "/v1/messages", model: model, maxOutputTokens: maxTokens}
 	if s.cfg.Routes != nil {
 		pick.route, _ = s.cfg.Routes.Lookup(model)
 		// Clients speak the Messages API. A provider that speaks OpenAI's
@@ -960,6 +1002,9 @@ func (s *Server) handleError(w http.ResponseWriter, r *http.Request, err error) 
 	s.log.Error("upstream request failed", "path", r.URL.Path, "error", err)
 
 	if neverDispatched(err) {
+		if reservation, ok := r.Context().Value(budgetKey{}).(BudgetReservation); ok {
+			s.releaseBudget(reservation, "provider was never reached")
+		}
 		if tok, ok := r.Context().Value(tokenKey{}).(*mint.Token); ok {
 			if refundErr := s.cfg.Spent.Refund(tok); refundErr != nil {
 				// A refund that did not survive is not a refund. Say spent, so
@@ -983,6 +1028,16 @@ func (s *Server) handleError(w http.ResponseWriter, r *http.Request, err error) 
 
 	s.refuseToken(w, http.StatusBadGateway, "upstream_error", TokenOutcomeSpent,
 		"The provider connection failed after dispatch. Your token remains spent because the gateway cannot prove the provider did no work.")
+}
+
+func (s *Server) releaseBudget(reservation BudgetReservation, reason string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := reservation.Release(ctx); err != nil {
+		s.metrics.BudgetErr.Add(1)
+		s.log.Error("aggregate budget release failed; capacity remains conservatively charged",
+			"reason", reason, "error", err)
+	}
 }
 
 // neverDispatched reports whether err proves no part of the request reached

@@ -96,6 +96,7 @@ func newRoutedHarness(t *testing.T) *routedHarness {
 		Routes:          routes,
 		MintKeys:        map[string]*rsa.PublicKey{m.KeyID(): m.PublicKey()},
 		Spent:           h.spent,
+		Budget:          UnlimitedBudget{},
 		UpstreamRootCAs: roots,
 		Logger:          quiet(),
 	})
@@ -418,7 +419,7 @@ func TestTheBodySurvivesRouting(t *testing.T) {
 	gw, err := New(Config{
 		Addr: "127.0.0.1:0", Routes: routes,
 		MintKeys: map[string]*rsa.PublicKey{m.KeyID(): m.PublicKey()},
-		Spent:    mint.NewSpentSet(), UpstreamRootCAs: roots, Logger: quiet(),
+		Spent:    mint.NewSpentSet(), Budget: UnlimitedBudget{}, UpstreamRootCAs: roots, Logger: quiet(),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

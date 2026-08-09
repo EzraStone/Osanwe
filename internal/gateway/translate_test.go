@@ -83,7 +83,7 @@ func translatingGateway(t *testing.T) (*httptest.Server, *mint.Mint) {
 	gw, err := New(Config{
 		Addr: "127.0.0.1:0", Routes: routes,
 		MintKeys: map[string]*rsa.PublicKey{m.KeyID(): m.PublicKey()},
-		Spent:    mint.NewSpentSet(), UpstreamRootCAs: roots, Logger: quiet(),
+		Spent:    mint.NewSpentSet(), Budget: UnlimitedBudget{}, UpstreamRootCAs: roots, Logger: quiet(),
 	})
 	if err != nil {
 		t.Fatalf("gateway.New: %v", err)
