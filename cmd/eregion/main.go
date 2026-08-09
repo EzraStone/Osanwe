@@ -9,9 +9,8 @@
 // because the link is hard to compute, but because the blinding means the
 // information was never there.
 //
-// Payment is deliberately not built in. -open issues to anyone who asks, which
-// is right for a demo and wrong for anything else; a real deployment
-// implements mint.Authorizer against whatever rail it sells through.
+// A production mint verifies one settled BTCPay Server invoice per token.
+// -open remains for demos and is deliberately incompatible with BTCPay mode.
 package main
 
 import (
@@ -43,12 +42,20 @@ func run() error {
 	publish := fs.String("publish", "", "also write the public key to this path, for gateway operators")
 	bits := fs.Int("bits", mint.MinKeyBits, "key size when generating")
 	open := fs.Bool("open", false, "issue a token to anyone who asks, with no payment. For demos only: an open mint prints money")
+	btcpayEndpoint := fs.String("btcpay", "", "base URL of a self-hosted BTCPay Server Greenfield API")
+	btcpayStore := fs.String("btcpay-store", "", "BTCPay store ID whose settled invoices buy tokens")
+	btcpayAmount := fs.String("btcpay-amount", "", "exact BTCPay invoice amount that buys one token")
+	btcpayCurrency := fs.String("btcpay-currency", "", "BTCPay invoice currency that buys one token, such as USD")
+	receiptsDB := fs.String("receipts-db", "", "durable database of consumed BTCPay invoice receipts")
 	printKey := fs.Bool("print-key-id", false, "print the key id and exit")
 	verbose := fs.Bool("v", false, "verbose logging")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "eregion — the Osanwë mint.\n\n")
-		fmt.Fprintf(os.Stderr, "Usage:\n  eregion -key mint.key -publish mint.pub -open\n\nFlags:\n")
+		fmt.Fprintf(os.Stderr, "Usage:\n"+
+			"  export OSANWE_BTCPAY_API_KEY=...\n"+
+			"  eregion -key mint.key -publish mint.pub -btcpay https://pay.example -btcpay-store STORE -btcpay-amount 1.00 -btcpay-currency USD -receipts-db receipts.db\n\n"+
+			"For a local demo only:\n  eregion -key mint.key -publish mint.pub -open\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -79,14 +86,49 @@ func run() error {
 
 	// Payment is an explicit choice, never a default. A mint that quietly
 	// issued to anyone would be indistinguishable from a working one right up
-	// until the bill arrived.
-	if !*open {
-		return errors.New("eregion: no payment rail is configured. " +
-			"Implement mint.Authorizer for whatever you sell through, or pass -open to issue free tokens for a demo")
+	// until the provider bill arrived.
+	var authorizer mint.Authorizer
+	var receipts *mint.FileReceiptStore
+	switch {
+	case *open && *btcpayEndpoint != "":
+		return errors.New("eregion: -open and -btcpay are mutually exclusive")
+	case *open:
+		log.Warn("issuing tokens to anyone who asks; there is no payment behind this mint")
+		authorizer = mint.OpenAuthorizer{}
+	case *btcpayEndpoint != "":
+		apiKey := os.Getenv("OSANWE_BTCPAY_API_KEY")
+		if apiKey == "" {
+			return errors.New("eregion: OSANWE_BTCPAY_API_KEY is required in BTCPay mode")
+		}
+		if *receiptsDB == "" {
+			return errors.New("eregion: -receipts-db is required in BTCPay mode; invoice entitlements must remain one-shot across restarts")
+		}
+		var err error
+		receipts, err = mint.OpenFileReceiptStore(*receiptsDB)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := receipts.Close(); err != nil {
+				log.Error("closing used-receipt database", "error", err)
+			}
+		}()
+		authorizer, err = mint.NewBTCPayAuthorizer(mint.BTCPayConfig{
+			Endpoint: *btcpayEndpoint, StoreID: *btcpayStore, APIKey: apiKey,
+			Amount: *btcpayAmount, Currency: *btcpayCurrency, Receipts: receipts,
+		})
+		if err != nil {
+			return err
+		}
+		log.Info("authorizing one token per settled BTCPay invoice",
+			"endpoint", *btcpayEndpoint, "store", *btcpayStore,
+			"amount", *btcpayAmount, "currency", *btcpayCurrency,
+			"receipts_db", *receiptsDB)
+	default:
+		return errors.New("eregion: no payment rail is configured; pass -btcpay for production or -open only for a local demo")
 	}
-	log.Warn("issuing tokens to anyone who asks; there is no payment behind this mint")
 
-	m, err := mint.New(priv, mint.OpenAuthorizer{})
+	m, err := mint.New(priv, authorizer)
 	if err != nil {
 		return err
 	}
