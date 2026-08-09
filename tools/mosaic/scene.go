@@ -51,7 +51,6 @@ var (
 	stoneLit  = rgb{0.88, 0.82, 0.70}
 	stoneShad = rgb{0.31, 0.28, 0.25}
 	cypress   = rgb{0.07, 0.09, 0.08}
-	hullDark  = rgb{0.06, 0.06, 0.07}
 )
 
 // hash and value noise. A tiny deterministic generator keeps the image
@@ -98,9 +97,6 @@ func sample(u, v float64) rgb {
 	if col, ok := cypresses(u, v); ok {
 		return col
 	}
-	if col, ok := ships(u, v); ok {
-		return col
-	}
 	if v < horizonY {
 		return sky(u, v)
 	}
@@ -116,6 +112,14 @@ func sky(u, v float64) rgb {
 	// a bright dot in the mosaic and nothing else.
 	d := math.Hypot((u-sunX)*1.0, (v-sunY)*2.2)
 	c = mix(c, sunCore, math.Pow(smoothstep(0.22, 0.0, d), 1.5)*0.9)
+
+	// A far shore under the horizon, low and soft, so the water is enclosed and
+	// the horizon is a place rather than a ruled line.
+	shore := horizonY - 0.026*math.Exp(-math.Pow((u-0.13)/0.26, 2)) -
+		0.014*math.Exp(-math.Pow((u-0.90)/0.20, 2))
+	if v > shore {
+		c = mix(c, hillNear, smoothstep(shore, shore+0.012, v)*0.88)
+	}
 
 	// Cloud bands. Stretched hard in x so they read as horizontal masses; round
 	// clouds break into speckle once they are characters.
@@ -145,13 +149,6 @@ func ground(u, v float64) rgb {
 	// Swell. Long, flat, and only where it will not fight the glitter.
 	swell := math.Sin((v-horizonY)*140+math.Sin(u*7)*1.4) * 0.5
 	c = mix(c, seaNear, clamp(swell, 0, 1)*0.10*depth)
-
-	// Far headland on the left, and a lower one on the right, so the water is
-	// enclosed rather than an open edge.
-	if hy := horizonY - 0.055*math.Exp(-math.Pow((u-0.10)/0.20, 2)) -
-		0.022*math.Exp(-math.Pow((u-0.93)/0.16, 2)); v < horizonY && v > hy {
-		return mix(hillFar, hillNear, smoothstep(hy, horizonY, v))
-	}
 
 	if col, ok := breakwater(u, v, depth); ok {
 		return col
@@ -188,49 +185,28 @@ func breakwater(u, v, depth float64) (rgb, bool) {
 	return c, true
 }
 
-// ships are silhouettes. Two of them, small, moored against the mole. They give
-// the harbour a purpose and the composition its darkest value.
-func ships(u, v float64) (rgb, bool) {
-	type ship struct{ x, y, w, h, mast float64 }
-	for _, s := range []ship{
-		{0.470, 0.612, 0.040, 0.012, 0.070},
-		{0.388, 0.640, 0.055, 0.017, 0.098},
-	} {
-		// Hull: a shallow lens, wider at the top than the keel.
-		dx := (u - s.x) / s.w
-		if math.Abs(dx) <= 1 {
-			hull := s.y + s.h*(1-dx*dx)
-			if v >= s.y && v <= hull {
-				return hullDark, true
-			}
-			// Mast and yard, thin verticals that read as one dark stroke.
-			if math.Abs(u-s.x) < 0.0035 && v < s.y && v > s.y-s.mast {
-				return hullDark, true
-			}
-			if math.Abs(v-(s.y-s.mast*0.62)) < 0.0035 && math.Abs(u-s.x) < s.w*0.42 {
-				return hullDark, true
-			}
-		}
-	}
-	return rgb{}, false
-}
+// The harbour has no boats in it, and that is a decision rather than an
+// omission. Two hulls in the open water on the left drew the eye straight off
+// the one line the picture is built around, and a silhouette small enough not
+// to compete was too small to read as a vessel at all. What is left is the
+// route, the light it runs toward, and the trees that stop the frame.
 
 // cypresses are the darkest verticals and the only tall shapes. They frame the
 // left edge and stop the eye leaving the picture.
 func cypresses(u, v float64) (rgb, bool) {
 	type tree struct{ x, base, h, w float64 }
 	for _, t := range []tree{
-		{0.052, 0.995, 0.62, 0.040},
-		{0.118, 0.965, 0.44, 0.028},
-		{0.958, 0.930, 0.36, 0.024},
+		{0.043, 1.02, 0.60, 0.026},
+		{0.101, 0.99, 0.42, 0.018},
+		{0.971, 0.96, 0.34, 0.016},
 	} {
 		if v > t.base || v < t.base-t.h {
 			continue
 		}
 		// A flame shape: widest a third of the way up, tapering to a point.
 		p := (t.base - v) / t.h
-		w := t.w * math.Sin(math.Pow(clamp(p, 0, 1), 0.42)*math.Pi) * 1.2
-		wob := (fbm(v*40, t.x*100, 2, 41) - 0.5) * t.w * 0.5
+		w := t.w * math.Pow(math.Sin(math.Pow(clamp(p, 0, 1), 0.38)*math.Pi), 1.35) * 1.15
+		wob := (fbm(v*14, t.x*100, 2, 41) - 0.5) * t.w * 0.14
 		if math.Abs(u-t.x-wob) < w {
 			// Barely modelled. A silhouette that stays a silhouette.
 			shade := 0.75 + 0.25*fbm(u*70, v*70, 2, 53)

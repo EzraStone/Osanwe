@@ -54,6 +54,10 @@ func run() error {
 	imagePath := flag.String("image", "", "PNG or JPEG to render (default: the built-in harbour)")
 	gain := flag.Float64("contrast", 1.55, "tonal contrast before quantising; 1 leaves the source alone")
 	background := flag.String("bg", "#faf8f3", "page colour behind the characters")
+	mode := flag.String("mode", "dither", "dither (paletted PNG) or chars (character mosaic, SVG)")
+	paletteSpec := flag.String("palette", "osanwe", "palette name (osanwe, three, mono) or comma-separated hex colours")
+	width := flag.Int("width", 2000, "output width in pixels, dither mode only")
+	spread := flag.Float64("spread", 0.92, "how much quantisation error is diffused; below 1 tightens the texture")
 	flag.Parse()
 
 	if *cols < 40 || *cols > 2000 {
@@ -65,14 +69,10 @@ func run() error {
 	const cellAspect = 1.85
 	rows := int(math.Round(float64(*cols) / *aspect * (1 / cellAspect) * 1.0))
 
-	pool, source, err := glyphBytes(*bytesPath)
-	if err != nil {
-		return err
-	}
-
-	// A photograph, when there is one, otherwise the drawn scene. The renderer
-	// does not care which: both are just a function from (u,v) to a colour.
+	// A photograph, when there is one, otherwise the drawn scene. Neither
+	// renderer cares which: both are just a function from (u,v) to a colour.
 	scene := sample
+	var err error
 	if *imagePath != "" {
 		scene, err = loadImage(*imagePath)
 		if err != nil {
@@ -82,7 +82,29 @@ func run() error {
 
 	out := bufio.NewWriterSize(os.Stdout, 1<<20)
 	defer out.Flush()
-	return render(out, scene, *cols, rows, *cellW, cellAspect, *gain, *background, pool, source)
+
+	switch *mode {
+	case "dither":
+		palette, err := parsePalette(*paletteSpec)
+		if err != nil {
+			return err
+		}
+		if *width < 64 || *width > 8000 {
+			return fmt.Errorf("-width %d is outside the useful range 64..8000", *width)
+		}
+		height := int(math.Round(float64(*width) / *aspect))
+		return dither(out, scene, *width, height, palette, *gain, *spread)
+
+	case "chars":
+		pool, source, err := glyphBytes(*bytesPath)
+		if err != nil {
+			return err
+		}
+		return render(out, scene, *cols, rows, *cellW, cellAspect, *gain, *background, pool, source)
+
+	default:
+		return fmt.Errorf("-mode %q is not one of: dither, chars", *mode)
+	}
 }
 
 // ramp orders characters by how much ink they put on the page. Choosing by
