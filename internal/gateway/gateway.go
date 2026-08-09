@@ -439,7 +439,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Reserve aggregate provider capacity before spending the token. A full or
 	// unavailable budget is an operator-side refusal and must not take payment.
 	budgetReservation, err := s.cfg.Budget.Reserve(r.Context(), BudgetRequest{
-		Model: pick.model, MaxOutputTokens: pick.maxOutputTokens,
+		Model: pick.model, InputBytes: requestBody.size, MaxOutputTokens: pick.maxOutputTokens,
 	})
 	if err != nil {
 		var limitErr *BudgetLimitError

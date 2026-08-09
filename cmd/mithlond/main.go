@@ -63,6 +63,7 @@ func run() error {
 	budgetDB := fs.String("budget-db", "", "local durable aggregate-budget database (required; put it on a local filesystem, not NFS)")
 	budgetWindow := fs.Duration("budget-window", gateway.DefaultBudgetWindow, "fixed window for aggregate provider limits")
 	budgetRequests := fs.Uint64("budget-requests", gateway.DefaultBudgetRequests, "maximum provider requests in one budget window")
+	budgetInputBytes := fs.Uint64("budget-input-bytes", gateway.DefaultBudgetInputBytes, "maximum normalized input bytes reserved in one budget window")
 	budgetOutputTokens := fs.Uint64("budget-output-tokens", gateway.DefaultBudgetOutputTokens, "maximum requested output tokens reserved in one budget window")
 	hosts := fs.String("hosts", "", "comma-separated names or IPs for a generated certificate")
 	plaintext := fs.Bool("insecure-plaintext", false, "serve without TLS. Only correct behind a TLS terminator you control; otherwise the relay in front reads every prompt")
@@ -178,7 +179,7 @@ func run() error {
 	}()
 	budget, err := gateway.OpenFileBudget(gateway.FileBudgetConfig{
 		Path: *budgetDB, Window: *budgetWindow,
-		MaxRequests: *budgetRequests, MaxOutputTokens: *budgetOutputTokens,
+		MaxRequests: *budgetRequests, MaxInputBytes: *budgetInputBytes, MaxOutputTokens: *budgetOutputTokens,
 	})
 	if err != nil {
 		return err
@@ -213,6 +214,7 @@ func run() error {
 	log.Info("mithlond listening", "addr", srv.Addr().String(), "upstream", *upstream,
 		"mint_keys", len(keys), "spent_db", *spentDB, "budget_db", *budgetDB,
 		"budget_window", budgetWindow.String(), "budget_requests", *budgetRequests,
+		"budget_input_bytes", *budgetInputBytes,
 		"budget_output_tokens", *budgetOutputTokens)
 
 	errCh := make(chan error, 1)

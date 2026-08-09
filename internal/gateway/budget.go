@@ -19,10 +19,11 @@ var ErrBudgetExhausted = errors.New("gateway: aggregate budget exhausted")
 const (
 	DefaultBudgetWindow       = time.Hour
 	DefaultBudgetRequests     = uint64(100)
+	DefaultBudgetInputBytes   = uint64(10 << 20)
 	DefaultBudgetOutputTokens = uint64(100_000)
 )
 
-var budgetBucket = []byte("aggregate-budget-v1")
+var budgetBucket = []byte("aggregate-budget-v2")
 var budgetCurrentKey = []byte("current")
 
 // BudgetRequest is the maximum provider work a request is asking the gateway
@@ -30,6 +31,7 @@ var budgetCurrentKey = []byte("current")
 // response, so concurrent requests cannot collectively cross the hard ceiling.
 type BudgetRequest struct {
 	Model           string
+	InputBytes      int
 	MaxOutputTokens int
 }
 
@@ -73,6 +75,7 @@ type FileBudgetConfig struct {
 	Path            string
 	Window          time.Duration
 	MaxRequests     uint64
+	MaxInputBytes   uint64
 	MaxOutputTokens uint64
 
 	// Now is overridable for tests.
@@ -86,6 +89,7 @@ type FileBudget struct {
 	db              *bolt.DB
 	window          time.Duration
 	maxRequests     uint64
+	maxInputBytes   uint64
 	maxOutputTokens uint64
 	now             func() time.Time
 }
@@ -96,8 +100,10 @@ type BudgetUsage struct {
 	WindowStart     time.Time
 	WindowEnd       time.Time
 	Requests        uint64
+	InputBytes      uint64
 	OutputTokens    uint64
 	MaxRequests     uint64
+	MaxInputBytes   uint64
 	MaxOutputTokens uint64
 }
 
@@ -115,6 +121,9 @@ func OpenFileBudget(cfg FileBudgetConfig) (*FileBudget, error) {
 	}
 	if cfg.MaxRequests == 0 {
 		cfg.MaxRequests = DefaultBudgetRequests
+	}
+	if cfg.MaxInputBytes == 0 {
+		cfg.MaxInputBytes = DefaultBudgetInputBytes
 	}
 	if cfg.MaxOutputTokens == 0 {
 		cfg.MaxOutputTokens = DefaultBudgetOutputTokens
@@ -142,7 +151,7 @@ func OpenFileBudget(cfg FileBudgetConfig) (*FileBudget, error) {
 		return nil, fmt.Errorf("gateway: opening budget database %s: %w", absPath, err)
 	}
 	b := &FileBudget{
-		db: db, window: cfg.Window, maxRequests: cfg.MaxRequests,
+		db: db, window: cfg.Window, maxRequests: cfg.MaxRequests, maxInputBytes: cfg.MaxInputBytes,
 		maxOutputTokens: cfg.MaxOutputTokens, now: cfg.Now,
 	}
 	if err := db.Update(func(tx *bolt.Tx) error {
@@ -156,14 +165,15 @@ func OpenFileBudget(cfg FileBudgetConfig) (*FileBudget, error) {
 }
 
 func (b *FileBudget) Reserve(ctx context.Context, req BudgetRequest) (BudgetReservation, error) {
-	if req.MaxOutputTokens < 1 {
-		return nil, errors.New("gateway: budget reservation requires positive max output tokens")
+	if req.InputBytes < 1 || req.MaxOutputTokens < 1 {
+		return nil, errors.New("gateway: budget reservation requires positive input bytes and max output tokens")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	now := b.now()
 	start, end := b.bounds(now)
+	input := uint64(req.InputBytes)
 	tokens := uint64(req.MaxOutputTokens)
 
 	err := b.db.Update(func(tx *bolt.Tx) error {
@@ -171,22 +181,23 @@ func (b *FileBudget) Reserve(ctx context.Context, req BudgetRequest) (BudgetRese
 			return err
 		}
 		bucket := tx.Bucket(budgetBucket)
-		windowStart, requests, outputTokens, err := decodeBudget(bucket.Get(budgetCurrentKey))
+		windowStart, requests, inputBytes, outputTokens, err := decodeBudget(bucket.Get(budgetCurrentKey))
 		if err != nil {
 			return err
 		}
 		if windowStart != start.Unix() {
-			requests, outputTokens = 0, 0
+			requests, inputBytes, outputTokens = 0, 0, 0
 		}
-		if requests >= b.maxRequests || tokens > b.maxOutputTokens || outputTokens > b.maxOutputTokens-tokens {
+		if requests >= b.maxRequests || input > b.maxInputBytes || inputBytes > b.maxInputBytes-input ||
+			tokens > b.maxOutputTokens || outputTokens > b.maxOutputTokens-tokens {
 			return &BudgetLimitError{Reset: end}
 		}
-		return bucket.Put(budgetCurrentKey, encodeBudget(start.Unix(), requests+1, outputTokens+tokens))
+		return bucket.Put(budgetCurrentKey, encodeBudget(start.Unix(), requests+1, inputBytes+input, outputTokens+tokens))
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &fileBudgetReservation{budget: b, windowStart: start.Unix(), outputTokens: tokens}, nil
+	return &fileBudgetReservation{budget: b, windowStart: start.Unix(), inputBytes: input, outputTokens: tokens}, nil
 }
 
 func (b *FileBudget) Usage() (BudgetUsage, error) {
@@ -194,15 +205,15 @@ func (b *FileBudget) Usage() (BudgetUsage, error) {
 	start, end := b.bounds(now)
 	usage := BudgetUsage{
 		WindowStart: start, WindowEnd: end,
-		MaxRequests: b.maxRequests, MaxOutputTokens: b.maxOutputTokens,
+		MaxRequests: b.maxRequests, MaxInputBytes: b.maxInputBytes, MaxOutputTokens: b.maxOutputTokens,
 	}
 	err := b.db.View(func(tx *bolt.Tx) error {
-		windowStart, requests, outputTokens, err := decodeBudget(tx.Bucket(budgetBucket).Get(budgetCurrentKey))
+		windowStart, requests, inputBytes, outputTokens, err := decodeBudget(tx.Bucket(budgetBucket).Get(budgetCurrentKey))
 		if err != nil {
 			return err
 		}
 		if windowStart == start.Unix() {
-			usage.Requests, usage.OutputTokens = requests, outputTokens
+			usage.Requests, usage.InputBytes, usage.OutputTokens = requests, inputBytes, outputTokens
 		}
 		return nil
 	})
@@ -226,6 +237,7 @@ type fileBudgetReservation struct {
 	mu           sync.Mutex
 	budget       *FileBudget
 	windowStart  int64
+	inputBytes   uint64
 	outputTokens uint64
 	released     bool
 }
@@ -240,18 +252,18 @@ func (r *fileBudgetReservation) Release(ctx context.Context) error {
 		return err
 	}
 	err := r.budget.db.Update(func(tx *bolt.Tx) error {
-		windowStart, requests, outputTokens, err := decodeBudget(tx.Bucket(budgetBucket).Get(budgetCurrentKey))
+		windowStart, requests, inputBytes, outputTokens, err := decodeBudget(tx.Bucket(budgetBucket).Get(budgetCurrentKey))
 		if err != nil {
 			return err
 		}
 		if windowStart != r.windowStart {
 			return nil
 		}
-		if requests == 0 || outputTokens < r.outputTokens {
+		if requests == 0 || inputBytes < r.inputBytes || outputTokens < r.outputTokens {
 			return errors.New("gateway: budget database contains counters smaller than the reservation being released")
 		}
 		return tx.Bucket(budgetBucket).Put(budgetCurrentKey,
-			encodeBudget(windowStart, requests-1, outputTokens-r.outputTokens))
+			encodeBudget(windowStart, requests-1, inputBytes-r.inputBytes, outputTokens-r.outputTokens))
 	})
 	if err == nil {
 		r.released = true
@@ -259,23 +271,25 @@ func (r *fileBudgetReservation) Release(ctx context.Context) error {
 	return err
 }
 
-func encodeBudget(windowStart int64, requests, outputTokens uint64) []byte {
-	data := make([]byte, 24)
+func encodeBudget(windowStart int64, requests, inputBytes, outputTokens uint64) []byte {
+	data := make([]byte, 32)
 	binary.BigEndian.PutUint64(data[0:8], uint64(windowStart))
 	binary.BigEndian.PutUint64(data[8:16], requests)
-	binary.BigEndian.PutUint64(data[16:24], outputTokens)
+	binary.BigEndian.PutUint64(data[16:24], inputBytes)
+	binary.BigEndian.PutUint64(data[24:32], outputTokens)
 	return data
 }
 
-func decodeBudget(data []byte) (int64, uint64, uint64, error) {
+func decodeBudget(data []byte) (int64, uint64, uint64, uint64, error) {
 	if len(data) == 0 {
-		return 0, 0, 0, nil
+		return 0, 0, 0, 0, nil
 	}
-	if len(data) != 24 {
-		return 0, 0, 0, errors.New("gateway: budget database contains a corrupt counter record")
+	if len(data) != 32 {
+		return 0, 0, 0, 0, errors.New("gateway: budget database contains a corrupt counter record")
 	}
 	return int64(binary.BigEndian.Uint64(data[0:8])),
-		binary.BigEndian.Uint64(data[8:16]), binary.BigEndian.Uint64(data[16:24]), nil
+		binary.BigEndian.Uint64(data[8:16]), binary.BigEndian.Uint64(data[16:24]),
+		binary.BigEndian.Uint64(data[24:32]), nil
 }
 
 var _ Budget = UnlimitedBudget{}
