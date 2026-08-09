@@ -46,10 +46,14 @@ are rejected recursively, not just at the top level.
 
 Bearer and gateway account for the token explicitly with
 `X-Osanwe-Token-Outcome`. A policy refusal returns the token to the local
-wallet. Once dispatch may have begun, the outcome is `spent` even if the
-provider returns 5xx or the connection resets: HTTP cannot prove that the
-provider did not already process and bill the request, so automatic refunds
-there would create free retries. Bearer trusts this header only over its
+wallet, and so does a failure to establish a connection at all — a refused
+dial or a DNS failure has no reading under which the provider did work, and
+charging for the operator's outage would be charging for nothing. Once
+dispatch may have begun, the outcome is `spent` even if the provider returns
+5xx or the connection resets: HTTP cannot prove that the provider did not
+already process and bill the request, so automatic refunds there would create
+free retries. If a refund cannot be durably recorded the outcome is `spent`
+rather than a token the gateway would refuse later. Bearer trusts this header only over its
 TLS-authenticated configured gateway connection; provider-supplied values are
 removed by the gateway. This is CA/hostname authentication, not a separate
 SPKI-pin feature.

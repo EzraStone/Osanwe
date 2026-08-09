@@ -303,8 +303,18 @@ is anything the user is asked to notice.
 **A failed refresh keeps the relays already held.** Going relay-less because an
 authority was briefly unreachable would turn a directory outage into a client
 outage, which is backwards: a consensus is signed, so it stays trustworthy
-while you hold it. It expires eventually, and that is the limit on how long a
-client can coast.
+while you hold it.
+
+**But not forever.** Coasting is bounded by `MaxStale`, a day past the
+consensus's own expiry, after which the client refuses to dial rather than
+keep using the list. The two obvious policies are both wrong. Refusing at the
+instant of expiry makes every brief authority outage an outage for every
+client. Holding indefinitely is worse in a quieter way: a client that
+permanently loses the directory keeps reaching for relays that may have been
+withdrawn, rotated their keys, or been removed for misbehaving, and nothing
+ever tells it. A client silently using a year-old relay list has the security
+properties of that year-old list. The ceiling puts a limit on how far behind
+the network a client can drift without noticing.
 
 **Selection is sticky, not round-robin.** After the initial random pick the
 client stays on that relay — Tor calls it a guard — and only moves when it

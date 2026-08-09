@@ -118,11 +118,20 @@ curl -sI http://127.0.0.1:8080/_osanwe/status | grep -i access-control
 go test ./...              # everything, including the checks above
 ./demo/run.sh              # the relay carries what it cannot read
 ./demo/tokens.sh           # buy a token, spend it, fail to spend it twice
+./demo/harden.sh           # a token buys one request and nothing else
 ```
 
-Both demos run in CI. They are the only thing that exercises the daemons as a
+All three run in CI. They are the only thing that exercises the daemons as a
 person runs them — real processes, real sockets — and the unit tests have
 stayed green through several bugs that only those caught.
+
+`harden.sh` needs a running client, so start `./demo/ui.sh` first. It drives
+the endpoints a token must not reach and the request shapes it must not buy,
+then checks the wallet: the whole run must cost exactly one token. That last
+number is the point. Status codes alone cannot tell a refusal that costs
+nothing from a refusal that happens after the token is taken, and only the
+first is worth anything — the second still lets a malformed request drain a
+wallet.
 
 ## What is deliberately not testable yet
 
