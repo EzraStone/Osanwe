@@ -244,7 +244,7 @@ echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh
 export PATH=$PATH:/usr/local/go/bin
 
 sudo useradd --system --home /var/lib/osanwe --create-home osanwe
-git clone https://github.com/EzraStone/Osanw- /tmp/osanwe && cd /tmp/osanwe
+git clone https://github.com/EzraStone/Osanwe /tmp/osanwe && cd /tmp/osanwe
 go build -o /usr/local/bin/mithlond ./cmd/mithlond
 go build -o /usr/local/bin/eregion  ./cmd/eregion
 ```
@@ -443,7 +443,7 @@ They need a machine with a public address and about 200 MB of memory. Send them
 this:
 
 ```bash
-git clone https://github.com/EzraStone/Osanw- && cd Osanw-
+git clone https://github.com/EzraStone/Osanwe && cd Osanwe
 go build -o ranger ./cmd/ranger
 
 SECRET=$(./ranger -gen-secret)          # send this back

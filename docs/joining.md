@@ -42,8 +42,8 @@ current terminal, and the next one says `go: command not found`.
 ## 2. Get the code
 
 ```bash
-git clone https://github.com/EzraStone/Osanw-
-cd Osanw-
+git clone https://github.com/EzraStone/Osanwe
+cd Osanwe
 ```
 
 ## 3. Save the gateway's certificate
@@ -90,7 +90,7 @@ ssh -i ~/.ssh/osanwe -N \
 In a second terminal:
 
 ```bash
-cd Osanw-
+cd Osanwe
 ./demo/client.sh THE_MINT_KEY_ID
 ```
 
