@@ -160,7 +160,10 @@ func TestBTCPayAuthorizerRejectsUnsafeConfiguration(t *testing.T) {
 		{"unsafe API key", func(c *BTCPayConfig) { c.APIKey = "key\r\nX-Leak: yes" }},
 		{"missing price", func(c *BTCPayConfig) { c.Amount = "" }},
 		{"zero price", func(c *BTCPayConfig) { c.Amount = "0" }},
+		{"fraction syntax", func(c *BTCPayConfig) { c.Amount = "1/2" }},
+		{"whitespace-padded price", func(c *BTCPayConfig) { c.Amount = " 12.50" }},
 		{"missing currency", func(c *BTCPayConfig) { c.Currency = "" }},
+		{"unsafe currency", func(c *BTCPayConfig) { c.Currency = "US D" }},
 		{"missing receipt store", func(c *BTCPayConfig) { c.Receipts = nil }},
 	}
 	for _, tc := range tests {

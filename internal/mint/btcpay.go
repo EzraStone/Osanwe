@@ -67,11 +67,11 @@ func NewBTCPayAuthorizer(cfg BTCPayConfig) (*BTCPayAuthorizer, error) {
 		return nil, errors.New("mint: a durable ReceiptStore is required for BTCPay; otherwise one invoice could issue unlimited tokens")
 	}
 	currency := strings.ToUpper(strings.TrimSpace(cfg.Currency))
-	if currency == "" || len(currency) > 12 {
-		return nil, errors.New("mint: BTCPay token currency is required")
+	if !safeCurrency(currency) {
+		return nil, errors.New("mint: BTCPay token currency must contain 2-12 ASCII letters or digits")
 	}
-	amount, ok := new(big.Rat).SetString(strings.TrimSpace(cfg.Amount))
-	if !ok || amount.Sign() <= 0 {
+	amount, ok := exactPositiveDecimal(cfg.Amount)
+	if !ok {
 		return nil, errors.New("mint: BTCPay token amount must be a positive exact decimal")
 	}
 
@@ -137,6 +137,9 @@ func (a *BTCPayAuthorizer) Authorize(ctx context.Context, receipt []byte) error 
 	if err := dec.Decode(&invoice); err != nil {
 		return fmt.Errorf("decoding BTCPay invoice: %w", err)
 	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return errors.New("BTCPay invoice response contains trailing JSON values")
+	}
 	if invoice.ID != invoiceID {
 		return errors.New("BTCPay returned a different invoice than the one requested")
 	}
@@ -176,6 +179,40 @@ func decodeBTCPayAmount(raw json.RawMessage) (*big.Rat, error) {
 	return amount, nil
 }
 
+func exactPositiveDecimal(value string) (*big.Rat, bool) {
+	if value == "" || strings.TrimSpace(value) != value {
+		return nil, false
+	}
+	digits, dots := 0, 0
+	for _, r := range value {
+		switch {
+		case r >= '0' && r <= '9':
+			digits++
+		case r == '.':
+			dots++
+		default:
+			return nil, false
+		}
+	}
+	if digits == 0 || dots > 1 {
+		return nil, false
+	}
+	amount, ok := new(big.Rat).SetString(value)
+	return amount, ok && amount.Sign() > 0
+}
+
+func safeCurrency(value string) bool {
+	if len(value) < 2 || len(value) > 12 {
+		return false
+	}
+	for _, r := range value {
+		if (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
+}
+
 func safeIdentifier(value string, maximum int) bool {
 	if value == "" || len(value) > maximum || strings.TrimSpace(value) != value {
 		return false
@@ -200,7 +237,8 @@ func safeHeaderFragment(value string) bool {
 }
 
 func loopbackHost(host string) bool {
-	return strings.EqualFold(host, "localhost") || net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()
+	ip := net.ParseIP(host)
+	return strings.EqualFold(host, "localhost") || ip != nil && ip.IsLoopback()
 }
 
 func printableStatus(status string) string {
