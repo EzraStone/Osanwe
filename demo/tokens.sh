@@ -88,8 +88,8 @@ MINT_KEY_ID=$("$WORK/eregion" -key "$WORK/mint.key" -print-key-id)
 good "mint on 127.0.0.1:18445"
 note "key id $MINT_KEY_ID"
 warn "started with -open, so it sells nothing and gives tokens to anyone"
-note "a real mint implements mint.Authorizer against a card, a bank or Monero"
-note "whichever it is, the mint only ever learns one bit: was this paid for"
+note "production mode verifies one settled invoice from a self-hosted BTCPay Server"
+note "the blind signature prevents that invoice from being recognized when its token is spent"
 
 # ── 2. the gateway ────────────────────────────────────────────────────────
 step "2. Starting the gateway"
@@ -270,5 +270,7 @@ echo "    enclave so its operator provably cannot. That does not exist yet, so"
 echo "    running a gateway means asking users to trust whoever runs it."
 echo "  - the local spent-token journal is not a cross-host database. Several"
 echo "    gateway hosts need a shared atomic redemption-store implementation."
-echo "  - the mint sells nothing. Payment is one interface away and unimplemented."
+echo "  - this demo mint sells nothing. Production mode can consume settled BTCPay"
+echo "    invoices, but the buyer-facing checkout that creates and returns them is"
+echo "    separate product work."
 echo
