@@ -264,13 +264,13 @@ else
 fi
 
 echo
-echo "${B}What this demo does not show, because it is not built:${N}"
+echo "${B}What this local demo does not show:${N}"
 echo "  - the gateway reads prompts. The design calls for it to run in an attested"
 echo "    enclave so its operator provably cannot. That does not exist yet, so"
 echo "    running a gateway means asking users to trust whoever runs it."
 echo "  - the local spent-token journal is not a cross-host database. Several"
 echo "    gateway hosts need a shared atomic redemption-store implementation."
-echo "  - this demo mint sells nothing. Production mode can consume settled BTCPay"
-echo "    invoices, but the buyer-facing checkout that creates and returns them is"
-echo "    separate product work."
+echo "  - this demo mint sells nothing. Production mode uses the separate checkout"
+echo "    command to create fixed-price BTCPay invoices, then consumes each settled"
+echo "    invoice ID once. See docs/payments.md; this demo never moves real money."
 echo
