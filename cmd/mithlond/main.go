@@ -65,6 +65,9 @@ func run() error {
 	budgetRequests := fs.Uint64("budget-requests", gateway.DefaultBudgetRequests, "maximum provider requests in one budget window")
 	budgetInputBytes := fs.Uint64("budget-input-bytes", gateway.DefaultBudgetInputBytes, "maximum normalized input bytes reserved in one budget window")
 	budgetOutputTokens := fs.Uint64("budget-output-tokens", gateway.DefaultBudgetOutputTokens, "maximum requested output tokens reserved in one budget window")
+	budgetCostUSD := fs.String("budget-cost-usd", "", "optional conservative provider-cost ceiling per window in USD; requires model prices")
+	inputUSDPerMillion := fs.String("input-usd-per-million", "", "single-upstream input price per million tokens; input bytes are conservatively treated as tokens")
+	outputUSDPerMillion := fs.String("output-usd-per-million", "", "single-upstream output price per million tokens")
 	hosts := fs.String("hosts", "", "comma-separated names or IPs for a generated certificate")
 	plaintext := fs.Bool("insecure-plaintext", false, "serve without TLS. Only correct behind a TLS terminator you control; otherwise the relay in front reads every prompt")
 	verbose := fs.Bool("v", false, "verbose logging")
@@ -86,6 +89,32 @@ func run() error {
 	}
 	if strings.TrimSpace(*budgetDB) == "" {
 		return errors.New("mithlond: -budget-db is required; a pooled provider account must have a durable aggregate spending ceiling")
+	}
+	var maxCostMicros uint64
+	if *budgetCostUSD != "" {
+		var err error
+		maxCostMicros, err = gateway.ParseCurrencyMicros(*budgetCostUSD)
+		if err != nil {
+			return fmt.Errorf("mithlond: invalid -budget-cost-usd: %w", err)
+		}
+	}
+	var cost gateway.CostRates
+	if *routesPath != "" && (*inputUSDPerMillion != "" || *outputUSDPerMillion != "") {
+		return errors.New("mithlond: single-upstream price flags cannot be used with -routes; put prices on each route")
+	}
+	if *routesPath == "" && (*inputUSDPerMillion != "" || *outputUSDPerMillion != "") {
+		if *inputUSDPerMillion == "" || *outputUSDPerMillion == "" {
+			return errors.New("mithlond: -input-usd-per-million and -output-usd-per-million must be set together")
+		}
+		input, err := gateway.ParseCurrencyMicros(*inputUSDPerMillion)
+		if err != nil {
+			return fmt.Errorf("mithlond: invalid -input-usd-per-million: %w", err)
+		}
+		output, err := gateway.ParseCurrencyMicros(*outputUSDPerMillion)
+		if err != nil {
+			return fmt.Errorf("mithlond: invalid -output-usd-per-million: %w", err)
+		}
+		cost = gateway.CostRates{InputMicrosPerMillion: input, OutputMicrosPerMillion: output}
 	}
 
 	level := slog.LevelInfo
@@ -180,6 +209,7 @@ func run() error {
 	budget, err := gateway.OpenFileBudget(gateway.FileBudgetConfig{
 		Path: *budgetDB, Window: *budgetWindow,
 		MaxRequests: *budgetRequests, MaxInputBytes: *budgetInputBytes, MaxOutputTokens: *budgetOutputTokens,
+		MaxCostMicros: maxCostMicros,
 	})
 	if err != nil {
 		return err
@@ -191,18 +221,20 @@ func run() error {
 	}()
 
 	srv, err := gateway.New(gateway.Config{
-		Addr:            *addr,
-		Upstream:        *upstream,
-		MintKeys:        keys,
-		Spent:           spent,
-		Budget:          budget,
-		Models:          commaList(*modelsCSV),
-		MaxRequestBody:  *maxRequestBytes,
-		MaxOutputTokens: *maxOutputTokens,
-		Routes:          routes,
-		Credential:      gateway.Credential{Header: *credHeader, Prefix: *credPrefix, Value: providerKey},
-		UpstreamRootCAs: roots,
-		Logger:          log,
+		Addr:             *addr,
+		Upstream:         *upstream,
+		MintKeys:         keys,
+		Spent:            spent,
+		Budget:           budget,
+		Models:           commaList(*modelsCSV),
+		MaxRequestBody:   *maxRequestBytes,
+		MaxOutputTokens:  *maxOutputTokens,
+		Routes:           routes,
+		Cost:             cost,
+		RequireCostRates: maxCostMicros > 0,
+		Credential:       gateway.Credential{Header: *credHeader, Prefix: *credPrefix, Value: providerKey},
+		UpstreamRootCAs:  roots,
+		Logger:           log,
 	})
 	if err != nil {
 		return err
@@ -215,7 +247,8 @@ func run() error {
 		"mint_keys", len(keys), "spent_db", *spentDB, "budget_db", *budgetDB,
 		"budget_window", budgetWindow.String(), "budget_requests", *budgetRequests,
 		"budget_input_bytes", *budgetInputBytes,
-		"budget_output_tokens", *budgetOutputTokens)
+		"budget_output_tokens", *budgetOutputTokens,
+		"budget_cost_usd", *budgetCostUSD)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(tlsConf) }()
