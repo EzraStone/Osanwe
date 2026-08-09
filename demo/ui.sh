@@ -88,6 +88,7 @@ if [ -z "$ROUTES" ]; then
     -addr "127.0.0.1:$GATEWAY_PORT" -upstream "https://$PROVIDER" \
     -mint-key "$WORK/mint.pub" -upstream-ca "$WORK/provider.crt" \
     -spent-db "$WORK/spent.db" \
+    -budget-db "$WORK/budget.db" \
     -models demo \
     -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" >"$WORK/mithlond.log" 2>&1 &
 else
@@ -97,6 +98,7 @@ else
     -addr "127.0.0.1:$GATEWAY_PORT" -routes "$ROUTES" \
     -mint-key "$WORK/mint.pub" \
     -spent-db "$WORK/spent.db" \
+    -budget-db "$WORK/budget.db" \
     -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" >"$WORK/mithlond.log" 2>&1 &
 fi
 if ! wait_for_port "127.0.0.1:$GATEWAY_PORT"; then

@@ -8,17 +8,21 @@ is something a *user* does.
 
 ---
 
-## Before anything: the thing that is not built
+## Before anything: understand the spending boundary
 
-**Nothing aggregate-rate-limits a gateway.** Anyone who can obtain valid
-tokens can spend the operator's provider credit one bounded request at a time,
-without an hourly or dollar cap, until the account is empty.
+`mithlond` now requires a durable fixed-window aggregate budget. It reserves
+both one request and the caller's requested `max_tokens` before spending the
+token or contacting the provider. The conservative defaults allow 100 requests
+and reserve at most 100,000 output tokens per hour. A restart does not reset the
+window, and concurrent requests cannot race past either ceiling.
 
-Two consequences for everything below:
+This is a hard request/token ceiling, **not a dollar-denominated billing
+oracle**. Input-token cost and provider-specific model prices are not known
+exactly before dispatch. Two consequences for everything below:
 
 - **Do not put an unlimited-spend provider account behind a public gateway.**
-  Use a provider whose own free tier caps you — Groq is the obvious one — or a
-  prepaid balance small enough to lose.
+  Pair the local budget with the provider's own account budget or a prepaid
+  balance small enough to lose.
 - **Firewall the gateway to your relays.** This is not a workaround; it is the
   correct topology. A client reaches the gateway *through* a relay and never
   directly, so the gateway has no reason to accept a connection from anywhere
@@ -30,8 +34,9 @@ gateway answers exact, query-free `GET /v1/models` locally for free and pays onl
 table, `max_tokens` must be present and no higher than
 `-max-output-tokens`, the JSON body is capped by `-max-request-bytes`, and
 unsupported top-level capabilities are rejected before redemption. The
-defaults are 4,096 output tokens and a 1 MiB request body. These limits bound a
-single token; they do not limit aggregate requests or dollars per hour.
+defaults are 4,096 output tokens and a 1 MiB request body. These per-request
+limits compose with `-budget-requests` and `-budget-output-tokens`; none of them
+replaces the provider account's own dollar ceiling.
 
 The accepted top-level Messages fields are `model`, `max_tokens`, `messages`,
 `system`, `stream`, `temperature`, `top_p`, and `stop_sequences`. Their
@@ -310,6 +315,10 @@ ExecStart=/usr/local/bin/mithlond \
   -routes /var/lib/osanwe/routes.conf \
   -mint-key /var/lib/osanwe/mint.pub \
   -spent-db /var/lib/osanwe/spent.db \
+  -budget-db /var/lib/osanwe/budget.db \
+  -budget-window 1h \
+  -budget-requests 100 \
+  -budget-output-tokens 100000 \
   -cert /var/lib/osanwe/gateway.crt \
   -key /var/lib/osanwe/gateway.key
 Restart=always
@@ -343,6 +352,14 @@ different hosts need a shared implementation of `mint.RedemptionStore` whose
 committed before it returns. That backend is not shipped; until it is, run one
 gateway host per mint key.
 
+`-budget-db` is a separate ACID database for the current aggregate window. Keep
+it on the same kind of local, service-owned storage. Capacity is reserved using
+the request's maximum possible output, then released only when the gateway can
+prove no connection to the provider was made. A crash between reservation and
+dispatch can therefore under-use the rest of that window, but cannot overspend
+it. The database is intentionally single-process and single-host; a future
+multi-host gateway needs a shared implementation of `gateway.Budget`.
+
 The companion-lock format is new. When upgrading a gateway that previously
 locked `spent.db` itself, stop **every** old process before starting this
 version; old and new binaries do not coordinate on the same lock inode. There
@@ -368,7 +385,9 @@ sudo ufw allow 22/tcp
 sudo ufw enable
 ```
 
-Open port 8444 to the world only once rate limiting exists.
+Keep port 8444 restricted to relays. The aggregate budget limits financial
+damage; it does not make direct connections preserve the network's anonymity
+split.
 
 ---
 

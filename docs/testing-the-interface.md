@@ -30,6 +30,7 @@ OSANWE_PROVIDER_KEY="sk-ant-..." "$WORK/mithlond" \
   -upstream https://api.anthropic.com \
   -mint-key "$WORK/mint.pub" \
   -spent-db "$WORK/spent.db" \
+  -budget-db "$WORK/budget.db" \
   -models YOUR_EXACT_MODEL_ID \
   -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" &
 ```

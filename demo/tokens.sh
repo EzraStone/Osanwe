@@ -98,6 +98,7 @@ OSANWE_PROVIDER_KEY="$POOLKEY" "$WORK/mithlond" \
   -upstream "https://$PROVIDER" \
   -mint-key "$WORK/mint.pub" \
   -spent-db "$WORK/spent.db" \
+  -budget-db "$WORK/budget.db" \
   -models demo \
   -cert "$WORK/gateway.crt" -key "$WORK/gateway.key" \
   -upstream-ca "$WORK/provider.crt" \

@@ -4,7 +4,7 @@
 // using a pooled credential the client never holds:
 //
 //	export OSANWE_PROVIDER_KEY=sk-ant-...
-//	mithlond -mint-key mint.pub -spent-db spent.db -models claude-sonnet-4 -upstream https://api.anthropic.com
+//	mithlond -mint-key mint.pub -spent-db spent.db -budget-db budget.db -models claude-sonnet-4 -upstream https://api.anthropic.com
 //
 // A relay in front of this hides who is asking. This hides what they are
 // asking with. Neither component sits on both sides of that split, and the
@@ -60,6 +60,10 @@ func run() error {
 	certPath := fs.String("cert", "mithlond.crt", "TLS certificate path, created if absent")
 	keyPath := fs.String("key", "mithlond.key", "TLS key path, created if absent")
 	spentDB := fs.String("spent-db", "", "local durable spent-token journal (required; put it on a local filesystem, not NFS)")
+	budgetDB := fs.String("budget-db", "", "local durable aggregate-budget database (required; put it on a local filesystem, not NFS)")
+	budgetWindow := fs.Duration("budget-window", gateway.DefaultBudgetWindow, "fixed window for aggregate provider limits")
+	budgetRequests := fs.Uint64("budget-requests", gateway.DefaultBudgetRequests, "maximum provider requests in one budget window")
+	budgetOutputTokens := fs.Uint64("budget-output-tokens", gateway.DefaultBudgetOutputTokens, "maximum requested output tokens reserved in one budget window")
 	hosts := fs.String("hosts", "", "comma-separated names or IPs for a generated certificate")
 	plaintext := fs.Bool("insecure-plaintext", false, "serve without TLS. Only correct behind a TLS terminator you control; otherwise the relay in front reads every prompt")
 	verbose := fs.Bool("v", false, "verbose logging")
@@ -67,7 +71,7 @@ func run() error {
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "mithlond — the Osanwë gateway.\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n  export OSANWE_PROVIDER_KEY=sk-...\n"+
-			"  mithlond -mint-key mint.pub -spent-db spent.db -models MODEL -upstream https://api.anthropic.com\n\nFlags:\n")
+			"  mithlond -mint-key mint.pub -spent-db spent.db -budget-db budget.db -models MODEL -upstream https://api.anthropic.com\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -78,6 +82,9 @@ func run() error {
 	}
 	if strings.TrimSpace(*spentDB) == "" {
 		return errors.New("mithlond: -spent-db is required; redemption state must survive restarts")
+	}
+	if strings.TrimSpace(*budgetDB) == "" {
+		return errors.New("mithlond: -budget-db is required; a pooled provider account must have a durable aggregate spending ceiling")
 	}
 
 	level := slog.LevelInfo
@@ -169,12 +176,25 @@ func run() error {
 			log.Error("closing spent-token database", "error", err)
 		}
 	}()
+	budget, err := gateway.OpenFileBudget(gateway.FileBudgetConfig{
+		Path: *budgetDB, Window: *budgetWindow,
+		MaxRequests: *budgetRequests, MaxOutputTokens: *budgetOutputTokens,
+	})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := budget.Close(); err != nil {
+			log.Error("closing aggregate-budget database", "error", err)
+		}
+	}()
 
 	srv, err := gateway.New(gateway.Config{
 		Addr:            *addr,
 		Upstream:        *upstream,
 		MintKeys:        keys,
 		Spent:           spent,
+		Budget:          budget,
 		Models:          commaList(*modelsCSV),
 		MaxRequestBody:  *maxRequestBytes,
 		MaxOutputTokens: *maxOutputTokens,
@@ -191,7 +211,9 @@ func run() error {
 	}
 
 	log.Info("mithlond listening", "addr", srv.Addr().String(), "upstream", *upstream,
-		"mint_keys", len(keys), "spent_db", *spentDB)
+		"mint_keys", len(keys), "spent_db", *spentDB, "budget_db", *budgetDB,
+		"budget_window", budgetWindow.String(), "budget_requests", *budgetRequests,
+		"budget_output_tokens", *budgetOutputTokens)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(tlsConf) }()
