@@ -50,6 +50,7 @@ type Route struct {
 	Model    string
 	Style    Style
 	Upstream string
+	Cost     CostRates
 
 	// Credential is the key itself, read from the environment rather than
 	// stored in the route file: a routing table is the sort of thing that ends
@@ -90,6 +91,9 @@ func NewRoutes(list []Route) (*Routes, error) {
 			return nil, fmt.Errorf("gateway: route %q has no credential; set %s in the environment",
 				r.Model, r.CredentialEnv)
 		}
+		if err := r.Cost.validOptional(); err != nil {
+			return nil, fmt.Errorf("gateway: route %q has invalid prices: %w", r.Model, err)
+		}
 		if err := r.credential().valid(); err != nil {
 			return nil, fmt.Errorf("gateway: route %q credential is invalid: %w", r.Model, err)
 		}
@@ -128,15 +132,25 @@ func (rt *Routes) Models() []string {
 	return append([]string(nil), rt.order...)
 }
 
+// AllPriced reports whether every route has both input and output pricing.
+func (rt *Routes) AllPriced() bool {
+	for _, route := range rt.byModel {
+		if !route.Cost.priced() {
+			return false
+		}
+	}
+	return len(rt.byModel) > 0
+}
+
 // ParseRoutes reads a route table.
 //
 // The format is one route per line, whitespace separated:
 //
-//	# model             style      upstream                        credential env var
-//	claude-sonnet-5     anthropic  https://api.anthropic.com       ANTHROPIC_API_KEY
-//	deepseek-chat       openai     https://api.deepseek.com        DEEPSEEK_API_KEY
+//	# model          style      upstream                   credential env       optional input/output USD per 1M
+//	claude-sonnet-5  anthropic  https://api.anthropic.com  ANTHROPIC_API_KEY    3.00 15.00
+//	deepseek-chat    openai     https://api.deepseek.com   DEEPSEEK_API_KEY     0.27 1.10
 //
-// The last field names an environment variable, never the key itself. A file
+// The fourth field names an environment variable, never the key itself. A file
 // like this belongs in version control; a key in it does not.
 func ParseRoutes(r io.Reader, lookupEnv func(string) string) (*Routes, error) {
 	if lookupEnv == nil {
@@ -152,9 +166,21 @@ func ParseRoutes(r io.Reader, lookupEnv func(string) string) (*Routes, error) {
 			continue
 		}
 		fields := strings.Fields(text)
-		if len(fields) != 4 {
-			return nil, fmt.Errorf("gateway: route file line %d has %d fields, want 4: model style upstream ENV_VAR",
+		if len(fields) != 4 && len(fields) != 6 {
+			return nil, fmt.Errorf("gateway: route file line %d has %d fields, want 4 or 6: model style upstream ENV_VAR [INPUT_USD_PER_MILLION OUTPUT_USD_PER_MILLION]",
 				line, len(fields))
+		}
+		var cost CostRates
+		if len(fields) == 6 {
+			input, err := ParseCurrencyMicros(fields[4])
+			if err != nil {
+				return nil, fmt.Errorf("gateway: route file line %d has invalid input price: %w", line, err)
+			}
+			output, err := ParseCurrencyMicros(fields[5])
+			if err != nil {
+				return nil, fmt.Errorf("gateway: route file line %d has invalid output price: %w", line, err)
+			}
+			cost = CostRates{InputMicrosPerMillion: input, OutputMicrosPerMillion: output}
 		}
 		env := fields[3]
 		value := lookupEnv(env)
@@ -168,6 +194,7 @@ func ParseRoutes(r io.Reader, lookupEnv func(string) string) (*Routes, error) {
 			Model:         fields[0],
 			Style:         Style(fields[1]),
 			Upstream:      fields[2],
+			Cost:          cost,
 			Credential:    value,
 			CredentialEnv: env,
 		})

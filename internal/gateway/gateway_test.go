@@ -38,6 +38,18 @@ func (b failingBudget) Reserve(context.Context, BudgetRequest) (BudgetReservatio
 	return nil, b.err
 }
 
+type recordingBudget struct {
+	mu      sync.Mutex
+	request BudgetRequest
+}
+
+func (b *recordingBudget) Reserve(_ context.Context, request BudgetRequest) (BudgetReservation, error) {
+	b.mu.Lock()
+	b.request = request
+	b.mu.Unlock()
+	return unlimitedReservation{}, nil
+}
+
 func mintKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
 	keyOnce.Do(func() {
@@ -176,6 +188,30 @@ func (h *harness) post(t *testing.T, tok *mint.Token, extra http.Header) *http.R
 		t.Fatalf("Do: %v", err)
 	}
 	return resp
+}
+
+func TestGatewayReservesTheConfiguredProviderCostBeforeDispatch(t *testing.T) {
+	h := newHarness(t, nil)
+	budget := &recordingBudget{}
+	rates := CostRates{InputMicrosPerMillion: 3_000_000, OutputMicrosPerMillion: 15_000_000}
+	h.gw.cfg.Budget = budget
+	h.gw.cfg.Cost = rates
+
+	resp := h.post(t, h.token(t), nil)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	budget.mu.Lock()
+	request := budget.request
+	budget.mu.Unlock()
+	want, err := EstimateCostMicros(request.InputBytes, request.MaxOutputTokens, rates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Model != "demo" || request.CostMicros != want || want == 0 {
+		t.Fatalf("reservation = %+v, want cost %d", request, want)
+	}
 }
 
 func TestAggregateBudgetRefusalDoesNotSpendOrForwardTheToken(t *testing.T) {
@@ -976,6 +1012,8 @@ func TestNewRefusesAnUnsafeConfig(t *testing.T) {
 		{"credential value newline", func(c *Config) { c.Credential.Value = "k\r\nX-Leak: yes" }, "control characters"},
 		{"credential prefix newline", func(c *Config) { c.Credential.Prefix = "Bearer\n" }, "control characters"},
 		{"no model allowlist", func(c *Config) { c.Models = nil }, "Models is required"},
+		{"cost ceiling without prices", func(c *Config) { c.RequireCostRates = true }, "requires both input and output prices"},
+		{"partial prices", func(c *Config) { c.Cost.InputMicrosPerMillion = 1 }, "both input and output prices"},
 		{"request limit too high", func(c *Config) { c.MaxRequestBody = MaximumMaxRequestBody + 1 }, "MaxRequestBody"},
 		{"output limit too high", func(c *Config) { c.MaxOutputTokens = MaximumMaxOutputTokens + 1 }, "MaxOutputTokens"},
 		{"upstream query", func(c *Config) { c.Upstream = "https://api.anthropic.com?key=value" }, "must not contain"},

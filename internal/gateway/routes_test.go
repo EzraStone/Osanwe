@@ -300,8 +300,8 @@ func TestParseRoutes(t *testing.T) {
 	get := func(k string) string { return env[k] }
 
 	rt, err := ParseRoutes(strings.NewReader(`
-# model            style      upstream                    env
-claude-sonnet-5    anthropic  https://api.anthropic.com   ANTHROPIC_API_KEY
+# model            style      upstream                    env                 input/output USD per million
+claude-sonnet-5    anthropic  https://api.anthropic.com   ANTHROPIC_API_KEY   3.00 15.00
 
 deepseek-chat      openai     https://api.deepseek.com    DEEPSEEK_API_KEY
 `), get)
@@ -317,6 +317,26 @@ deepseek-chat      openai     https://api.deepseek.com    DEEPSEEK_API_KEY
 	}
 	if c := r.credential(); c.Header != "authorization" || c.Prefix != "Bearer " || c.Value != "sk-ds" {
 		t.Fatalf("credential = %+v", c)
+	}
+	priced, _ := rt.Lookup("claude-sonnet-5")
+	if priced.Cost.InputMicrosPerMillion != 3_000_000 || priced.Cost.OutputMicrosPerMillion != 15_000_000 {
+		t.Fatalf("priced route cost = %+v", priced.Cost)
+	}
+	if rt.AllPriced() {
+		t.Fatal("legacy four-field route unexpectedly counted as priced")
+	}
+}
+
+func TestAllRoutesCanCarryPrices(t *testing.T) {
+	routes, err := ParseRoutes(strings.NewReader(
+		"a anthropic https://a.example KEY_A 3.00 15.00\n"+
+			"b openai https://b.example KEY_B 0.27 1.10\n"),
+		func(string) string { return "key" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !routes.AllPriced() {
+		t.Fatal("six-field route table was not fully priced")
 	}
 }
 
@@ -342,7 +362,9 @@ func TestAMissingCredentialIsReportedAtStartup(t *testing.T) {
 func TestBadRouteTablesAreRefused(t *testing.T) {
 	get := func(string) string { return "k" }
 	cases := []struct{ name, text, want string }{
-		{"wrong field count", "claude anthropic https://x\n", "want 4"},
+		{"wrong field count", "claude anthropic https://x\n", "want 4 or 6"},
+		{"bad input price", "claude anthropic https://x K free 1.00\n", "invalid input price"},
+		{"bad output price", "claude anthropic https://x K 1.00 free\n", "invalid output price"},
 		{"unknown style", "claude carrier-pigeon https://x K\n", "unknown style"},
 		{"plaintext upstream", "claude anthropic http://x K\n", "must use https"},
 		{"upstream query", "claude anthropic https://x?admin=true K\n", "must not contain"},

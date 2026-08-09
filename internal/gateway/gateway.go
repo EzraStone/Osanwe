@@ -161,6 +161,12 @@ type Config struct {
 	// is refused rather than sent somewhere surprising.
 	Routes *Routes
 
+	// Cost prices a single upstream. Routed gateways put rates on each Route.
+	// RequireCostRates makes startup fail unless every accepted model is priced;
+	// commands enable it when a durable cost ceiling is configured.
+	Cost             CostRates
+	RequireCostRates bool
+
 	// Models is the exact allowlist a single-upstream gateway will pay for.
 	// It is required without Routes. A pooled credential paired with an open
 	// model selector lets one cheap token buy the provider's most expensive
@@ -230,6 +236,7 @@ type budgetKey struct{}
 type chosen struct {
 	route Route
 	model string
+	cost  CostRates
 
 	maxOutputTokens int
 
@@ -258,6 +265,9 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Budget == nil {
 		return nil, errors.New("gateway: a Budget is required; without one aggregate provider spend is unbounded")
 	}
+	if err := cfg.Cost.validOptional(); err != nil {
+		return nil, fmt.Errorf("gateway: invalid single-upstream prices: %w", err)
+	}
 	if cfg.Routes == nil {
 		if err := cfg.Credential.valid(); err != nil {
 			return nil, err
@@ -266,8 +276,15 @@ func New(cfg Config) (*Server, error) {
 		if len(cfg.Models) == 0 {
 			return nil, errors.New("gateway: Models is required without Routes; a pooled credential must not pay for arbitrary models")
 		}
+		if cfg.RequireCostRates && !cfg.Cost.priced() {
+			return nil, errors.New("gateway: a cost ceiling requires both input and output prices for the single upstream")
+		}
 	} else if len(cfg.Models) != 0 {
 		return nil, errors.New("gateway: Models and Routes cannot both be set; route model names are already the allowlist")
+	} else if cfg.Cost.priced() {
+		return nil, errors.New("gateway: single-upstream Cost cannot be combined with Routes; put prices on each route")
+	} else if cfg.RequireCostRates && !cfg.Routes.AllPriced() {
+		return nil, errors.New("gateway: a cost ceiling requires input and output prices on every route")
 	}
 	if cfg.MaxRequestBody == 0 {
 		cfg.MaxRequestBody = DefaultMaxRequestBody
@@ -438,8 +455,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Reserve aggregate provider capacity before spending the token. A full or
 	// unavailable budget is an operator-side refusal and must not take payment.
+	costMicros, err := EstimateCostMicros(requestBody.size, pick.maxOutputTokens, pick.cost)
+	if err != nil {
+		s.metrics.BudgetErr.Add(1)
+		s.log.Error("provider cost estimate failed", "error", err)
+		s.refuseToken(w, http.StatusServiceUnavailable, "gateway_budget_unavailable", TokenOutcomeRejected,
+			"The gateway could not safely estimate provider capacity. No token was spent.")
+		return
+	}
 	budgetReservation, err := s.cfg.Budget.Reserve(r.Context(), BudgetRequest{
-		Model: pick.model, InputBytes: requestBody.size, MaxOutputTokens: pick.maxOutputTokens,
+		Model: pick.model, InputBytes: requestBody.size,
+		MaxOutputTokens: pick.maxOutputTokens, CostMicros: costMicros,
 	})
 	if err != nil {
 		var limitErr *BudgetLimitError
@@ -682,9 +708,10 @@ func (s *Server) prepareRequest(r *http.Request) (chosen, *body, *policyError) {
 		return reject(http.StatusBadRequest, "bad_json", "The request body could not be normalized safely.")
 	}
 
-	pick := chosen{path: "/v1/messages", model: model, maxOutputTokens: maxTokens}
+	pick := chosen{path: "/v1/messages", model: model, maxOutputTokens: maxTokens, cost: s.cfg.Cost}
 	if s.cfg.Routes != nil {
 		pick.route, _ = s.cfg.Routes.Lookup(model)
+		pick.cost = pick.route.Cost
 		// Clients speak the Messages API. A provider that speaks OpenAI's
 		// receives the one supported translation, never a caller-selected path.
 		if pick.route.Style == StyleOpenAI {

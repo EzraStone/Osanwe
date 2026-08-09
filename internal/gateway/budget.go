@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -200,6 +201,9 @@ func (b *FileBudget) Reserve(ctx context.Context, req BudgetRequest) (BudgetRese
 		}
 		if windowStart != start.Unix() {
 			requests, inputBytes, outputTokens, costMicros = 0, 0, 0, 0
+		}
+		if req.CostMicros > math.MaxUint64-costMicros {
+			return errors.New("gateway: aggregate cost counter overflow")
 		}
 		if requests >= b.maxRequests || input > b.maxInputBytes || inputBytes > b.maxInputBytes-input ||
 			tokens > b.maxOutputTokens || outputTokens > b.maxOutputTokens-tokens ||
