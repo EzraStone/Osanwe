@@ -11,10 +11,11 @@ is something a *user* does.
 ## Before anything: understand the spending boundary
 
 `mithlond` now requires a durable fixed-window aggregate budget. It reserves
-both one request and the caller's requested `max_tokens` before spending the
-token or contacting the provider. The conservative defaults allow 100 requests
-and reserve at most 100,000 output tokens per hour. A restart does not reset the
-window, and concurrent requests cannot race past either ceiling.
+one request, the normalized input bytes, and the caller's requested `max_tokens`
+before spending the token or contacting the provider. The conservative defaults
+allow 100 requests, 10 MiB of input, and 100,000 requested output tokens per hour.
+A restart does not reset the window, and concurrent requests cannot race past
+any ceiling.
 
 This is a hard request/token ceiling, **not a dollar-denominated billing
 oracle**. Input-token cost and provider-specific model prices are not known
@@ -35,7 +36,8 @@ table, `max_tokens` must be present and no higher than
 `-max-output-tokens`, the JSON body is capped by `-max-request-bytes`, and
 unsupported top-level capabilities are rejected before redemption. The
 defaults are 4,096 output tokens and a 1 MiB request body. These per-request
-limits compose with `-budget-requests` and `-budget-output-tokens`; none of them
+limits compose with `-budget-requests`, `-budget-input-bytes`, and
+`-budget-output-tokens`; none of them
 replaces the provider account's own dollar ceiling.
 
 The accepted top-level Messages fields are `model`, `max_tokens`, `messages`,
@@ -318,6 +320,7 @@ ExecStart=/usr/local/bin/mithlond \
   -budget-db /var/lib/osanwe/budget.db \
   -budget-window 1h \
   -budget-requests 100 \
+  -budget-input-bytes 10485760 \
   -budget-output-tokens 100000 \
   -cert /var/lib/osanwe/gateway.crt \
   -key /var/lib/osanwe/gateway.key
@@ -354,11 +357,12 @@ gateway host per mint key.
 
 `-budget-db` is a separate ACID database for the current aggregate window. Keep
 it on the same kind of local, service-owned storage. Capacity is reserved using
-the request's maximum possible output, then released only when the gateway can
-prove no connection to the provider was made. A crash between reservation and
-dispatch can therefore under-use the rest of that window, but cannot overspend
-it. The database is intentionally single-process and single-host; a future
-multi-host gateway needs a shared implementation of `gateway.Budget`.
+the normalized request size and maximum possible output, then released only when
+the gateway can prove no connection to the provider was made. A crash between
+reservation and dispatch can therefore under-use the rest of that window, but
+cannot overspend it. The database is intentionally single-process and
+single-host; a future multi-host gateway needs a shared implementation of
+`gateway.Budget`.
 
 The companion-lock format is new. When upgrading a gateway that previously
 locked `spent.db` itself, stop **every** old process before starting this
