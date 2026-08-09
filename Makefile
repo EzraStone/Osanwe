@@ -3,13 +3,13 @@ PKG     := ./...
 GOFLAGS := -trimpath
 LDFLAGS := -s -w
 
-.PHONY: all build client operator ranger bearer mithlond eregion council \
+.PHONY: all build client operator ranger bearer mithlond eregion checkout council \
         test race vet fmt lint cover clean
 
 all: build
 
 # Everything, because docs/deploying.md tells operators to run mithlond,
-# eregion and council, and a Makefile that quietly builds only two of the five
+# eregion, checkout and council, and a Makefile that quietly omits binaries
 # sends them looking for binaries that were never produced.
 build: client operator
 
@@ -18,7 +18,7 @@ client: bearer
 
 # What an operator runs. A relay is on both lists: relay operators are the one
 # group that is neither running the network nor merely using it.
-operator: ranger mithlond eregion council
+operator: ranger mithlond eregion checkout council
 
 ranger:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/ranger ./cmd/ranger
@@ -31,6 +31,9 @@ mithlond:
 
 eregion:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/eregion ./cmd/eregion
+
+checkout:
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/checkout ./cmd/checkout
 
 council:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/council ./cmd/council
