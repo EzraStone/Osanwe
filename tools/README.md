@@ -23,6 +23,11 @@ valid instrument**, even though the absolute baseline it reports would not
 transfer to a different vendor.
 
 ```bash
+cd tools
+python3 -m venv ../.venv
+. ../.venv/bin/activate
+python3 -m pip install -r requirements-phase0.txt
+
 python3 phase0_latency.py --list-providers
 ```
 
