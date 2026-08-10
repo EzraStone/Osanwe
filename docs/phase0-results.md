@@ -31,8 +31,8 @@ Record these. Results are uninterpretable without them.
 |---|---|
 | Date | Started 2026-08-10 |
 | Client regions | _pending_ |
-| Relay region(s) | _pending_ |
-| Relay instance type | _pending_ |
+| Relay region(s) | Planned: `us-west1-b`, using the existing closed gateway VM |
+| Relay instance type | `e2-micro` (2 vCPUs, 1 GB RAM), 20 GB standard persistent disk |
 | Provider / model | Planned: Gemini / `gemini-3.1-flash-lite` free tier; confirm at run time |
 | Harness revision | `a05fabe` (provider preset and documentation; measurements still pending) |
 
@@ -68,5 +68,11 @@ distrust the numbers. A measurement whose caveats are hidden is worse than no me
 - No supported provider credential was present in the local process environment at the start of
   the campaign. No live inference request has been made yet.
 - The local machine does not have the Google Cloud CLI installed, and the available browser
-  session is not signed into Google. No cloud resource, firewall rule, or billing setting was
-  created or changed during setup.
+  session was initially not signed into Google. No cloud resource, firewall rule, or billing
+  setting was created or changed during setup.
+- 2026-08-10 read-only inventory: the existing VM is running in `us-west1-b` as an `e2-micro`
+  with a 20 GB standard persistent disk. HTTP and HTTPS firewall toggles are off. The August 1-10
+  billing report showed $0.43 gross usage fully offset by savings, for $0.00 net cost at inspection.
+- A dedicated Gemini auth key created during setup was revoked before use after its value appeared
+  in diagnostic browser output. No live request used it and no copy was stored locally. A manually
+  created replacement is required before the baseline run.
