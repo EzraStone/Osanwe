@@ -55,7 +55,7 @@ PROVIDERS: dict[str, Provider] = {
 
     "gemini": Provider(
         "gemini", "gemini", "https://generativelanguage.googleapis.com",
-        "gemini-2.0-flash", "GEMINI_API_KEY",
+        "gemini-3.1-flash-lite", "GEMINI_API_KEY",
         "free tier, no card required", suggested_delay=1.0),
 
     "deepseek": Provider(

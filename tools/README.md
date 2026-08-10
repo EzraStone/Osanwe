@@ -45,6 +45,11 @@ python3 phase0_latency.py --provider openai --base-url https://your-endpoint --m
 automatically; the pause applies to both arms equally and cannot bias the
 comparison. Override with `--delay`.
 
+The Gemini preset currently uses the stable, low-latency
+`gemini-3.1-flash-lite` model. Model IDs have short lifecycles, so confirm the
+preset with `--list-providers` and the provider's lifecycle page immediately
+before a campaign. Pin the same model in every client region.
+
 **Verify the adapters without a key, a network or an account:**
 
 ```bash
@@ -136,8 +141,8 @@ demonstrate convincingly. Getting the evidence now costs nothing.
 
 ## Limitations
 
-- Single provider (Anthropic Messages API). Add others by changing `--base-url` and adjusting the
-  SSE parsing in `run_trial`.
+- One provider per campaign. The adapters cover Anthropic Messages, OpenAI-compatible chat, and
+  Gemini SSE, but a result only applies to the exact provider/model/regions recorded in its metadata.
 - Measures one relay hop. Multi-hop needs relay chaining, which is Phase 2 work.
 - The relay is single-process and thread-per-connection. Fine for tens of sequential trials,
   useless as a load test — and load is not what Phase 0 is asking about.
