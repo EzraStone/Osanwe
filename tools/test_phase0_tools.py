@@ -90,6 +90,14 @@ class Phase0ProviderTests(unittest.TestCase):
         report.encode("cp1252")
         self.assertIn("-50 ms", report)
 
+    def test_proxy_credentials_are_removed_from_evidence_url(self):
+        redacted = phase0_latency.redact_proxy_url(
+            "http://relay:phase0-secret@[2001:db8::1]:8080"
+        )
+
+        self.assertEqual("http://[2001:db8::1]:8080", redacted)
+        self.assertNotIn("phase0-secret", redacted)
+
 
 class Phase0RelayTests(unittest.TestCase):
     secret = "phase0-test-secret"

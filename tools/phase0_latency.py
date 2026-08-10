@@ -51,6 +51,7 @@ import statistics
 import sys
 import time
 from dataclasses import dataclass, field, asdict
+from urllib.parse import urlsplit, urlunsplit
 
 try:
     import requests
@@ -203,6 +204,18 @@ def ms(x: float) -> str:
     return "—" if x != x else f"{x:,.0f}"  # NaN-safe
 
 
+def redact_proxy_url(url: str | None) -> str | None:
+    """Remove proxy userinfo before the URL reaches reports or JSON evidence."""
+    if not url:
+        return None
+    parsed = urlsplit(url)
+    host = parsed.hostname or ""
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    netloc = f"{host}:{parsed.port}" if parsed.port else host
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+
+
 def render_markdown(direct: dict, proxied: dict | None, meta: dict) -> str:
     lines: list[str] = []
     lines.append(f"### {meta['label']}")
@@ -339,7 +352,8 @@ def main() -> int:
     arms = ["direct"] + (["proxied"] if proxies else [])
     warm = not args.cold
 
-    label = args.label or (f"via {args.proxy}" if args.proxy else "baseline, no proxy")
+    safe_proxy = redact_proxy_url(args.proxy)
+    label = args.label or (f"via {safe_proxy}" if safe_proxy else "baseline, no proxy")
 
     print(f"Osanwë Phase 0 — {label}", file=sys.stderr)
     print(f"  provider={provider.name} ({provider.fmt})  model={model}  runs={args.runs}/arm  "
@@ -393,7 +407,7 @@ def main() -> int:
         "runs": args.runs,
         "max_tokens": args.max_tokens,
         "warm": warm,
-        "proxy": args.proxy,
+        "proxy": safe_proxy,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S %Z"),
     }
 
