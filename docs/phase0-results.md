@@ -1,7 +1,8 @@
 # Phase 0 results — latency measurement
 
-**Status: NOT YET RUN.** This file is the Phase 0 exit criterion. Until it contains real numbers
-and a written verdict, no later phase should begin.
+**Status: IN PROGRESS (started 2026-08-10).** Offline adapter validation passes. Live baseline and
+relayed measurements are pending a provider credential and relay access. This file remains the
+Phase 0 exit criterion until it contains three-region numbers and a written verdict.
 
 Run the harness per [`tools/README.md`](../tools/README.md) from at least three client regions and
 paste the emitted Markdown tables below.
@@ -28,12 +29,12 @@ Record these. Results are uninterpretable without them.
 
 | | |
 |---|---|
-| Date | _pending_ |
+| Date | Started 2026-08-10 |
 | Client regions | _pending_ |
 | Relay region(s) | _pending_ |
 | Relay instance type | _pending_ |
-| Provider / model | _pending_ |
-| Harness revision | _commit sha_ |
+| Provider / model | Planned: Gemini / `gemini-3.1-flash-lite` free tier; confirm at run time |
+| Harness revision | `a05fabe` (provider preset and documentation; measurements still pending) |
 
 ## Results
 
@@ -59,4 +60,13 @@ _pending_
 Record failed trials, retries, provider-side errors, and anything that would make a reader
 distrust the numbers. A measurement whose caveats are hidden is worse than no measurement.
 
-_pending_
+- 2026-08-10: All recorded SSE adapter fixtures passed locally for Messages, OpenAI-compatible
+  chat, and Gemini formats; all provider presets produced structurally valid requests.
+- 2026-08-10: The previous Gemini default, `gemini-2.0-flash`, had been shut down by the provider
+  on 2026-06-01. The preset was updated before collecting measurements so no result depends on a
+  dead model ID.
+- No supported provider credential was present in the local process environment at the start of
+  the campaign. No live inference request has been made yet.
+- The local machine does not have the Google Cloud CLI installed, and the available browser
+  session is not signed into Google. No cloud resource, firewall rule, or billing setting was
+  created or changed during setup.
