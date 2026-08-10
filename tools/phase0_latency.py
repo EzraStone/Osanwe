@@ -224,7 +224,11 @@ def render_markdown(direct: dict, proxied: dict | None, meta: dict) -> str:
             return f"| {name} | {ms(d)} ms | — | — |"
         p = proxied.get(key, float("nan"))
         delta = p - d
-        sign = "+" if delta >= 0 else "−"
+        # Keep the sign ASCII so the report also renders on Windows consoles
+        # configured with the legacy cp1252 encoding. U+2212 (MINUS SIGN) is
+        # not representable there and used to crash after every successful
+        # interleaved run, before the JSON evidence could be written.
+        sign = "+" if delta >= 0 else "-"
         return f"| {name} | {ms(d)} ms | {ms(p)} ms | {sign}{ms(abs(delta))} ms |"
 
     lines.append(row("**TTFT p50**", "ttft_p50"))

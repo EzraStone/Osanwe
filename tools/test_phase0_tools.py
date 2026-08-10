@@ -6,6 +6,7 @@ import threading
 import unittest
 
 import providers
+import phase0_latency
 import throwaway_relay
 
 
@@ -57,6 +58,34 @@ class Phase0ProviderTests(unittest.TestCase):
 
     def test_gemini_preset_does_not_use_retired_2_0_model(self):
         self.assertEqual("gemini-3.1-flash-lite", providers.PROVIDERS["gemini"].model)
+
+    def test_report_is_encodable_by_windows_legacy_console(self):
+        summary = {
+            "n": 5,
+            "failed": 0,
+            "ttft_p50": 300.0,
+            "ttft_p95": 350.0,
+            "ttft_p99": 350.0,
+            "ttft_mean": 310.0,
+            "total_p50": 400.0,
+            "intertoken_p50": 1.0,
+            "intertoken_p95": 2.0,
+        }
+        faster_proxy = dict(summary, ttft_p50=250.0)
+        meta = {
+            "label": "console test",
+            "provider": "groq",
+            "model": "test-model",
+            "runs": 5,
+            "max_tokens": 16,
+            "warm": True,
+            "timestamp": "2026-08-10 00:00:00 CDT",
+        }
+
+        report = phase0_latency.render_markdown(summary, faster_proxy, meta)
+
+        report.encode("cp1252")
+        self.assertIn("-50 ms", report)
 
 
 class Phase0RelayTests(unittest.TestCase):
