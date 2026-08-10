@@ -50,6 +50,10 @@ python3 phase0_latency.py --provider openai --base-url https://your-endpoint --m
 automatically; the pause applies to both arms equally and cannot bias the
 comparison. Override with `--delay`.
 
+The Groq preset uses `llama-3.1-8b-instant` and defaults to a 2.1-second delay,
+which stays just below the current 30 requests/minute free-plan ceiling. Recheck
+the provider's published limits before a later campaign because quotas can change.
+
 The Gemini preset currently uses the stable, low-latency
 `gemini-3.1-flash-lite` model. Model IDs have short lifecycles, so confirm the
 preset with `--list-providers` and the provider's lifecycle page immediately

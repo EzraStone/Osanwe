@@ -71,7 +71,7 @@ PROVIDERS: dict[str, Provider] = {
     "groq": Provider(
         "groq", "chat", "https://api.groq.com/openai",
         "llama-3.1-8b-instant", "GROQ_API_KEY",
-        "free tier, rate limited", suggested_delay=1.0),
+        "free tier, rate limited", suggested_delay=2.1),
 
     "openrouter": Provider(
         "openrouter", "chat", "https://openrouter.ai/api",

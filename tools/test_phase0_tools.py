@@ -59,6 +59,9 @@ class Phase0ProviderTests(unittest.TestCase):
     def test_gemini_preset_does_not_use_retired_2_0_model(self):
         self.assertEqual("gemini-3.1-flash-lite", providers.PROVIDERS["gemini"].model)
 
+    def test_groq_free_tier_pacing_stays_below_30_rpm(self):
+        self.assertGreaterEqual(providers.PROVIDERS["groq"].suggested_delay, 2.0)
+
     def test_report_is_encodable_by_windows_legacy_console(self):
         summary = {
             "n": 5,
