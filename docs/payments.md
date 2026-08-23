@@ -61,6 +61,15 @@ bearer -mint https://mint.example -mint-key-id mint-... \
        -upstream https://gateway.example:8444
 ```
 
+One settled invoice currently entitles exactly one blind signature and therefore one inference
+request. The client marks a non-empty receipt as presented before contacting the mint and will not
+use it as a refillable balance. After that token is spent, a new settled invoice is required.
+
+This fail-closed behavior is intentionally inconvenient. If the mint durably claims an invoice and
+the response is lost before the client receives the signature, the current protocol cannot safely
+retry with a different blinded message. Solving that crash window needs an independently reviewed,
+idempotent issuance design; increasing a wallet batch size does not solve it.
+
 ## Run the mint
 
 ```bash
@@ -91,5 +100,5 @@ is deliberately single-process and single-host; a multi-host mint needs a shared
 The checkout and authorizer are the implemented payment boundary, not an audited commerce system.
 A public launch still needs HTTPS in front of the loopback checkout and mint, documented
 refund/support handling, API-key rotation, backups, availability monitoring that does not record
-buyer or issuance identifiers, and independent security review. `-open` remains exclusively for
-local demos.
+buyer or issuance identifiers, an idempotent recovery design for interrupted issuance, and
+independent security review. `-open` remains exclusively for local demos.
