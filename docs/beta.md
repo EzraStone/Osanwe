@@ -41,7 +41,8 @@ The beta begins only when:
 - incomplete streams, cancellation, local storage failures, and relay verification are shown
   truthfully in the interface;
 - aggregate limits and per-invite issuance are enabled, and the operator has rehearsed disabling
-  the route;
+  the route; the [fixed-window invite design](beta-invites.md) currently has only its server and
+  offline-generator half, so this gate is not yet complete;
 - the beta agreement says it is free, experimental, text-only, and unsuitable for sensitive data,
   and requires testers to acknowledge that the configured model provider receives prompts and
   answers under the gateway account;
