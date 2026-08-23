@@ -58,7 +58,8 @@ whole bring-your-own-key promise — so the window says so and points you at the
 endpoint instead of inventing somewhere to paste a key.
 
 Connect works normally, and is the useful half here: it shows the endpoint, the
-relay in use, and whether its key matched what was published.
+relay in use, and whether the client observed a successful pinned connection or
+only has a manually configured pin whose live handshake is not reported.
 
 ---
 

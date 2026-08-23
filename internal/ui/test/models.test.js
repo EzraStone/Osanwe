@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { humanize, lifecycleLabel, modelFacts, normalizeCatalog, policySourceLabel } from "../assets/models.js";
+import { humanize, lifecycleLabel, modelFacts, normalizeCatalog, policySourceLabel, relayVerificationLabel } from "../assets/models.js";
 
 test("model metadata is normalized without inventing policy", () => {
   const [model] = normalizeCatalog({
@@ -75,15 +75,32 @@ test("invalid and duplicate catalog entries are ignored", () => {
 
 test("privacy facts distinguish account and local retention state", () => {
   const [model] = normalizeCatalog({ data: [{ id: "m", osanwe: { gateway_content_access: "plaintext_until_attested_execution" } }] });
-  const tokenFacts = new Map(modelFacts(model, { paying: "tokens", relay: {} }, "device"));
+	const tokenFacts = new Map(modelFacts(model, { paying: "tokens", relay: { verification: "connected_pin_matched" } }, "device"));
   assert.match(tokenFacts.get("Provider account"), /not your/);
-  assert.equal(tokenFacts.get("Network address"), "Stops at a verified relay");
+	assert.equal(tokenFacts.get("Relay verification"), "Pin matched on a successful connection");
   assert.equal(tokenFacts.get("Osanwë history"), "Saved on this device");
   assert.match(tokenFacts.get("Gateway access"), /Plaintext until attested execution/);
 
   const byokFacts = new Map(modelFacts(model, { paying: "your own key" }, "ephemeral"));
   assert.equal(byokFacts.get("Provider account"), "Your provider account");
   assert.equal(byokFacts.get("Provider retention"), "Unknown");
+});
+
+test("relay wording distinguishes a connection from a configured pin", () => {
+  assert.equal(
+	relayVerificationLabel({ relay: { verification: "connected_pin_matched", key_matched: true } }),
+	"Pin matched on a successful connection",
+  );
+  assert.equal(
+	relayVerificationLabel({ relay: { verification: "pin_configured", key_matched: false } }),
+	"Pin configured; live connection verification is not reported",
+  );
+  assert.equal(relayVerificationLabel({}), "No relay reported");
+  assert.equal(relayVerificationLabel({ relay: { key_matched: true } }), "Pin matched on a successful connection");
+  assert.doesNotMatch(
+	new Map(modelFacts(normalizeCatalog({ data: [{ id: "m" }] })[0], { relay: { verification: "pin_configured" } })).get("Relay verification"),
+	/verified relay/i,
+  );
 });
 
 test("machine labels become readable without changing their meaning", () => {

@@ -81,7 +81,7 @@ export function modelFacts(model, status, retentionMode = "ephemeral") {
     ["Tools", model.capabilities.tools ? "Available" : "Not available"],
     ["Images", model.capabilities.images ? "Available" : "Not available"],
     ["Output limit", model.limits.maxOutputTokens ? `${model.limits.maxOutputTokens.toLocaleString()} tokens` : "Unknown"],
-    ["Network address", status && status.relay ? "Stops at a verified relay" : "No active relay reported"],
+	["Relay verification", relayVerificationLabel(status)],
     ["Provider account", status && status.paying === "tokens" ? "Gateway account; not your provider account" : "Your provider account"],
     ["Gateway access", humanize(model.privacy.gatewayContentAccess)],
     ["Osanwë history", retentionMode === "device" ? "Saved on this device" : "Ephemeral in this page"],
@@ -92,6 +92,15 @@ export function modelFacts(model, status, retentionMode = "ephemeral") {
 	["Policy source", policySourceLabel(model.privacy.policySource)],
 	["Lifecycle", lifecycleLabel(model.lifecycle)],
   ];
+}
+
+export function relayVerificationLabel(status) {
+  if (!status || !status.relay) return "No relay reported";
+  if (status.relay.verification === "connected_pin_matched") return "Pin matched on a successful connection";
+  if (status.relay.verification === "pin_configured") return "Pin configured; live connection verification is not reported";
+  // Schema compatibility: older clients exposed only key_matched.
+  if (status.relay.key_matched === true) return "Pin matched on a successful connection";
+  return "Relay verification unknown";
 }
 
 export function lifecycleLabel(lifecycle) {

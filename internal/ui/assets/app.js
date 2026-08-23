@@ -1,6 +1,6 @@
 import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
 import { appendTurn, conversationTitle, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
-import { humanize, modelFacts, normalizeCatalog } from "./models.js";
+import { humanize, modelFacts, normalizeCatalog, relayVerificationLabel } from "./models.js";
 import { readAnthropicTextStream } from "./sse.js";
 import { conversationStore } from "./storage.js";
 
@@ -65,7 +65,7 @@ function render(){
   var rows=[];
   if(status.relay){
     rows.push(["Relay",status.relay.nickname||status.relay.address]);
-    rows.push(["Key",status.relay.key_matched?"matched what was published":"unverified"]);
+	rows.push(["Key",relayVerificationLabel(status)]);
     if(status.relay.since_seconds)rows.push(["In use for",humanAge(status.relay.since_seconds)]);
   }else{
     rows.push(["Relay","none chosen yet"]);
@@ -108,7 +108,7 @@ function fillPanel(){
   if(status&&status.relay){
     lines.push(["They were sealed on this machine, ","before anything touched the network."]);
     lines.push(["They passed through a relay that could not open them — ",
-      "it forwarded a sealed thing and knows only that it did."]);
+	  "it could see your source address, timing, traffic volume, and allowed destination, but not the prompt or answer text."]);
   }
   if(status&&status.paying==="tokens"){
     lines.push(["The model answered without being told who asked. ",
@@ -130,7 +130,7 @@ function fillPanel(){
   var f=$("facts");f.textContent="";
   var facts=[];
   if(status&&status.relay)facts.push(["relay",status.relay.nickname||status.relay.address]);
-  if(status&&status.relay)facts.push(["verified",status.relay.key_matched?"key matched the published one":"unverified"]);
+	if(status&&status.relay)facts.push(["relay check",relayVerificationLabel(status)]);
   if(status&&status.directory)facts.push(["signed by",status.directory.signed_by+" authorities"]);
   if(status)facts.push(["paying",status.paying]);
   if(status)facts.push(["daemon retained",status.retained]);
