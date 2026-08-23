@@ -117,3 +117,40 @@ func TestTheInterfaceIsReadOnlyHTTP(t *testing.T) {
 		t.Fatalf("HEAD returned %d body bytes", rec.Body.Len())
 	}
 }
+
+func TestOnlyKnownAssetsAreServed(t *testing.T) {
+	h := Handler("/_osanwe/")
+	tests := []struct {
+		path        string
+		contentType string
+	}{
+		{"/_osanwe/", "text/html; charset=utf-8"},
+		{"/_osanwe/assets/app.css", "text/css; charset=utf-8"},
+		{"/_osanwe/assets/app.js", "text/javascript; charset=utf-8"},
+	}
+	for _, tc := range tests {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET %s status = %d, want 200", tc.path, rec.Code)
+			continue
+		}
+		if got := rec.Header().Get("Content-Type"); got != tc.contentType {
+			t.Errorf("GET %s Content-Type = %q, want %q", tc.path, got, tc.contentType)
+		}
+		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("GET %s Cache-Control = %q, want no-store", tc.path, got)
+		}
+	}
+
+	for _, path := range []string{
+		"/_osanwe/assets/", "/_osanwe/assets/missing.js", "/_osanwe/assets/../app.html",
+		"/_osanwe/assets/%2e%2e/app.html", "/_osanwe/assets/app.js.map",
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code == http.StatusOK {
+			t.Errorf("GET %s served an unintended asset", path)
+		}
+	}
+}
