@@ -55,3 +55,49 @@ export function anthropicTextDelta(payload) {
     text: delta.type === "text_delta" && typeof delta.text === "string" ? delta.text : "",
   };
 }
+
+// readAnthropicTextStream resolves only after the provider emits an explicit
+// terminal event. A clean TCP EOF is not proof that a partial answer is
+// complete, so an interrupted stream remains excluded from future context.
+export async function readAnthropicTextStream(body, onText = () => {}) {
+  if (!body || typeof body.getReader !== "function") throw new TypeError("a readable response body is required");
+  if (typeof onText !== "function") throw new TypeError("onText must be a function");
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const parser = new SSEParser();
+  let sawTerminal = false;
+  let reachedEOF = false;
+
+  const consume = (payloads) => {
+    for (const payload of payloads) {
+      if (sawTerminal) break;
+      const delta = anthropicTextDelta(payload);
+      if (delta.text) onText(delta.text);
+      if (delta.done) sawTerminal = true;
+    }
+  };
+
+  try {
+    while (!sawTerminal) {
+      const item = await reader.read();
+      if (item.done) {
+        reachedEOF = true;
+        consume(parser.push(decoder.decode()));
+        consume(parser.finish());
+        break;
+      }
+      consume(parser.push(decoder.decode(item.value, { stream: true })));
+    }
+    if (!sawTerminal) {
+      throw new Error("The response ended before the provider confirmed it was complete.");
+    }
+  } finally {
+    // Stop bytes after a terminal event and release the reader. Cancellation
+    // is cleanup, never evidence that a valid terminal event was incomplete.
+    if (!reachedEOF) {
+      try { await reader.cancel(); } catch {}
+    }
+    try { reader.releaseLock(); } catch {}
+  }
+}

@@ -1,7 +1,7 @@
 import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
 import { appendTurn, conversationTitle, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
 import { humanize, modelFacts, normalizeCatalog } from "./models.js";
-import { anthropicTextDelta, SSEParser } from "./sse.js";
+import { readAnthropicTextStream } from "./sse.js";
 import { conversationStore } from "./storage.js";
 
 (function(){
@@ -252,32 +252,17 @@ function submit(){
 // Everything else on the wire -- message_start, usage records, ping -- carries
 // no words. Appending them would put JSON in the middle of a sentence.
 function stream(resp,body,caret,reply){
-  var reader=resp.body.getReader(),dec=new TextDecoder(),parser=new SSEParser();
-  function consume(payloads){
-    payloads.forEach(function(payload){
-      var delta=anthropicTextDelta(payload);
-      if(!delta.text)return;
-      reply.content+=delta.text;
-      caret.remove();
-      body.appendChild(document.createTextNode(delta.text));
-      body.appendChild(caret);
-      scroll();
-    });
-  }
-  function pump(){
-    return reader.read().then(function(r){
-      if(r.done){
-        consume(parser.push(dec.decode()));
-        consume(parser.finish());
-        reply.status="complete";
-        persistConversation();
-        caret.remove();return;
-      }
-      consume(parser.push(dec.decode(r.value,{stream:true})));
-      return pump();
-    });
-  }
-  return pump();
+  return readAnthropicTextStream(resp.body,function(text){
+	reply.content+=text;
+	caret.remove();
+	body.appendChild(document.createTextNode(text));
+	body.appendChild(caret);
+	scroll();
+  }).then(function(){
+	reply.status="complete";
+	persistConversation();
+	caret.remove();
+  });
 }
 
 // ---- snippets -------------------------------------------------------
