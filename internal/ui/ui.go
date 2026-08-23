@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-//go:embed app.html
+//go:embed app.html assets/*
 var files embed.FS
 
 // contentSecurityPolicy is deliberately close to nothing.
@@ -41,21 +41,32 @@ func Handler(prefix string) http.Handler {
 		// failing loudly beats serving an empty page.
 		panic("ui: app.html is missing from the binary: " + err.Error())
 	}
+	stylesheet, err := files.ReadFile("assets/app.css")
+	if err != nil {
+		panic("ui: assets/app.css is missing from the binary: " + err.Error())
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rest := strings.TrimPrefix(r.URL.Path, strings.TrimSuffix(prefix, "/"))
-		if rest != "" && rest != "/" {
+		var body []byte
+		switch rest {
+		case "", "/":
+			body = page
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		case "/assets/app.css":
+			body = stylesheet
+			w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		default:
 			http.NotFound(w, r)
 			return
 		}
 
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
 		// The page reflects live local state, and a cached copy showing a relay
 		// that is no longer in use would be a confident lie.
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Write(page)
+		_, _ = w.Write(body)
 	})
 }
