@@ -31,6 +31,9 @@ jobs:
       - name: static beta website
         run: python3 -m unittest discover -s tools -p 'test_site.py' -v
 
+      - name: public beta form disclosures
+        run: python3 -m unittest discover -s tools -p 'test_beta_forms.py' -v
+
       - name: immutable workflow dependencies
         run: python3 -m unittest discover -s tools -p 'test_workflows.py' -v
 
