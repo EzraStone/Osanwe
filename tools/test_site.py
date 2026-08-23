@@ -103,13 +103,18 @@ class StaticSiteTest(unittest.TestCase):
                     self.assertTrue(target.is_relative_to(root), f"local link escapes the repository: {reference}")
                     self.assertTrue(target.exists(), f"missing local target for {reference}")
 
-    def test_landing_page_does_not_send_referrers_to_external_links(self):
-        policies = {
-            meta.get("content", "").casefold()
-            for meta in self.page.metas
-            if meta.get("name", "").casefold() == "referrer"
-        }
-        self.assertIn("no-referrer", policies)
+    def test_served_pages_do_not_send_referrers(self):
+        for path, page in self.pages.items():
+            policies = {
+                meta.get("content", "").casefold()
+                for meta in page.metas
+                if meta.get("name", "").casefold() == "referrer"
+            }
+            with self.subTest(page=path.name):
+                self.assertIn("no-referrer", policies)
+
+        # The landing page repeats the policy per external link so a future
+        # templating or proxy mistake cannot weaken its main calls to action.
         for anchor in self.page.anchors:
             reference = anchor.get("href", "")
             parsed = urlsplit(reference)
