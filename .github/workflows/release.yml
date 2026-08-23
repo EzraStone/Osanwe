@@ -124,13 +124,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  draft-release:
+  release-bundle:
     if: startsWith(github.ref, 'refs/tags/')
     needs: client-archives
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write
+      actions: read
+      contents: read
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -149,6 +150,46 @@ jobs:
             exit 1
           fi
           (cd release-files && sha256sum osanwe-client_* > SHA256SUMS)
+
+      - name: upload verified release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-bundle
+          path: |
+            release-files/osanwe-client_*
+            release-files/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+  draft-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: release-bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      # Keep third-party actions out of the only job that can create a
+      # release. The GitHub-hosted gh client retrieves the already-verified
+      # bundle from this exact workflow run.
+      - name: download and recheck verified bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t artifact_ids < <(gh api \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?name=release-bundle" \
+            --jq '.artifacts[] | select(.name == "release-bundle" and .expired == false) | .id')
+          if [[ "${#artifact_ids[@]}" -ne 1 ]]; then
+            printf 'expected one release-bundle artifact, found %s\n' "${#artifact_ids[@]}" >&2
+            exit 1
+          fi
+          mkdir release-files
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_ids[0]}/zip" > release-bundle.zip
+          unzip -q release-bundle.zip -d release-files
+          (cd release-files && sha256sum -c SHA256SUMS)
 
       - name: create draft GitHub release
         env:
