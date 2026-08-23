@@ -1,6 +1,6 @@
 import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
 import { appendTurn, createConversation, toRequestMessages } from "./conversation.js";
-import { modelFacts, normalizeCatalog } from "./models.js";
+import { humanize, modelFacts, normalizeCatalog } from "./models.js";
 import { anthropicTextDelta, SSEParser } from "./sse.js";
 
 (function(){
@@ -105,6 +105,8 @@ function fillPanel(){
   if(status&&status.paying==="tokens"){
     lines.push(["The model answered without being told who asked. ",
       "Your address stopped at the relay, and no account of yours was used."]);
+    lines.push(["The gateway could read your words. ",
+      "Attested execution is not built, and this client cannot verify that the relay and gateway have independent operators."]);
   }else{
     lines.push(["","Your own account was used, so the provider still knows who asked. Only your address was hidden."]);
   }
@@ -124,6 +126,11 @@ function fillPanel(){
   if(status&&status.directory)facts.push(["signed by",status.directory.signed_by+" authorities"]);
   if(status)facts.push(["paying",status.paying]);
   if(status)facts.push(["retained",status.retained]);
+  if(status&&status.privacy){
+    facts.push(["gateway",humanize(status.privacy.gateway_content_access)]);
+    facts.push(["operators",humanize(status.privacy.operator_separation)]);
+    facts.push(["server history",humanize(status.privacy.conversation_history)]);
+  }
   facts.forEach(function(p){
     var k=document.createElement("span");k.className="k";k.textContent=p[0];
     var v=document.createElement("b");v.textContent=p[1];
