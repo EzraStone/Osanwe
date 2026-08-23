@@ -251,6 +251,13 @@ pre.code .s{color:var(--gild)}
 .settings-inner legend{padding:0 .3rem; color:var(--faint); font-size:11px; text-transform:uppercase; letter-spacing:.1em}
 .settings-inner label{grid-column:1 / -1; color:var(--ink); font-size:13.5px}
 .settings-inner fieldset span{grid-column:2; margin:0 0 .45rem; color:var(--faint); font-size:12px}
+.history-section{margin-top:1rem}
+.history-section h3{margin:0 0 .45rem; color:var(--faint); font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase}
+.history-list{display:grid; max-height:10rem; overflow-y:auto; border-block:1px solid var(--line)}
+.history-list p{margin:.65rem 0; color:var(--faint); font-size:12px}
+.history-list button{padding:.55rem 0; overflow:hidden; border:0; border-bottom:1px solid var(--line); background:none; color:var(--muted); cursor:pointer; font:13px var(--sans); text-align:left; text-overflow:ellipsis; white-space:nowrap}
+.history-list button:last-child{border-bottom:0}
+.history-list button:hover{color:var(--gild)}
 .settings-status{min-height:1.4em; color:var(--muted); font-size:12px}
 .settings-actions{display:flex; justify-content:space-between; align-items:center; gap:1rem}
 .settings-actions button{padding:.38rem .75rem; border:1px solid var(--line); border-radius:100px; background:none; color:var(--muted); cursor:pointer; font:12px var(--sans)}

@@ -1,5 +1,5 @@
 import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
-import { appendTurn, createConversation, toRequestMessages } from "./conversation.js";
+import { appendTurn, conversationTitle, createConversation, toRequestMessages } from "./conversation.js";
 import { humanize, modelFacts, normalizeCatalog } from "./models.js";
 import { anthropicTextDelta, SSEParser } from "./sse.js";
 import { conversationStore } from "./storage.js";
@@ -486,8 +486,40 @@ function persistConversation(){
   store.put(conversation).catch(function(error){storageFailed(error).catch(function(){})});
 }
 
+function renderConversation(){
+  rail.querySelectorAll(".turn").forEach(function(node){node.remove()});
+  conversation.turns.forEach(function(item){
+    var kind=item.role==="user"?"you":(item.status==="error"?"err":"reply");
+    var label=item.role==="user"?"You":"Osanwë";
+    var body=turn(kind,label);
+    body.textContent=item.content||(item.status==="stopped"?"Stopped":"Incomplete answer");
+  });
+  setEmpty(conversation.turns.length===0);
+  if(catalogModels.some(function(item){return item.id===conversation.model}))model.value=conversation.model;
+  scroll();refresh();
+}
+
+function refreshHistory(){
+  var saved;
+  try{saved=conversationStore("device")}catch(e){return Promise.resolve()}
+  return saved.list().then(function(records){
+    var list=$("historyList");list.textContent="";
+    if(!records.length){
+      var empty=document.createElement("p");empty.textContent="None saved in this browser.";list.appendChild(empty);return;
+    }
+    records.forEach(function(record){
+      var button=document.createElement("button");button.type="button";button.textContent=conversationTitle(record);
+      button.addEventListener("click",function(){
+        if(inFlight)inFlight.abort();conversation=record;renderConversation();
+        $("settingsDialog").close();$("chatTab").click();
+      });
+      list.appendChild(button);
+    });
+  }).catch(function(error){storageFailed(error).catch(function(){})});
+}
+
 function openSettings(){
-  retentionLabel();$("settingsStatus").textContent="";$("settingsDialog").showModal();
+  retentionLabel();$("settingsStatus").textContent="";refreshHistory();$("settingsDialog").showModal();
 }
 $("settingsBtn").addEventListener("click",openSettings);
 $("retentionState").addEventListener("click",openSettings);
@@ -501,7 +533,7 @@ $("deleteHistoryBtn").addEventListener("click",function(){
   saved.clear().then(function(){
     retentionMode="ephemeral";store=conversationStore("ephemeral");
     try{localStorage.setItem("osanwe-retention","ephemeral")}catch(e){}
-    $("settingsStatus").textContent="All conversations saved by Osanwë in this browser were deleted.";retentionLabel();
+    $("settingsStatus").textContent="All conversations saved by Osanwë in this browser were deleted.";retentionLabel();refreshHistory();
   }).catch(function(e){storageFailed(e).catch(function(){})});
 });
 
