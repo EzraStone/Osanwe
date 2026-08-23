@@ -1,0 +1,75 @@
+name: Technical beta interest
+description: Apply for one of the first ten non-sensitive testing seats.
+title: "Beta interest: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping test Osanwë. This issue is public. Do not paste a prompt, response,
+        relay secret, entitlement, API key, personal address, or other sensitive information.
+
+  - type: dropdown
+    id: role
+    attributes:
+      label: Testing role
+      description: Choose the perspective you can test most directly.
+      options:
+        - Independent relay operator
+        - Application security engineer
+        - Privacy or applied-cryptography reviewer
+        - Heavy AI coding-tool user
+        - Nontechnical Windows user
+        - macOS user
+        - Linux developer
+        - Keyboard-only or screen-reader user
+        - Reliability or DevOps operator
+        - Privacy-conscious product tester
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Primary platform
+      options:
+        - Windows 11
+        - macOS on Apple silicon
+        - macOS on Intel
+        - Linux on x86-64
+        - Relay-only testing
+    validations:
+      required: true
+
+  - type: textarea
+    id: contribution
+    attributes:
+      label: What can you test?
+      description: Describe relevant experience and the failure modes you would focus on. Do not include private contact information.
+      placeholder: I can spend about two hours testing installation, cancellation, reconnects, and disclosure comprehension.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: availability
+    attributes:
+      label: Availability
+      options:
+        - Within 48 hours of an invite
+        - Within one week of an invite
+        - Later than one week
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Beta boundaries
+      options:
+        - label: I will use only supplied synthetic or deliberately non-sensitive prompts.
+          required: true
+        - label: I understand the gateway can currently read prompts and answers; attested execution is not built.
+          required: true
+        - label: I will not test medical, legal, financial, employment, school, children's, or vulnerable-source data.
+          required: true
+        - label: I understand this is a free technical test, not a production service or availability promise.
+          required: true
