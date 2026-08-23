@@ -103,6 +103,13 @@ export function relayVerificationLabel(status) {
   return "Relay verification unknown";
 }
 
+export function buildIdentityLabel(build) {
+  if (!build || typeof build.version !== "string" || !build.version.trim()) return "Unknown";
+  const release = build.version.trim().slice(0, 64);
+  if (typeof build.commit !== "string" || !build.commit.trim() || build.commit === "unknown") return release;
+  return `${release} · ${build.commit.trim().slice(0, 12)}`;
+}
+
 export function lifecycleLabel(lifecycle) {
   if (!lifecycle || lifecycle.experimental !== true) return "No temporary expiry reported";
   if (!lifecycle.expiresAt || lifecycle.expiresAt === UNKNOWN) return "Experimental; expiry unknown";

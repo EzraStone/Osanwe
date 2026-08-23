@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { humanize, lifecycleLabel, modelFacts, normalizeCatalog, policySourceLabel, relayVerificationLabel } from "../assets/models.js";
+import { buildIdentityLabel, humanize, lifecycleLabel, modelFacts, normalizeCatalog, policySourceLabel, relayVerificationLabel } from "../assets/models.js";
 
 test("model metadata is normalized without inventing policy", () => {
   const [model] = normalizeCatalog({
@@ -101,6 +101,12 @@ test("relay wording distinguishes a connection from a configured pin", () => {
 	new Map(modelFacts(normalizeCatalog({ data: [{ id: "m" }] })[0], { relay: { verification: "pin_configured" } })).get("Relay verification"),
 	/verified relay/i,
   );
+});
+
+test("build identity is concise and does not invent missing release data", () => {
+  assert.equal(buildIdentityLabel({ version: "v0.2.0", commit: "0123456789abcdef", date: "2026-08-22" }), "v0.2.0 · 0123456789ab");
+  assert.equal(buildIdentityLabel({ version: "dev", commit: "unknown" }), "dev");
+  assert.equal(buildIdentityLabel(null), "Unknown");
 });
 
 test("machine labels become readable without changing their meaning", () => {

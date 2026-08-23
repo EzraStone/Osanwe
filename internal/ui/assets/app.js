@@ -1,6 +1,6 @@
 import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
 import { appendTurn, conversationTitle, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
-import { humanize, modelFacts, normalizeCatalog, relayVerificationLabel } from "./models.js";
+import { buildIdentityLabel, humanize, modelFacts, normalizeCatalog, relayVerificationLabel } from "./models.js";
 import { readAnthropicTextStream } from "./sse.js";
 import { conversationStore } from "./storage.js";
 
@@ -74,6 +74,7 @@ function render(){
     rows.push(["Directory",plural(status.directory.signed_by,"authority")+" signed the list in force"]);
     rows.push(["Relays known",String(status.directory.relays_known)]);
   }
+  rows.push(["Client build",buildIdentityLabel(status.build)]);
   rows.push(["Paying with",status.paying]);
   rows.push(["Daemon history",status.retained]);
 
