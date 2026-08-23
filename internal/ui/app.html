@@ -33,10 +33,10 @@
         <p id="openingSub">Nothing here is kept, and nothing leaves this device unsealed.</p>
       </div>
       <div class="notice" id="byokNotice" hidden>
-        <b>This window has no key, on purpose.</b>
-        Osanwë is running on your own API key, which lives in your tools and never in this
-        process — so there is nothing here to send a request with. Point a tool at the endpoint
-        under <b class="inline-label">Connect</b>, or
+        <b>This window does not store or ask for your provider key.</b>
+        In bring-your-own-key mode, your tool sends its key to the local Osanwë client. The client
+        handles and forwards it transiently for that request; it is not intentionally saved or
+        logged. Point a compatible tool at the endpoint under <b class="inline-label">Connect</b>, or
         restart with <code>-mint</code> to pay with tokens and use this window directly.
       </div>
     </div>
@@ -97,7 +97,8 @@
 
       <div class="block">
         <h3>Endpoint</h3>
-        <p class="lede">Point any tool here. It speaks the Anthropic API, so nothing else changes.</p>
+        <p class="lede">Point a compatible tool here. Osanwë implements a strict text-only subset of
+          the Anthropic Messages API; use only models and capabilities shown in the live catalog.</p>
         <div class="endpoint">
           <code id="endpointText">…</code>
           <button type="button" class="copy" id="copyEndpoint">Copy</button>
