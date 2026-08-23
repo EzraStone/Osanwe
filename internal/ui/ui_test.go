@@ -52,6 +52,35 @@ func TestThePageContainsNoInlineCode(t *testing.T) {
 	}
 }
 
+func TestPrimaryModesAndProviderSettingsAreHonest(t *testing.T) {
+	page, err := files.ReadFile("app.html")
+	if err != nil {
+		t.Fatalf("app.html is not embedded: %v", err)
+	}
+	text := string(page)
+	for _, required := range []string{
+		`data-mode="chat">Chat`,
+		`data-mode="code">Code`,
+		`id="coworkTab"`,
+		`disabled aria-disabled="true">Cowork`,
+		`id="themeIcon"`,
+		`id="providerSettings"`,
+		`cannot read files, run commands, or apply changes`,
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("the embedded page is missing %q", required)
+		}
+	}
+	settings := strings.Index(text, `id="settingsDialog"`)
+	providerKey := strings.Index(text, `id="providerKey"`)
+	if settings < 0 || providerKey < settings {
+		t.Fatal("the provider key control must live inside Settings")
+	}
+	if strings.Contains(text, `id="modelsTab"`) || strings.Contains(text, `id="connectTab"`) {
+		t.Fatal("the old Models or Connect primary tab is still present")
+	}
+}
+
 func TestTheScriptHasNoHTMLOrCookieStorageSink(t *testing.T) {
 	script, err := files.ReadFile("assets/app.js")
 	if err != nil {

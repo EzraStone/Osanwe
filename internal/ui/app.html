@@ -12,154 +12,76 @@
 
 <div class="chrome">
   <span class="wordmark">Osanwë</span>
-  <div class="seg" role="tablist" aria-label="View">
-    <button type="button" role="tab" id="chatTab" aria-selected="true" aria-controls="chatView" tabindex="0" data-view="chat">Chat</button>
-    <button type="button" role="tab" id="modelsTab" aria-selected="false" aria-controls="modelsView" tabindex="-1" data-view="models">Models</button>
-    <button type="button" role="tab" id="connectTab" aria-selected="false" aria-controls="devView" tabindex="-1" data-view="dev">Connect</button>
+  <div class="seg" role="tablist" aria-label="Mode">
+    <button type="button" role="tab" id="chatTab" aria-selected="true" aria-controls="chatView" tabindex="0" data-mode="chat">Chat</button>
+    <button type="button" role="tab" id="codeTab" aria-selected="false" aria-controls="chatView" tabindex="-1" data-mode="code">Code</button>
+    <button type="button" role="tab" id="coworkTab" aria-selected="false" aria-controls="chatView" tabindex="-1" disabled aria-disabled="true">Cowork <small>Soon</small></button>
   </div>
   <div class="chrome-actions">
-    <button type="button" class="ghost" id="themeBtn" title="Light, dark, or follow the system">Auto</button>
+    <button type="button" class="ghost icon-button" id="themeBtn" aria-label="Switch theme" title="Switch theme"><span id="themeIcon" aria-hidden="true">☾</span></button>
     <button type="button" class="ghost" id="settingsBtn">Settings</button>
     <button type="button" class="ghost" id="newBtn">New</button>
   </div>
 </div>
 
 <div class="view" id="chatView" role="tabpanel" aria-labelledby="chatTab">
-  <div class="thread is-empty" id="thread">
-    <div class="rail" id="rail" role="log" aria-label="Conversation" aria-live="polite"
-         aria-relevant="additions text" aria-busy="false">
-      <div class="opening" id="opening">
-        <h2>What are you thinking about?</h2>
-        <p id="openingSub">Nothing here is kept, and nothing leaves this device unsealed.</p>
+  <div class="workspace-shell">
+    <aside class="code-context" id="codeContext" aria-label="Code workspace" hidden>
+      <p class="eyebrow">Code workspace</p>
+      <div class="workspace-state"><span aria-hidden="true"></span> No folder connected</div>
+      <p>Ask for code, debugging, explanations, or reviews. This beta cannot read files, run commands, or apply changes on your computer yet.</p>
+      <div class="code-capabilities" aria-label="Available code capabilities">
+        <span>Explain</span><span>Generate</span><span>Review</span>
       </div>
-      <div class="notice" id="byokNotice" hidden>
-        <b>Use your own provider key in this local window.</b>
-        <p>The key is held only in this page's memory and sent through the local client for provider
-        requests. It is not intentionally saved in browser storage, configuration, logs, or the
-        public website. Reloading or closing the page forgets it.</p>
-        <p>Your provider still sees your account, prompts, answers, and timing. Check the selected
-        model's retention, training, identity, and lifecycle disclosures before sending anything.</p>
-        <label class="byok-consent"><input type="checkbox" id="providerConsent">
-          I will use only synthetic or deliberately non-sensitive prompts in this technical test.
-        </label>
-        <div class="byok-key-row">
-          <label for="providerKey">Provider API key</label>
-          <input type="password" id="providerKey" autocomplete="new-password" spellcheck="false"
-                 aria-describedby="providerKeyStatus">
-          <button type="button" id="connectProviderKey">Use for this session</button>
-          <button type="button" id="forgetProviderKey" hidden>Forget key</button>
-        </div>
-        <p class="byok-key-status" id="providerKeyStatus" role="status" aria-live="polite"></p>
-      </div>
-    </div>
-  </div>
-
-  <div class="composer-wrap">
-    <div class="composer-inner">
-      <div class="composer">
-        <textarea id="input" rows="1" placeholder="Ask anything" aria-label="Your message"></textarea>
-        <button type="button" class="seal" id="seal" aria-label="How this is protected"
-                aria-expanded="false" aria-controls="panel" title="How this is protected">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle class="ring" cx="12" cy="12" r="9"></circle>
-            <path class="mark" d="M12 7.4v9.2M8.6 9.6a4.6 4.6 0 0 0 0 4.8M15.4 9.6a4.6 4.6 0 0 1 0 4.8"></path>
-          </svg>
-        </button>
-        <button type="button" class="send" id="send" disabled aria-label="Send">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 19V5M5 12l7-7 7 7"></path>
-          </svg>
-        </button>
-		<button type="button" class="stop" id="stop" hidden aria-label="Stop generating">
-		  <svg viewBox="0 0 24 24" aria-hidden="true">
-			<rect x="7" y="7" width="10" height="10" rx="1"></rect>
-		  </svg>
-		</button>
-      </div>
-      <div class="underline">
-        <select class="model" id="model" aria-label="Model">
-          <option value="claude-sonnet-5">claude-sonnet-5</option>
-        </select>
-        <div class="composer-state">
-          <button type="button" class="retention" id="retentionState">Ephemeral</button>
-          <span class="state" id="state" role="status" aria-live="polite">Sealed</span>
-        </div>
-      </div>
-    </div>
-	<p class="storage-warning" id="storageWarning" role="alert" hidden></p>
-  </div>
-</div>
-
-<div class="view" id="modelsView" role="tabpanel" aria-labelledby="modelsTab" hidden>
-  <div class="models-page">
-    <header class="models-intro">
-      <p class="eyebrow">Live catalog</p>
-      <h1>Choose with the limits visible.</h1>
-      <p>Only models reported by the connected gateway appear here. Unknown provider policies stay unknown.</p>
-    </header>
-    <p class="catalog-state" id="catalogState" role="status">Loading the local catalog…</p>
-    <div class="model-grid" id="modelGrid" aria-live="polite"></div>
-  </div>
-</div>
-
-<div class="view" id="devView" role="tabpanel" aria-labelledby="connectTab" hidden>
-  <div class="dev">
-    <div class="dev-rail">
-
-      <div class="block">
-        <h3>Endpoint</h3>
-        <p class="lede">Point a compatible tool here. Osanwë implements a strict text-only subset of
-          the Anthropic Messages API; use only models and capabilities shown in the live catalog.</p>
-        <div class="endpoint">
-          <code id="endpointText">…</code>
-          <button type="button" class="copy" id="copyEndpoint">Copy</button>
-        </div>
-        <p class="aside">Bound to loopback, and it refuses to bind anything else. The hop from your
-          tool to Osanwë is plain HTTP and never leaves this machine.</p>
-      </div>
-
-      <div class="block">
-        <h3>Connect</h3>
-        <div class="tabs" role="tablist" aria-label="Language">
-          <button type="button" role="tab" id="shellTab" aria-selected="true" aria-controls="snippet" tabindex="0" data-snip="shell">shell</button>
-          <button type="button" role="tab" id="pythonTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="python">python</button>
-          <button type="button" role="tab" id="nodeTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="node">node</button>
-          <button type="button" role="tab" id="curlTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="curl">curl</button>
-        </div>
-        <pre class="code" id="snippet" role="tabpanel" aria-labelledby="shellTab" tabindex="0"></pre>
-        <p class="aside" id="snipNote"></p>
-      </div>
-
-      <div class="block" id="walletBlock" hidden>
-        <h3>Tokens</h3>
-        <div class="wallet">
-          <span class="n" id="walletOnHand">—</span>
-          <span class="unit" id="walletUnit">on hand</span>
-        </div>
-        <div class="status-list">
-          <div><span>Spent this session</span><b id="walletSpent">—</b></div>
-        </div>
-        <p class="aside">These are local wallet counters, not an account balance exposed by the
-          mint or gateway. Blind signatures are designed to prevent direct issuance-to-redemption
-          matching; timing, content, and operator collusion can still link activity.</p>
-      </div>
-
-      <div class="block">
-        <h3>Connection</h3>
-        <div class="status-list" id="connList"></div>
-        <p class="aside" id="connAside"></p>
-      </div>
-
-      <div class="block">
-        <h3>Routing</h3>
-        <p class="lede">Models in the live catalog are routed by exact name. Provider endpoints and
-          credentials stay at the gateway and are never included in the catalog.</p>
-        <div class="status-list">
-          <div><span>Upstream</span><b class="mono" id="upstreamText">—</b></div>
+    </aside>
+    <div class="conversation-surface">
+      <div class="thread is-empty" id="thread">
+        <div class="rail" id="rail" role="log" aria-label="Conversation" aria-live="polite"
+             aria-relevant="additions text" aria-busy="false">
+          <div class="opening" id="opening">
+            <p class="mode-kicker" id="modeKicker">Private chat</p>
+            <h2 id="openingTitle">What are you thinking about?</h2>
+            <p id="openingSub">Nothing here is kept, and nothing leaves this device unsealed.</p>
+            <button type="button" class="opening-action" id="openProviderSettings" hidden>Connect provider in Settings</button>
+          </div>
         </div>
       </div>
 
+      <div class="composer-wrap">
+        <div class="composer-inner">
+          <div class="composer">
+            <textarea id="input" rows="1" placeholder="Ask anything" aria-label="Your message"></textarea>
+            <button type="button" class="seal" id="seal" aria-label="How this is protected"
+                    aria-expanded="false" aria-controls="panel" title="How this is protected">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle class="ring" cx="12" cy="12" r="9"></circle>
+                <path class="mark" d="M12 7.4v9.2M8.6 9.6a4.6 4.6 0 0 0 0 4.8M15.4 9.6a4.6 4.6 0 0 1 0 4.8"></path>
+              </svg>
+            </button>
+            <button type="button" class="send" id="send" disabled aria-label="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V5M5 12l7-7 7 7"></path>
+              </svg>
+            </button>
+            <button type="button" class="stop" id="stop" hidden aria-label="Stop generating">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="7" y="7" width="10" height="10" rx="1"></rect>
+              </svg>
+            </button>
+          </div>
+          <div class="underline">
+            <select class="model" id="model" aria-label="Model">
+              <option value="claude-sonnet-5">claude-sonnet-5</option>
+            </select>
+            <div class="composer-state">
+              <button type="button" class="retention" id="retentionState">Ephemeral</button>
+              <span class="state" id="state" role="status" aria-live="polite">Sealed</span>
+            </div>
+          </div>
+        </div>
+        <p class="storage-warning" id="storageWarning" role="alert" hidden></p>
+      </div>
     </div>
   </div>
 </div>
@@ -177,20 +99,85 @@
 
 <dialog class="settings-dialog" id="settingsDialog" aria-labelledby="settingsTitle">
   <div class="settings-inner">
-    <p class="eyebrow">This browser only</p>
-    <h2 id="settingsTitle">Conversation history</h2>
-    <p>Osanwë services keep no conversation record. You can optionally save one in this browser profile.</p>
-    <fieldset>
-      <legend>Retention</legend>
-      <label><input type="radio" name="retention" value="ephemeral" checked> Ephemeral</label>
-      <span>Closing or reloading this page loses the conversation.</span>
-      <label><input type="radio" name="retention" value="device"> Save on this device</label>
-      <span>Other people or malware with this browser profile may read it.</span>
-    </fieldset>
+    <div class="settings-heading">
+      <div>
+        <p class="eyebrow">Osanwë</p>
+        <h2 id="settingsTitle">Settings</h2>
+      </div>
+      <button type="button" class="settings-close" id="closeSettingsIcon" aria-label="Close settings">×</button>
+    </div>
+
+    <section class="settings-section" id="providerSettings" aria-labelledby="providerTitle">
+      <h3 id="providerTitle">Provider access</h3>
+      <p>Connect your own API key for this page. The key stays in page memory, is not intentionally saved, and is forgotten when you reload or close this page.</p>
+      <p class="provider-warning">Your provider still sees your account, prompts, answers, and timing. Use only synthetic or deliberately non-sensitive prompts in this technical test.</p>
+      <label class="byok-consent"><input type="checkbox" id="providerConsent">
+        I understand this test boundary.
+      </label>
+      <div class="byok-key-row">
+        <label for="providerKey">Provider API key</label>
+        <input type="password" id="providerKey" autocomplete="new-password" spellcheck="false"
+               aria-describedby="providerKeyStatus">
+        <button type="button" id="connectProviderKey">Use for this session</button>
+        <button type="button" id="forgetProviderKey" hidden>Forget key</button>
+      </div>
+      <p class="byok-key-status" id="providerKeyStatus" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="settings-section" aria-labelledby="historyTitle">
+      <h3 id="historyTitle">Conversation history</h3>
+      <p>Osanwë services keep no conversation record. You can optionally save one in this browser profile.</p>
+      <fieldset>
+        <legend>Retention</legend>
+        <label><input type="radio" name="retention" value="ephemeral" checked> Ephemeral</label>
+        <span>Closing or reloading this page loses the conversation.</span>
+        <label><input type="radio" name="retention" value="device"> Save on this device</label>
+        <span>Other people or malware with this browser profile may read it.</span>
+      </fieldset>
+    </section>
     <section class="history-section" aria-labelledby="historyTitle">
-      <h3 id="historyTitle">Saved conversations</h3>
+      <h3>Saved conversations</h3>
       <div class="history-list" id="historyList"><p>None saved in this browser.</p></div>
     </section>
+
+    <details class="settings-details">
+      <summary>Models and connection</summary>
+      <div class="settings-detail-body">
+        <p class="catalog-state" id="catalogState" role="status">Loading the local catalog…</p>
+        <div class="model-grid" id="modelGrid" aria-live="polite"></div>
+
+        <div class="block">
+          <h3>Local endpoint</h3>
+          <div class="endpoint">
+            <code id="endpointText">…</code>
+            <button type="button" class="copy" id="copyEndpoint">Copy</button>
+          </div>
+        </div>
+        <div class="block">
+          <h3>Tool connection</h3>
+          <div class="tabs" role="tablist" aria-label="Language">
+            <button type="button" role="tab" id="shellTab" aria-selected="true" aria-controls="snippet" tabindex="0" data-snip="shell">shell</button>
+            <button type="button" role="tab" id="pythonTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="python">python</button>
+            <button type="button" role="tab" id="nodeTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="node">node</button>
+            <button type="button" role="tab" id="curlTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="curl">curl</button>
+          </div>
+          <pre class="code" id="snippet" role="tabpanel" aria-labelledby="shellTab" tabindex="0"></pre>
+          <p class="aside" id="snipNote"></p>
+        </div>
+        <div class="block" id="walletBlock" hidden>
+          <h3>Tokens</h3>
+          <div class="wallet"><span class="n" id="walletOnHand">—</span><span class="unit" id="walletUnit">on hand</span></div>
+          <div class="status-list"><div><span>Spent this session</span><b id="walletSpent">—</b></div></div>
+        </div>
+        <div class="block">
+          <h3>Connection</h3>
+          <div class="status-list" id="connList"></div>
+          <p class="aside" id="connAside"></p>
+          <div class="status-list"><div><span>Upstream</span><b class="mono" id="upstreamText">—</b></div></div>
+        </div>
+      </div>
+    </details>
+
     <p class="settings-status" id="settingsStatus" role="status" aria-live="polite"></p>
     <div class="settings-actions">
       <button type="button" class="danger-button" id="deleteConversationBtn">Delete current</button>

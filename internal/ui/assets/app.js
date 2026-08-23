@@ -12,16 +12,25 @@ import { conversationStore } from "./storage.js";
 var PREFIX="/_osanwe/";
 
 var $=function(id){return document.getElementById(id)};
-var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
+var thread=$("thread"),rail=$("rail"),opening=$("opening"),
     input=$("input"),send=$("send"),stop=$("stop"),seal=$("seal"),state=$("state"),model=$("model"),
     providerKeyInput=$("providerKey"),providerConsent=$("providerConsent"),
-    panel=$("panel"),veil=$("veil"),chatView=$("chatView"),modelsView=$("modelsView"),devView=$("devView");
+    panel=$("panel"),veil=$("veil"),providerSettings=$("providerSettings");
 
 var status=null,busy=false,stopping=false,broken=false,activeRequest=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
-    providerKey="",
+    providerKey="",activeMode="chat",
     completedRequestHere=false,catalogRequest=0,transitionTail=Promise.resolve(),lifecycle=new ConversationLifecycle(),
     retentionMode="ephemeral",store=conversationStore("ephemeral"),
     conversation=createConversation({model:model.value});
+var modeConversations={chat:conversation,code:createConversation({model:model.value})};
+var modeCopy={
+  chat:{kicker:"Private chat",title:"What are you thinking about?",placeholder:"Ask anything",assistant:"Osanwë",system:""},
+  code:{
+    kicker:"Code assistant",title:"What should we build?",placeholder:"Describe a coding task",assistant:"Osanwë Code",
+    system:"You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. You cannot access the user's local files, run commands, or apply changes, so state that limitation whenever it matters. Prefer concise, directly usable code or patches."
+  }
+};
+document.body.dataset.mode=activeMode;
 try{preferredModel=localStorage.getItem("osanwe-model")||""}catch(e){}
 try{if(localStorage.getItem("osanwe-retention")==="device")retentionMode="device"}catch(e){}
 if(retentionMode==="device"){
@@ -51,13 +60,25 @@ function render(){
   $("upstreamText").textContent=status.upstream;
   showSnippet(currentSnip);
 
-  byok.hidden=tokens;
+  providerSettings.hidden=tokens;
+  $("openProviderSettings").hidden=tokens||Boolean(providerKey);
+  $("codeContext").hidden=activeMode!=="code";
   input.disabled=!chatAvailable;
-	input.placeholder=!tokens&&!providerKey?"Add your provider key above":(!modelsReady?"Checking active models":"No active model available");
-	if(chatAvailable)input.placeholder="Ask anything";
-  $("openingSub").textContent=!tokens
-	? (providerKey?localHistoryDescription()+" Your provider account remains visible to the provider.":"Add a session-only provider key below to use this local chat.")
-	: (chatAvailable?localHistoryDescription()+" Nothing leaves this device unsealed.":"The gateway currently reports no active model. No request can be sent.");
+	input.placeholder=!tokens&&!providerKey?"Connect a provider in Settings":(!modelsReady?"Checking active models":"No active model available");
+	if(chatAvailable)input.placeholder=modeCopy[activeMode].placeholder;
+  $("modeKicker").textContent=modeCopy[activeMode].kicker;
+  $("openingTitle").textContent=modeCopy[activeMode].title;
+  if(!tokens&&!providerKey){
+    $("openingSub").textContent="Connect a session-only provider key in Settings to begin.";
+  }else if(!chatAvailable){
+    $("openingSub").textContent="The gateway currently reports no active model. No request can be sent.";
+  }else if(activeMode==="code"){
+    $("openingSub").textContent=localHistoryDescription()+" Code mode can reason about text you provide, but it cannot access your files or terminal yet.";
+  }else if(tokens){
+    $("openingSub").textContent=localHistoryDescription()+" Nothing leaves this device unsealed.";
+  }else{
+    $("openingSub").textContent=localHistoryDescription()+" Your provider account remains visible to the provider.";
+  }
 
   $("walletBlock").hidden=!tokens||!status.wallet;
   if(status.wallet){
@@ -218,6 +239,7 @@ function submit(){
 
   setEmpty(false);
   var requestConversation=conversation;
+  var requestMode=activeMode;
   appendTurn(requestConversation,"user",text);
   persistConversation(requestConversation);
   turn("you","You").textContent=text;
@@ -227,7 +249,7 @@ function submit(){
   void seal.offsetWidth;seal.classList.add("pressing");
 
   var reply=appendTurn(requestConversation,"assistant","",{status:"streaming"});
-  var body=turn("reply","Osanwë");
+  var body=turn("reply",modeCopy[requestMode].assistant);
   var caret=document.createElement("span");caret.className="caret";
   body.appendChild(caret);
   var request={controller:new AbortController(),conversation:requestConversation,done:null};
@@ -235,6 +257,7 @@ function submit(){
 	busy=true;stopping=false;refresh();
   request.done=sendMessages({
     model:model.value,
+    system:modeCopy[requestMode].system,
     messages:toRequestMessages(requestConversation)
   },{
     signal:request.controller.signal,
@@ -307,7 +330,7 @@ function connectProviderKey(){
   providerKeyInput.disabled=true;providerConsent.disabled=true;
   $("connectProviderKey").hidden=true;$("forgetProviderKey").hidden=false;
   $("providerKeyStatus").textContent="Connected for this page only. Reload or choose Forget key to clear it.";
-  render();input.focus();
+  render();$("settingsDialog").close();input.focus();
 }
 
 function forgetProviderKey(){
@@ -319,6 +342,7 @@ function forgetProviderKey(){
 
 $("connectProviderKey").addEventListener("click",connectProviderKey);
 $("forgetProviderKey").addEventListener("click",forgetProviderKey);
+$("openProviderSettings").addEventListener("click",openSettings);
 providerKeyInput.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();connectProviderKey()}});
 window.addEventListener("pagehide",function(){providerKey="";providerKeyInput.value=""});
 input.addEventListener("input",function(){autosize();refresh()});
@@ -342,23 +366,29 @@ $("newBtn").addEventListener("click",function(){
   runTransition(async function(){
     await stopActiveRequest();await lifecycle.idle();
     conversation=createConversation({model:model.value});
+    modeConversations[activeMode]=conversation;
     rail.querySelectorAll(".turn").forEach(function(n){n.remove()});
     broken=false;seal.classList.remove("broken");
     setEmpty(true);input.focus();refresh();
   }).catch(storageFailed);
 });
 
-document.querySelectorAll("[data-view]").forEach(function(btn){
+document.querySelectorAll("[data-mode]").forEach(function(btn){
   btn.addEventListener("click",function(){
-    var want=btn.dataset.view;
-    document.querySelectorAll("[data-view]").forEach(function(b){
-      b.setAttribute("aria-selected",String(b===btn));
-      b.tabIndex=b===btn?0:-1;
-    });
-    chatView.hidden=want!=="chat";modelsView.hidden=want!=="models";devView.hidden=want!=="dev";
-    if(want==="models")loadModels();
-    else if(want==="dev")Promise.all([load(),loadModels()]);
-    else if(want==="chat")input.focus();
+    var want=btn.dataset.mode;
+    if((want!=="chat"&&want!=="code")||want===activeMode)return;
+    runTransition(async function(){
+      await stopActiveRequest();await lifecycle.idle();
+      modeConversations[activeMode]=conversation;
+      activeMode=want;conversation=modeConversations[want];conversation.model=model.value;
+      document.body.dataset.mode=activeMode;
+      document.querySelectorAll("[data-mode]").forEach(function(b){
+        b.setAttribute("aria-selected",String(b===btn));
+        b.tabIndex=b===btn?0:-1;
+      });
+      $("chatView").setAttribute("aria-labelledby",btn.id);
+      renderConversation();render();input.focus();
+    }).catch(storageFailed);
   });
 });
 
@@ -375,7 +405,7 @@ document.querySelectorAll("[data-snip]").forEach(function(btn){
 
 function wireTabKeys(list){
   list.addEventListener("keydown",function(e){
-    var tabs=Array.from(list.querySelectorAll("[role='tab']"));
+    var tabs=Array.from(list.querySelectorAll("[role='tab']:not(:disabled)"));
     var current=tabs.indexOf(document.activeElement),next=current;
     if(e.key==="Home")next=0;
     else if(e.key==="End")next=tabs.length-1;
@@ -474,7 +504,7 @@ function renderModelCards(){
 
     var choose=document.createElement("button");choose.type="button";choose.className="choose-model";
     choose.setAttribute("aria-pressed",String(selected));
-    choose.textContent=selected?"Using in Chat":"Use in Chat";
+    choose.textContent=selected?"Selected":"Use in Chat and Code";
     choose.addEventListener("click",function(){
       model.value=item.id;conversation.model=item.id;rememberModel(item.id);persistConversation();renderModelCards();
     });
@@ -493,11 +523,9 @@ model.addEventListener("change",function(){
 
 function retentionLabel(){
   $("retentionState").textContent=retentionMode==="device"?"Saved on this device":"Ephemeral";
-	if(status&&status.paying==="tokens"&&catalogModels.some(function(item){return item.id===model.value})){
-	$("openingSub").textContent=localHistoryDescription()+" Nothing leaves this device unsealed.";
-	}
   document.querySelectorAll("input[name='retention']").forEach(function(input){input.checked=input.value===retentionMode});
   if(catalogModels.length)renderModelCards();
+  render();
 }
 
 function localHistoryDescription(){
@@ -555,7 +583,7 @@ function renderConversation(){
   rail.querySelectorAll(".turn").forEach(function(node){node.remove()});
   conversation.turns.forEach(function(item){
     var kind=item.role==="user"?"you":(item.status==="error"?"err":"reply");
-    var label=item.role==="user"?"You":"Osanwë";
+    var label=item.role==="user"?"You":modeCopy[activeMode].assistant;
     var body=turn(kind,label);
     body.textContent=conversationTurnText(item);
   });
@@ -577,8 +605,8 @@ function refreshHistory(){
       button.addEventListener("click",function(){
         runTransition(async function(){
           await stopActiveRequest();await lifecycle.idle();
-          conversation=record;renderConversation();
-          $("settingsDialog").close();$("chatTab").click();
+          conversation=record;modeConversations[activeMode]=conversation;renderConversation();
+          $("settingsDialog").close();
         }).catch(storageFailed);
       });
       list.appendChild(button);
@@ -592,6 +620,7 @@ function openSettings(){
 $("settingsBtn").addEventListener("click",openSettings);
 $("retentionState").addEventListener("click",openSettings);
 $("closeSettingsBtn").addEventListener("click",function(){$("settingsDialog").close()});
+$("closeSettingsIcon").addEventListener("click",function(){$("settingsDialog").close()});
 document.querySelectorAll("input[name='retention']").forEach(function(input){
   input.addEventListener("change",function(){setRetention(input.value).catch(function(){})});
 });
@@ -629,33 +658,27 @@ $("exportConversationBtn").addEventListener("click",function(){
 });
 
 // ---- appearance -----------------------------------------------------
-// Three states rather than two, because "follow the system" is a real
-// preference and not the absence of one: a machine that switches itself at
-// dusk should be able to take this with it.
-//
 // Theme, model identifier, and the retention-mode choice are the only values
 // kept in localStorage. They say nothing about what was asked, or when;
 // conversation text never belongs in this small synchronous settings store.
 (function(){
-  var btn=$("themeBtn"),modes=["auto","light","dark"],
-      labels={auto:"Auto",light:"Light",dark:"Dark"},mode="auto";
-  try{ mode=localStorage.getItem("osanwe-theme")||"auto" }catch(e){}
-  if(modes.indexOf(mode)<0)mode="auto";
+  var btn=$("themeBtn"),icon=$("themeIcon"),stored="",mode="light";
+  try{stored=localStorage.getItem("osanwe-theme")||""}catch(e){}
+  mode=stored==="light"||stored==="dark"
+    ? stored
+    : (window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
 
   function apply(){
     var root=document.documentElement;
-    if(mode==="auto"){
-      root.removeAttribute("data-theme");
-      root.style.colorScheme="light dark";
-    }else{
-      root.setAttribute("data-theme",mode);
-      // Keeps scrollbars and form controls on the same side as the page.
-      root.style.colorScheme=mode;
-    }
-    btn.textContent=labels[mode];
+    root.setAttribute("data-theme",mode);
+    root.style.colorScheme=mode;
+    var next=mode==="dark"?"light":"dark";
+    icon.textContent=next==="light"?"☀":"☾";
+    btn.setAttribute("aria-label","Switch to "+next+" mode");
+    btn.title="Switch to "+next+" mode";
   }
   btn.addEventListener("click",function(){
-    mode=modes[(modes.indexOf(mode)+1)%modes.length];
+    mode=mode==="dark"?"light":"dark";
     try{ localStorage.setItem("osanwe-theme",mode) }catch(e){}
     apply();
   });
