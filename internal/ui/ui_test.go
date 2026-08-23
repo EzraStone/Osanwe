@@ -82,3 +82,26 @@ func TestOnlyTheRootIsServed(t *testing.T) {
 		}
 	}
 }
+
+func TestTheInterfaceIsReadOnlyHTTP(t *testing.T) {
+	h := Handler("/_osanwe/")
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(method, "/_osanwe/", nil))
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s status = %d, want 405", method, rec.Code)
+		}
+		if got := rec.Header().Get("Allow"); got != "GET, HEAD" {
+			t.Errorf("%s Allow = %q, want GET, HEAD", method, got)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodHead, "/_osanwe/assets/app.js", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HEAD status = %d, want 200", rec.Code)
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("HEAD returned %d body bytes", rec.Body.Len())
+	}
+}

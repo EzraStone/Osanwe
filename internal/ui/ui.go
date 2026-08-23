@@ -51,6 +51,11 @@ func Handler(prefix string) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		rest := strings.TrimPrefix(r.URL.Path, strings.TrimSuffix(prefix, "/"))
 		var body []byte
 		switch rest {
@@ -74,6 +79,8 @@ func Handler(prefix string) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		_, _ = w.Write(body)
+		if r.Method != http.MethodHead {
+			_, _ = w.Write(body)
+		}
 	})
 }
