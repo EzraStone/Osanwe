@@ -1,6 +1,9 @@
 import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
-import { appendTurn, conversationTitle, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
+import { appendTurn, conversationTitle, conversationTurnText, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
+import { disclosureNarrative } from "./disclosure.js";
+import { ConversationLifecycle } from "./lifecycle.js";
 import { buildIdentityLabel, humanize, modelFacts, normalizeCatalog, relayVerificationLabel } from "./models.js";
+import { connectionSnippets } from "./snippets.js";
 import { readAnthropicTextStream } from "./sse.js";
 import { conversationStore } from "./storage.js";
 
@@ -13,7 +16,8 @@ var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
     input=$("input"),send=$("send"),stop=$("stop"),seal=$("seal"),state=$("state"),model=$("model"),
     panel=$("panel"),veil=$("veil"),chatView=$("chatView"),modelsView=$("modelsView"),devView=$("devView");
 
-var status=null,busy=false,stopping=false,broken=false,inFlight=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
+var status=null,busy=false,stopping=false,broken=false,activeRequest=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
+    completedRequestHere=false,catalogRequest=0,transitionTail=Promise.resolve(),lifecycle=new ConversationLifecycle(),
     retentionMode="ephemeral",store=conversationStore("ephemeral"),
     conversation=createConversation({model:model.value});
 try{preferredModel=localStorage.getItem("osanwe-model")||""}catch(e){}
@@ -105,21 +109,7 @@ function humanAge(s){
 // ---- the disclosure -------------------------------------------------
 function fillPanel(){
   var told=$("told");told.textContent="";
-  var lines=[];
-  if(status&&status.relay){
-    lines.push(["They were sealed on this machine, ","before anything touched the network."]);
-    lines.push(["They passed through a relay that could not open them — ",
-	  "it could see your source address, timing, traffic volume, and allowed destination, but not the prompt or answer text."]);
-  }
-  if(status&&status.paying==="tokens"){
-    lines.push(["The model answered without being told who asked. ",
-      "Your address stopped at the relay, and no account of yours was used."]);
-    lines.push(["The gateway could read your words. ",
-      "Attested execution is not built, and this client cannot verify that the relay and gateway have independent operators."]);
-  }else{
-    lines.push(["","Your own account was used, so the provider still knows who asked. Only your address was hidden."]);
-  }
-  lines.push(["","Your writing style is still your own. No network can disguise that, and this one does not claim to."]);
+  var lines=disclosureNarrative(status,completedRequestHere);
 
   lines.forEach(function(l){
     var li=document.createElement("li");
@@ -180,6 +170,19 @@ function autosize(){input.style.height="auto";input.style.height=Math.min(input.
 function scroll(){thread.scrollTop=thread.scrollHeight}
 function setEmpty(is){thread.classList.toggle("is-empty",is);opening.hidden=!is}
 
+function stopActiveRequest(){
+  var request=activeRequest;
+  if(!request)return Promise.resolve();
+  if(!request.controller.signal.aborted){stopping=true;refresh();request.controller.abort()}
+  return request.done.catch(function(){return undefined});
+}
+
+function runTransition(operation){
+  var result=transitionTail.then(operation,operation);
+  transitionTail=result.catch(function(){return undefined});
+  return result;
+}
+
 function turn(kind,label){
   var d=document.createElement("div");d.className="turn "+kind;
   var h=document.createElement("div");h.className="who";h.textContent=label;
@@ -212,40 +215,41 @@ function submit(){
 	!catalogModels.some(function(item){return item.id===model.value}))return;
 
   setEmpty(false);
-  appendTurn(conversation,"user",text);
-  persistConversation();
+  var requestConversation=conversation;
+  appendTurn(requestConversation,"user",text);
+  persistConversation(requestConversation);
   turn("you","You").textContent=text;
   input.value="";autosize();scroll();
 
   broken=false;seal.classList.remove("broken","pressing");
   void seal.offsetWidth;seal.classList.add("pressing");
 
-  var reply=appendTurn(conversation,"assistant","",{status:"streaming"});
+  var reply=appendTurn(requestConversation,"assistant","",{status:"streaming"});
   var body=turn("reply","Osanwë");
   var caret=document.createElement("span");caret.className="caret";
   body.appendChild(caret);
-  inFlight=new AbortController();
+  var request={controller:new AbortController(),conversation:requestConversation,done:null};
+  activeRequest=request;
 	busy=true;stopping=false;refresh();
-  sendMessages({
+  request.done=sendMessages({
     model:model.value,
-    messages:toRequestMessages(conversation)
-  },{signal:inFlight.signal}).then(function(resp){
-    return stream(resp,body,caret,reply);
+    messages:toRequestMessages(requestConversation)
+  },{signal:request.controller.signal}).then(function(resp){
+    return stream(resp,body,caret,reply,requestConversation);
   }).catch(function(e){
     if(e.name==="AbortError"){
       reply.status="stopped";caret.remove();
-      if(!reply.content)body.textContent="Stopped";
-      persistConversation();
-	  return;
+      body.textContent=conversationTurnText(reply);
+	  return persistConversation(requestConversation);
     }
     reply.status="error";reply.content=e.message||String(e);
     caret.remove();
-    fail(body,reply.content);persistConversation();
+    fail(body,reply.content);return persistConversation(requestConversation);
   }).finally(function(){
-	busy=false;stopping=false;inFlight=null;refresh();input.focus();
+	if(activeRequest===request){busy=false;stopping=false;activeRequest=null;refresh();input.focus()}
     // Spending a token changes the wallet, so the numbers behind Connect are
     // stale the moment a request finishes.
-    load();
+    Promise.all([load(),loadModels()]);
   });
 }
 
@@ -253,7 +257,7 @@ function submit(){
 //
 // Everything else on the wire -- message_start, usage records, ping -- carries
 // no words. Appending them would put JSON in the middle of a sentence.
-function stream(resp,body,caret,reply){
+function stream(resp,body,caret,reply,requestConversation){
   return readAnthropicTextStream(resp.body,function(text){
 	reply.content+=text;
 	caret.remove();
@@ -262,38 +266,21 @@ function stream(resp,body,caret,reply){
 	scroll();
   }).then(function(){
 	reply.status="complete";
-	persistConversation();
 	caret.remove();
+	completedRequestHere=true;
+	return persistConversation(requestConversation);
   });
 }
 
 // ---- snippets -------------------------------------------------------
 var currentSnip="shell";
-function snippets(endpoint){
-  var url="http://"+endpoint;
-  return {
-    shell:{code:'# any tool that reads the standard variable\n'+
-      'export ANTHROPIC_BASE_URL='+url+'\n'+
-      'export ANTHROPIC_API_KEY=osanwe   # discarded locally',
-      note:"Most tools read ANTHROPIC_BASE_URL and need nothing else changed."},
-    python:{code:'from anthropic import Anthropic\n\n'+
-      'client = Anthropic(\n    base_url="'+url+'",\n'+
-      '    api_key="osanwe",   # required by the SDK\n)',
-      note:"The SDK insists on a key. When you are paying with tokens that string is stripped before the request leaves this machine."},
-    node:{code:'import Anthropic from "@anthropic-ai/sdk";\n\n'+
-      'const client = new Anthropic({\n'+
-      '  baseURL: "'+url+'",\n  apiKey: "osanwe",\n});',
-      note:"Streaming works unchanged. Nothing on the path buffers, so tokens arrive as they are produced."},
-    curl:{code:'curl '+url+'/v1/messages \\\n'+
-      '  -H "content-type: application/json" \\\n'+
-      '  -d \'{"model":"claude-sonnet-5","max_tokens":1024,\n'+
-      '       "messages":[{"role":"user","content":"…"}]}\'',
-      note:"No auth header at all when tokens are in use: one is bought and attached for you, per request."}
-  };
-}
 function showSnippet(name){
   currentSnip=name;
-  var s=snippets(status?status.endpoint:"127.0.0.1:8080")[name];
+  var s=connectionSnippets({
+    endpoint:status?status.endpoint:"127.0.0.1:8080",
+    paying:status?status.paying:"tokens",
+    model:model.value||"MODEL_FROM_LIVE_CATALOG"
+  })[name];
   $("snippet").textContent=s.code;$("snipNote").textContent=s.note;
 }
 
@@ -304,8 +291,8 @@ input.addEventListener("keydown",function(e){
 });
 send.addEventListener("click",submit);
 stop.addEventListener("click",function(){
-	if(!busy||!inFlight||stopping)return;
-	stopping=true;refresh();inFlight.abort();
+	if(!busy||!activeRequest||stopping)return;
+	stopping=true;refresh();activeRequest.controller.abort();
 });
 seal.addEventListener("click",function(){openPanel(!panel.classList.contains("open"))});
 $("closePanel").addEventListener("click",function(){openPanel(false)});
@@ -316,11 +303,13 @@ document.addEventListener("keydown",function(e){
 });
 
 $("newBtn").addEventListener("click",function(){
-  if(inFlight)inFlight.abort();
-  conversation=createConversation({model:model.value});
-  rail.querySelectorAll(".turn").forEach(function(n){n.remove()});
-  broken=false;seal.classList.remove("broken");
-  setEmpty(true);input.focus();refresh();
+  runTransition(async function(){
+    await stopActiveRequest();await lifecycle.idle();
+    conversation=createConversation({model:model.value});
+    rail.querySelectorAll(".turn").forEach(function(n){n.remove()});
+    broken=false;seal.classList.remove("broken");
+    setEmpty(true);input.focus();refresh();
+  }).catch(storageFailed);
 });
 
 document.querySelectorAll("[data-view]").forEach(function(btn){
@@ -331,7 +320,9 @@ document.querySelectorAll("[data-view]").forEach(function(btn){
       b.tabIndex=b===btn?0:-1;
     });
     chatView.hidden=want!=="chat";modelsView.hidden=want!=="models";devView.hidden=want!=="dev";
-    if(want==="dev")load();else if(want==="chat")input.focus();
+    if(want==="models")loadModels();
+    else if(want==="dev")Promise.all([load(),loadModels()]);
+    else if(want==="chat")input.focus();
   });
 });
 
@@ -361,13 +352,18 @@ function wireTabKeys(list){
 document.querySelectorAll("[role='tablist']").forEach(wireTabKeys);
 
 $("copyEndpoint").addEventListener("click",function(){
-  var btn=this,done=function(){
-    btn.textContent="Copied";btn.classList.add("done");
+  var btn=this,feedback=function(message,ok){
+    btn.textContent=message;btn.classList.toggle("done",ok);
     setTimeout(function(){btn.textContent="Copy";btn.classList.remove("done")},1400);
   };
+  var failed=function(){
+    var range=document.createRange(),selection=window.getSelection();
+    range.selectNodeContents($("endpointText"));selection.removeAllRanges();selection.addRange(range);
+    feedback("Copy failed",false);
+  };
   if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(btn.dataset.copy).then(done,done);
-  }else{done()}
+    navigator.clipboard.writeText(btn.dataset.copy).then(function(){feedback("Copied",true)},failed);
+  }else{failed()}
 });
 
 // ---- what this gateway actually carries -----------------------------
@@ -379,8 +375,10 @@ $("copyEndpoint").addEventListener("click",function(){
 //
 // The catalog is free and needs no token, so asking costs nothing.
 function loadModels(){
+  var request=++catalogRequest;
   return fetchModels()
     .then(function(cat){
+      if(request!==catalogRequest)return;
       catalogModels=normalizeCatalog(cat);
 	  modelsReady=true;
       if(!catalogModels.length){
@@ -402,6 +400,7 @@ function loadModels(){
 	  render();renderModelCards();
     })
     .catch(function(){
+	  if(request!==catalogRequest)return;
 	  modelsReady=true;catalogModels=[];model.textContent="";model.disabled=true;conversation.model="";render();renderModelCards();
       $("catalogState").textContent="The local model catalog is unavailable.";
     });
@@ -473,8 +472,10 @@ function setRetention(mode){
     $("settingsStatus").textContent="This conversation is now ephemeral. Previously saved history remains until deleted.";
     retentionLabel();return Promise.resolve();
   }
-  try{store=conversationStore("device")}catch(e){storageFailed(e);return Promise.reject(e)}
-  return store.put(conversation).then(function(){
+  var candidate;
+  try{candidate=conversationStore("device")}catch(e){storageFailed(e);return Promise.reject(e)}
+  return lifecycle.persist(candidate,conversation).then(function(){
+    store=candidate;
     retentionMode="device";
     try{localStorage.setItem("osanwe-retention","device")}catch(e){}
 	clearStorageWarning();
@@ -494,9 +495,13 @@ function storageFailed(){
 	$("settingsStatus").textContent=message;
 }
 
-function persistConversation(){
-  if(retentionMode!=="device")return;
-	store.put(conversation).catch(storageFailed);
+function persistConversation(target){
+  if(retentionMode!=="device")return Promise.resolve(false);
+  var destination=store;
+	return lifecycle.persist(destination,target||conversation).catch(function(error){
+    if(retentionMode==="device"&&store===destination)storageFailed(error);
+    return false;
+  });
 }
 
 function renderConversation(){
@@ -505,7 +510,7 @@ function renderConversation(){
     var kind=item.role==="user"?"you":(item.status==="error"?"err":"reply");
     var label=item.role==="user"?"You":"Osanwë";
     var body=turn(kind,label);
-    body.textContent=item.content||(item.status==="stopped"?"Stopped":"Incomplete answer");
+    body.textContent=conversationTurnText(item);
   });
   setEmpty(conversation.turns.length===0);
   if(catalogModels.some(function(item){return item.id===conversation.model}))model.value=conversation.model;
@@ -523,8 +528,11 @@ function refreshHistory(){
     records.forEach(function(record){
       var button=document.createElement("button");button.type="button";button.textContent=conversationTitle(record);
       button.addEventListener("click",function(){
-        if(inFlight)inFlight.abort();conversation=record;renderConversation();
-        $("settingsDialog").close();$("chatTab").click();
+        runTransition(async function(){
+          await stopActiveRequest();await lifecycle.idle();
+          conversation=record;renderConversation();
+          $("settingsDialog").close();$("chatTab").click();
+        }).catch(storageFailed);
       });
       list.appendChild(button);
     });
@@ -542,24 +550,29 @@ document.querySelectorAll("input[name='retention']").forEach(function(input){
 });
 $("deleteHistoryBtn").addEventListener("click",function(){
   if(!window.confirm("Delete every conversation saved by Osanwë in this browser? Exported files and provider copies cannot be deleted here."))return;
-  var saved;
-	try{saved=conversationStore("device")}catch(e){storageFailed(e);return}
-  saved.clear().then(function(){
+  runTransition(async function(){
+    await stopActiveRequest();
+    var saved;
+	try{saved=conversationStore("device")}catch(e){storageFailed(e);throw e}
+    var clearing=lifecycle.clear(saved);
     retentionMode="ephemeral";store=conversationStore("ephemeral");
     try{localStorage.setItem("osanwe-retention","ephemeral")}catch(e){}
+    await clearing;
     $("settingsStatus").textContent="All conversations saved by Osanwë in this browser were deleted.";retentionLabel();refreshHistory();
-	}).catch(storageFailed);
+  }).catch(storageFailed);
 });
 $("deleteConversationBtn").addEventListener("click",function(){
   if(!window.confirm("Delete this conversation from this page and device-only history? This cannot delete provider copies or exported files."))return;
-  if(inFlight)inFlight.abort();
-  var deletedID=conversation.id,saved;
-  try{saved=conversationStore("device")}catch(e){saved=null}
-  var remove=saved?saved.delete(deletedID):Promise.resolve();
-  remove.then(function(){
-    conversation=createConversation({model:model.value});renderConversation();refreshHistory();
+  var target=conversation;
+  runTransition(async function(){
+    await stopActiveRequest();
+    var saved;
+    try{saved=conversationStore("device")}catch(e){storageFailed(e);throw e}
+    await lifecycle.delete(saved,target.id);
+    if(conversation.id===target.id){conversation=createConversation({model:model.value});renderConversation()}
+    refreshHistory();
     $("settingsStatus").textContent="The current conversation was deleted from this page and Osanwë device-only history.";
-	}).catch(storageFailed);
+  }).catch(storageFailed);
 });
 $("exportConversationBtn").addEventListener("click",function(){
   if(!conversation.turns.length){$("settingsStatus").textContent="There is no conversation to export.";return}
@@ -609,6 +622,6 @@ retentionLabel();
 load().then(loadModels);
 // The client is local, so polling it is nearly free, and a relay that failed
 // over should not sit behind a stale label until the page is reloaded.
-setInterval(function(){if(!busy)load()},10000);
+setInterval(function(){if(!busy)Promise.all([load(),loadModels()])},10000);
 autosize();refresh();
 })();
