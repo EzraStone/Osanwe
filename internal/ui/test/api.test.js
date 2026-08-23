@@ -47,6 +47,23 @@ test("OpenAI-compatible bodies keep the same bounded chat fields", () => {
   );
 });
 
+test("mode instructions use each provider's supported system field", () => {
+  const input = {
+    model: "m",
+    system: "  Act as a coding assistant.  ",
+    messages: [{ role: "user", content: "review this" }],
+  };
+  assert.equal(buildMessageBody(input).system, "Act as a coding assistant.");
+  assert.deepEqual(buildOpenAIMessageBody(input).messages, [
+    { role: "system", content: "Act as a coding assistant." },
+    { role: "user", content: "review this" },
+  ]);
+  assert.throws(
+    () => buildMessageBody({ model: "m", system: 4, messages: input.messages }),
+    /system must be text/,
+  );
+});
+
 test("status and model reads use only their exact local endpoints", async () => {
   const calls = [];
   const fetchImpl = async (url, options) => {

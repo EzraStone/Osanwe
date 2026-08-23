@@ -13,7 +13,7 @@ export async function loadModels(fetchImpl = globalThis.fetch) {
   return Array.isArray(catalog.data) ? catalog : { data: [] };
 }
 
-export function buildMessageBody({ model, messages, maxTokens = 2048, stream = true }) {
+export function buildMessageBody({ model, messages, system = "", maxTokens = 2048, stream = true }) {
   if (typeof model !== "string" || !model.trim()) throw new TypeError("a model is required");
   if (!Array.isArray(messages) || messages.length === 0) throw new TypeError("at least one message is required");
   const normalized = messages.map((message) => {
@@ -24,16 +24,22 @@ export function buildMessageBody({ model, messages, maxTokens = 2048, stream = t
     return { role: message.role, content: message.content };
   });
   if (!Number.isSafeInteger(maxTokens) || maxTokens < 1) throw new TypeError("maxTokens must be positive");
-  return { model, max_tokens: maxTokens, stream: Boolean(stream), messages: normalized };
+  if (typeof system !== "string") throw new TypeError("system must be text");
+  const body = { model, max_tokens: maxTokens, stream: Boolean(stream), messages: normalized };
+  if (system.trim()) body.system = system.trim();
+  return body;
 }
 
 export function buildOpenAIMessageBody(input) {
   const body = buildMessageBody(input);
+  const messages = body.system
+    ? [{ role: "system", content: body.system }, ...body.messages]
+    : body.messages;
   return {
     model: body.model,
     max_tokens: body.max_tokens,
     stream: body.stream,
-    messages: body.messages,
+    messages,
   };
 }
 
