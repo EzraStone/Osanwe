@@ -33,21 +33,32 @@ const contentSecurityPolicy = "default-src 'none'; " +
 	"base-uri 'none'; " +
 	"frame-ancestors 'none'"
 
+type asset struct {
+	body        []byte
+	contentType string
+}
+
+var assetFiles = []struct {
+	path        string
+	file        string
+	contentType string
+}{
+	{"/", "app.html", "text/html; charset=utf-8"},
+	{"/assets/app.css", "assets/app.css", "text/css; charset=utf-8"},
+	{"/assets/app.js", "assets/app.js", "text/javascript; charset=utf-8"},
+}
+
 // Handler serves the interface rooted at prefix.
 func Handler(prefix string) http.Handler {
-	page, err := files.ReadFile("app.html")
-	if err != nil {
-		// Impossible unless the embed directive was removed, in which case
-		// failing loudly beats serving an empty page.
-		panic("ui: app.html is missing from the binary: " + err.Error())
-	}
-	stylesheet, err := files.ReadFile("assets/app.css")
-	if err != nil {
-		panic("ui: assets/app.css is missing from the binary: " + err.Error())
-	}
-	script, err := files.ReadFile("assets/app.js")
-	if err != nil {
-		panic("ui: assets/app.js is missing from the binary: " + err.Error())
+	assets := make(map[string]asset, len(assetFiles))
+	for _, spec := range assetFiles {
+		body, err := files.ReadFile(spec.file)
+		if err != nil {
+			// Impossible unless the embed directive or manifest was changed, in
+			// which case failing loudly beats serving a partial application.
+			panic("ui: " + spec.file + " is missing from the binary: " + err.Error())
+		}
+		assets[spec.path] = asset{body: body, contentType: spec.contentType}
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,21 +68,15 @@ func Handler(prefix string) http.Handler {
 			return
 		}
 		rest := strings.TrimPrefix(r.URL.Path, strings.TrimSuffix(prefix, "/"))
-		var body []byte
-		switch rest {
-		case "", "/":
-			body = page
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		case "/assets/app.css":
-			body = stylesheet
-			w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		case "/assets/app.js":
-			body = script
-			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		default:
+		if rest == "" {
+			rest = "/"
+		}
+		asset, ok := assets[rest]
+		if !ok {
 			http.NotFound(w, r)
 			return
 		}
+		w.Header().Set("Content-Type", asset.contentType)
 
 		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
 		// The page reflects live local state, and a cached copy showing a relay
@@ -83,7 +88,7 @@ func Handler(prefix string) http.Handler {
 		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 		if r.Method != http.MethodHead {
-			_, _ = w.Write(body)
+			_, _ = w.Write(asset.body)
 		}
 	})
 }
