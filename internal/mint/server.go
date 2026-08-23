@@ -1,10 +1,12 @@
 package mint
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 )
 
@@ -81,6 +83,11 @@ func (s *Server) handleKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeErr(w, http.StatusUnsupportedMediaType, "issuance requests must use application/json")
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, MaxIssueBody+1))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "could not read the request")
@@ -92,7 +99,13 @@ func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req IssueRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "could not parse the request")
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		writeErr(w, http.StatusBadRequest, "could not parse the request")
 		return
 	}
