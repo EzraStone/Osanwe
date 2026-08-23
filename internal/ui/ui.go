@@ -50,6 +50,7 @@ var assetFiles = []struct {
 	{"/assets/conversation.js", "assets/conversation.js", "text/javascript; charset=utf-8"},
 	{"/assets/models.js", "assets/models.js", "text/javascript; charset=utf-8"},
 	{"/assets/sse.js", "assets/sse.js", "text/javascript; charset=utf-8"},
+	{"/assets/storage.js", "assets/storage.js", "text/javascript; charset=utf-8"},
 }
 
 // Handler serves the interface rooted at prefix.
