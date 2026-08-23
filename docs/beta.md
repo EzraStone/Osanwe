@@ -32,8 +32,9 @@ The beta begins only when:
 - one relay is operated independently and its key distribution path is documented;
 - the chosen provider has approved the exact integration and its current data-use facts are shown
   in the model catalog;
-- the client has signed, checksummed downloads and launches its local interface without requiring
-  a build toolchain;
+- the client has checksummed downloads and launches its local interface without requiring a build
+  toolchain; if paid platform signing is deferred, the unsigned status and safe OS-warning path are
+  documented plainly;
 - a clean Windows, macOS, and Linux install has been exercised;
 - incomplete streams, cancellation, local storage failures, and relay verification are shown
   truthfully in the interface;
