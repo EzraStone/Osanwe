@@ -1,0 +1,87 @@
+name: Technical beta report
+description: Report a non-sensitive installation, reliability, disclosure, or accessibility result.
+title: "Beta report: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public. Never include a prompt, response, relay secret, entitlement, API key,
+        certificate private key, personal address, or log containing one. Report suspected security
+        vulnerabilities privately through the repository's Security tab instead.
+
+  - type: input
+    id: build
+    attributes:
+      label: Client build
+      description: Copy the Client build value from the local Connect view.
+      placeholder: v0.2.0 · 0123456789ab
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows 11
+        - macOS on Apple silicon
+        - macOS on Intel
+        - Linux on x86-64
+        - Independent relay
+    validations:
+      required: true
+
+  - type: dropdown
+    id: exercise
+    attributes:
+      label: Exercise
+      options:
+        - Download and first launch
+        - Relay and model disclosure check
+        - Supplied synthetic prompt
+        - Stop a streaming response
+        - Relay disconnect and recovery
+        - Local history, export, or deletion
+        - Keyboard or screen-reader navigation
+        - Removal
+    validations:
+      required: true
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Passed as described
+        - Passed with confusing behavior
+        - Recoverable failure
+        - Blocked the exercise
+        - Disclosure did not match what I observed
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened?
+      description: Describe actions, visible labels, timings, and error category without copying prompt or response text.
+      placeholder: I selected Stop after the first synthetic response delta. The state changed to Stopped within one second and Send became available again.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I used only the supplied synthetic or deliberately non-sensitive test material.
+          required: true
+        - label: I removed secrets, entitlements, prompts, responses, private addresses, and identifying logs from this report.
+          required: true

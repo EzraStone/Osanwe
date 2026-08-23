@@ -71,3 +71,6 @@ Each seat gets a short, role-specific checklist plus the same core run:
 
 Feedback should contain version, operating system, timings, and error categories. It should never
 contain a tester's prompt or response unless they knowingly used the supplied synthetic fixture.
+Use the [technical beta report form](https://github.com/EzraStone/Osanwe/issues/new?template=beta-report.yml)
+for ordinary results. Suspected vulnerabilities go through the repository's private Security tab,
+not a public issue.
