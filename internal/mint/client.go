@@ -186,6 +186,9 @@ func (c *Client) Token(ctx context.Context, receipt string) (*Token, error) {
 type Wallet struct {
 	client  *Client
 	receipt string
+	// receiptPresented makes non-empty payment receipts one-shot. BTCPay
+	// invoices authorize one issuance, not a refillable balance.
+	receiptPresented bool
 
 	// LowWater is how few tokens may remain before a refill starts.
 	lowWater int
@@ -228,7 +231,7 @@ func (w *Wallet) Take(ctx context.Context) (*Token, error) {
 	w.mu.Unlock()
 
 	// Empty: buy one synchronously rather than failing the request.
-	tok, err := w.client.Token(ctx, w.receipt)
+	tok, err := w.buy(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -290,6 +293,24 @@ func (w *Wallet) triggerRefill() {
 	}
 }
 
+var ErrReceiptAlreadyPresented = errors.New("mint: this payment receipt has already been presented; import a new entitlement")
+
+func (w *Wallet) buy(ctx context.Context) (*Token, error) {
+	w.mu.Lock()
+	if w.receipt != "" {
+		if w.receiptPresented {
+			w.mu.Unlock()
+			return nil, ErrReceiptAlreadyPresented
+		}
+		// Mark it before the network call. If the response is lost after the
+		// mint durably claims the invoice, retrying with a different blinded
+		// message cannot recover it and would only obscure the ambiguity.
+		w.receiptPresented = true
+	}
+	w.mu.Unlock()
+	return w.client.Token(ctx, w.receipt)
+}
+
 // Run buys tokens in the background until ctx is cancelled.
 //
 // It fills once before waiting for anything. A wallet that only stocked itself
@@ -316,7 +337,7 @@ func (w *Wallet) fill(ctx context.Context) {
 		if enough || ctx.Err() != nil {
 			return
 		}
-		tok, err := w.client.Token(ctx, w.receipt)
+		tok, err := w.buy(ctx)
 		if err != nil {
 			// Refilling is best effort. Take falls back to buying one
 			// synchronously, so a mint being briefly unreachable slows

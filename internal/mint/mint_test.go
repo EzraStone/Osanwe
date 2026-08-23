@@ -597,3 +597,51 @@ func TestTheWalletStocksItselfBeforeTheFirstRequest(t *testing.T) {
 	}
 	t.Fatal("the wallet was still empty five seconds after starting")
 }
+
+type countingAuthorizer struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (a *countingAuthorizer) Authorize(context.Context, []byte) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.calls++
+	return nil
+}
+
+func (a *countingAuthorizer) Calls() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.calls
+}
+
+func TestPaidWalletPresentsAnInvoiceOnlyOnce(t *testing.T) {
+	authorizer := &countingAuthorizer{}
+	m, err := New(key(t), authorizer)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	server := httptest.NewServer(NewServer(m, quietLog()).Handler())
+	defer server.Close()
+
+	wallet := NewWallet(&Client{URL: server.URL, ExpectKeyID: m.KeyID()}, "one-settled-invoice", 8)
+	wallet.fill(context.Background())
+	if got := wallet.Len(); got != 1 {
+		t.Fatalf("wallet stocked %d tokens from one invoice, want 1", got)
+	}
+	if got := authorizer.Calls(); got != 1 {
+		t.Fatalf("authorizer called %d times, want 1", got)
+	}
+
+	if _, err := wallet.Take(context.Background()); err != nil {
+		t.Fatalf("Take stocked token: %v", err)
+	}
+	wallet.fill(context.Background())
+	if got := authorizer.Calls(); got != 1 {
+		t.Fatalf("refill presented the settled invoice %d times", got)
+	}
+	if _, err := wallet.Take(context.Background()); !errors.Is(err, ErrReceiptAlreadyPresented) {
+		t.Fatalf("empty paid wallet error = %v, want ErrReceiptAlreadyPresented", err)
+	}
+}
