@@ -250,6 +250,9 @@ func TestStatusReportsWhatTheInterfaceNeeds(t *testing.T) {
 	if !st.Relay.KeyMatched {
 		t.Fatal("key_matched is false although a tunnel was established, which only happens when the pin matches")
 	}
+	if st.Relay.Verification != RelayVerificationConnectedPinMatched {
+		t.Fatalf("verification = %q, want %q", st.Relay.Verification, RelayVerificationConnectedPinMatched)
+	}
 	if st.Relay.SinceSeconds < 60 {
 		t.Fatalf("since_seconds = %d, want roughly 90", st.Relay.SinceSeconds)
 	}
@@ -267,6 +270,17 @@ func TestStatusReportsWhatTheInterfaceNeeds(t *testing.T) {
 	}
 	if st.Privacy.ConversationHistory != "not_stored_by_osanwe_services" {
 		t.Fatalf("conversation history = %q", st.Privacy.ConversationHistory)
+	}
+}
+
+func TestManualRelayStatusDoesNotClaimAHandshake(t *testing.T) {
+	s := testServer(t, func(c *Config) { c.ManualRelay = "203.0.113.9:8443" })
+	st := s.Status()
+	if st.Relay == nil || st.Relay.Address != "203.0.113.9:8443" {
+		t.Fatalf("relay = %+v", st.Relay)
+	}
+	if st.Relay.KeyMatched || st.Relay.Verification != RelayVerificationPinConfigured {
+		t.Fatalf("manual relay made a live-handshake claim: %+v", st.Relay)
 	}
 }
 

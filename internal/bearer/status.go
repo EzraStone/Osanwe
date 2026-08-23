@@ -74,8 +74,17 @@ type RelayInfo struct {
 	// promise about one that might.
 	KeyMatched bool `json:"key_matched"`
 
+	// Verification distinguishes an observed successful pinned connection
+	// from a pin that is configured but whose live handshake is not reported.
+	Verification string `json:"verification"`
+
 	SinceSeconds int64 `json:"since_seconds,omitempty"`
 }
+
+const (
+	RelayVerificationConnectedPinMatched = "connected_pin_matched"
+	RelayVerificationPinConfigured       = "pin_configured"
+)
 
 type DirectoryInfo struct {
 	RelaysKnown  int `json:"relays_known"`
@@ -149,7 +158,10 @@ func (s *Server) Status() Status {
 			SignedBy:    s.cfg.Relays.SignedBy(),
 		}
 		if nick, addr, ok := s.cfg.Relays.Current(); ok {
-			info := &RelayInfo{Nickname: nick, Address: addr, KeyMatched: true}
+			info := &RelayInfo{
+				Nickname: nick, Address: addr, KeyMatched: true,
+				Verification: RelayVerificationConnectedPinMatched,
+			}
 			if since, ok := s.cfg.Relays.GuardSince(); ok {
 				info.SinceSeconds = int64(time.Since(since).Seconds())
 			}
@@ -159,7 +171,10 @@ func (s *Server) Status() Status {
 		// A manually pinned relay has no directory behind it, so there is
 		// nothing to report but the address -- and saying so is better than
 		// showing an empty panel that looks broken.
-		st.Relay = &RelayInfo{Address: s.manualRelay, KeyMatched: true}
+		st.Relay = &RelayInfo{
+			Address: s.manualRelay, KeyMatched: false,
+			Verification: RelayVerificationPinConfigured,
+		}
 	}
 	return st
 }
