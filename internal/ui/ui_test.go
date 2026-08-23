@@ -45,7 +45,7 @@ func TestThePolicyPinsThePageToThisClient(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	csp := rec.Header().Get("Content-Security-Policy")
-	for _, want := range []string{"default-src 'none'", "connect-src 'self'", "frame-ancestors 'none'", "form-action 'none'"} {
+	for _, want := range []string{"default-src 'none'", "style-src 'self'", "script-src 'self'", "connect-src 'self'", "frame-ancestors 'none'", "form-action 'none'"} {
 		if !strings.Contains(csp, want) {
 			t.Fatalf("policy %q is missing %q", csp, want)
 		}
@@ -54,6 +54,9 @@ func TestThePolicyPinsThePageToThisClient(t *testing.T) {
 	// spending tokens.
 	if strings.Contains(csp, "connect-src *") || strings.Contains(csp, "https:") {
 		t.Fatalf("policy %q allows an outside origin", csp)
+	}
+	if strings.Contains(csp, "'unsafe-inline'") {
+		t.Fatalf("policy %q permits inline code", csp)
 	}
 	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("X-Content-Type-Options = %q", got)

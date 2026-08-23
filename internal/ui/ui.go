@@ -25,8 +25,8 @@ var files embed.FS
 // clause, because it means nothing on this page can send a prompt anywhere but
 // back to this client.
 const contentSecurityPolicy = "default-src 'none'; " +
-	"style-src 'unsafe-inline'; " +
-	"script-src 'unsafe-inline'; " +
+	"style-src 'self'; " +
+	"script-src 'self'; " +
 	"img-src 'self' data:; " +
 	"connect-src 'self'; " +
 	"form-action 'none'; " +
