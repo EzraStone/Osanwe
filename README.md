@@ -2,6 +2,9 @@
 
 **A privacy relay for AI inference, and an experimental account-unlinked token gateway.**
 
+[Project website](https://ezrastone.github.io/Osanwe/) · [Technical beta charter](docs/beta.md) ·
+[Current Phase 0 evidence](docs/phase0-results.md)
+
 The runnable bring-your-own-key path hides a user's IP address and location from the model
 provider, and keeps prompts unreadable to the relay. The provider still sees the user's own API
 account. The account-unlinked path replaces that account credential with a blind-signed token, but
@@ -10,6 +13,11 @@ attested execution is implemented, and the production controls are still being c
 
 Start with the [quickstart](docs/quickstart.md), read [who runs what](docs/who-runs-what.md), and do
 not expose the token gateway before following the warnings in the [deployment guide](docs/deploying.md).
+
+The first beta is being prepared for ten invited testers. It is free, text-only, and limited to
+synthetic or deliberately non-sensitive prompts. The public website is an explanation and download
+front door, not a hosted chat service: invited archives open the app on the tester's own loopback
+interface and keep relay secrets out of the website.
 
 ## Accountless local client
 
