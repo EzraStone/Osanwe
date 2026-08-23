@@ -1,15 +1,19 @@
-# BTCPay token sales
+# Disabled BTCPay token-sales path
 
-Osanwe's first production authorizer uses a self-hosted [BTCPay Server](https://docs.btcpayserver.org/).
-It is non-custodial and removes a conventional payment processor from the purchase path. That is a
-better match for the network than sending every buyer's identity and purchase history to a card
-processor. Bitcoin and Lightning have their own privacy limitations; this choice does not make a
-payment anonymous by itself.
+**Status: implemented as disabled pre-launch code. The free ten-person beta does not accept payments
+or use this path. Do not expose it or accept real money before the gates under Remaining product work
+are complete.**
 
-The privacy boundary is the blind signature. `eregion` verifies a payment and signs a blinded
-message. The invoice ID is then durably consumed. The token eventually presented to `mithlond`
-contains neither that invoice ID nor anything BTCPay returned, so neither the mint nor BTCPay can
-recognize it later.
+The authorizer prototype uses a self-hosted [BTCPay Server](https://docs.btcpayserver.org/). A
+correctly self-hosted configuration can avoid a conventional card processor in the purchase path,
+rather than sending every buyer's identity and purchase history to one. Bitcoin and Lightning have
+their own privacy limitations; this choice does not make a payment anonymous by itself.
+
+The narrow cryptographic boundary is the blind signature. `eregion` verifies a payment and signs a
+blinded message, then durably consumes the invoice ID. The token eventually presented to `mithlond`
+contains neither that invoice ID nor anything BTCPay returned, preventing a direct cryptographic
+match to the blinded issuance transcript. Timing, invoice and issuance metadata, small anonymity
+sets, or collusion can still correlate a purchase with later use.
 
 ## Configure BTCPay
 
@@ -51,8 +55,9 @@ Its invoice ceiling is global rather than per-IP so enforcing it does not requir
 database. The ceiling is intentionally in memory; a restart resets it, and multiple instances have
 independent ceilings.
 
-After checkout, the page displays the invoice ID. The buyer saves that one-shot bearer receipt,
-pays through BTCPay, waits for settlement, and supplies it to the client:
+In a closed operator test of the disabled path, checkout displays the invoice ID. The tester saves
+that one-shot bearer receipt, settles a non-value test invoice in the test environment, and supplies
+it to the client:
 
 ```bash
 export OSANWE_RECEIPT='<settled BTCPay invoice ID>'
@@ -97,8 +102,9 @@ is deliberately single-process and single-host; a multi-host mint needs a shared
 
 ## Remaining product work
 
-The checkout and authorizer are the implemented payment boundary, not an audited commerce system.
-A public launch still needs HTTPS in front of the loopback checkout and mint, documented
+The checkout and authorizer are an implemented but disabled payment prototype, not an audited
+commerce system. A paid beta or public launch still needs HTTPS in front of the loopback checkout
+and mint, documented
 refund/support handling, API-key rotation, backups, availability monitoring that does not record
 buyer or issuance identifiers, an idempotent recovery design for interrupted issuance, and
 independent security review. `-open` remains exclusively for local demos.
