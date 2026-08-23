@@ -45,6 +45,10 @@ func Handler(prefix string) http.Handler {
 	if err != nil {
 		panic("ui: assets/app.css is missing from the binary: " + err.Error())
 	}
+	script, err := files.ReadFile("assets/app.js")
+	if err != nil {
+		panic("ui: assets/app.js is missing from the binary: " + err.Error())
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rest := strings.TrimPrefix(r.URL.Path, strings.TrimSuffix(prefix, "/"))
@@ -56,6 +60,9 @@ func Handler(prefix string) http.Handler {
 		case "/assets/app.css":
 			body = stylesheet
 			w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		case "/assets/app.js":
+			body = script
+			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		default:
 			http.NotFound(w, r)
 			return
