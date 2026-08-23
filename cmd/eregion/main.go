@@ -9,8 +9,9 @@
 // because the link is hard to compute, but because the blinding means the
 // information was never there.
 //
-// A production mint verifies one settled BTCPay Server invoice per token.
-// -open remains for demos and is deliberately incompatible with BTCPay mode.
+// A production mint verifies one settled BTCPay Server invoice per token. An
+// explicitly enabled free-beta mode consumes one offline-generated voucher per
+// token. -open remains for demos and is incompatible with both modes.
 package main
 
 import (
@@ -35,6 +36,58 @@ func main() {
 	}
 }
 
+type authorizationMode uint8
+
+const (
+	authorizationModeNone authorizationMode = iota
+	authorizationModeOpen
+	authorizationModeBTCPay
+	authorizationModeInvite
+)
+
+func selectAuthorizationMode(open bool, btcpayEndpoint, inviteManifest string) (authorizationMode, error) {
+	modes := 0
+	if open {
+		modes++
+	}
+	if btcpayEndpoint != "" {
+		modes++
+	}
+	if inviteManifest != "" {
+		modes++
+	}
+	if modes > 1 {
+		return authorizationModeNone, errors.New("eregion: -open, -btcpay, and -invite-manifest are mutually exclusive authorization modes")
+	}
+	switch {
+	case open:
+		return authorizationModeOpen, nil
+	case btcpayEndpoint != "":
+		return authorizationModeBTCPay, nil
+	case inviteManifest != "":
+		return authorizationModeInvite, nil
+	default:
+		return authorizationModeNone, nil
+	}
+}
+
+func validateInviteCapacityFlag(mode authorizationMode, capacity int) error {
+	if mode == authorizationModeInvite && capacity < 1 {
+		return errors.New("eregion: -invite-capacity is required and must be positive in invite mode; pin the expected manifest total explicitly")
+	}
+	if mode != authorizationModeInvite && capacity != 0 {
+		return errors.New("eregion: -invite-capacity is valid only with -invite-manifest")
+	}
+	return nil
+}
+
+func validateLoadedInviteCapacity(expected, actual int) error {
+	if actual != expected {
+		return fmt.Errorf("eregion: invite manifest capacity is %d, expected exactly %d; refusing an unexpected entitlement total", actual, expected)
+	}
+	return nil
+}
+
 func run() error {
 	fs := flag.NewFlagSet("eregion", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8445", "address to listen on")
@@ -46,7 +99,9 @@ func run() error {
 	btcpayStore := fs.String("btcpay-store", "", "BTCPay store ID whose settled invoices buy tokens")
 	btcpayAmount := fs.String("btcpay-amount", "", "exact BTCPay invoice amount that buys one token")
 	btcpayCurrency := fs.String("btcpay-currency", "", "BTCPay invoice currency that buys one token, such as USD")
-	receiptsDB := fs.String("receipts-db", "", "durable database of consumed BTCPay invoice receipts")
+	inviteManifest := fs.String("invite-manifest", "", "fixed-window free-beta voucher manifest generated offline by invitebook")
+	inviteCapacity := fs.Int("invite-capacity", 0, "expected total vouchers in -invite-manifest; required in invite mode")
+	receiptsDB := fs.String("receipts-db", "", "durable database of consumed payment or invite entitlements")
 	printKey := fs.Bool("print-key-id", false, "print the key id and exit")
 	verbose := fs.Bool("v", false, "verbose logging")
 
@@ -55,6 +110,7 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "Usage:\n"+
 			"  export OSANWE_BTCPAY_API_KEY=...\n"+
 			"  eregion -key mint.key -publish mint.pub -btcpay https://pay.example -btcpay-store STORE -btcpay-amount 1.00 -btcpay-currency USD -receipts-db receipts.db\n\n"+
+			"For a fixed free beta:\n  eregion -key mint.key -publish mint.pub -invite-manifest invite-manifest.json -invite-capacity 100 -receipts-db receipts.db\n\n"+
 			"For a local demo only:\n  eregion -key mint.key -publish mint.pub -open\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
@@ -89,13 +145,18 @@ func run() error {
 	// until the provider bill arrived.
 	var authorizer mint.Authorizer
 	var receipts *mint.FileReceiptStore
-	switch {
-	case *open && *btcpayEndpoint != "":
-		return errors.New("eregion: -open and -btcpay are mutually exclusive")
-	case *open:
+	mode, err := selectAuthorizationMode(*open, *btcpayEndpoint, *inviteManifest)
+	if err != nil {
+		return err
+	}
+	if err := validateInviteCapacityFlag(mode, *inviteCapacity); err != nil {
+		return err
+	}
+	switch mode {
+	case authorizationModeOpen:
 		log.Warn("issuing tokens to anyone who asks; there is no payment behind this mint")
 		authorizer = mint.OpenAuthorizer{}
-	case *btcpayEndpoint != "":
+	case authorizationModeBTCPay:
 		apiKey := os.Getenv("OSANWE_BTCPAY_API_KEY")
 		if apiKey == "" {
 			return errors.New("eregion: OSANWE_BTCPAY_API_KEY is required in BTCPay mode")
@@ -124,8 +185,39 @@ func run() error {
 			"endpoint", *btcpayEndpoint, "store", *btcpayStore,
 			"amount", *btcpayAmount, "currency", *btcpayCurrency,
 			"receipts_db", *receiptsDB)
+	case authorizationModeInvite:
+		if *receiptsDB == "" {
+			return errors.New("eregion: -receipts-db is required in invite mode; vouchers must remain one-shot across restarts")
+		}
+		var err error
+		receipts, err = mint.OpenFileReceiptStore(*receiptsDB)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := receipts.Close(); err != nil {
+				log.Error("closing used-receipt database", "error", err)
+			}
+		}()
+		invites, err := mint.NewInviteAuthorizer(mint.InviteAuthorizerConfig{
+			ManifestPath: *inviteManifest,
+			MintKeyID:    mint.KeyID(&priv.PublicKey),
+			Receipts:     receipts,
+		})
+		if err != nil {
+			return err
+		}
+		if err := validateLoadedInviteCapacity(*inviteCapacity, invites.Capacity()); err != nil {
+			return err
+		}
+		authorizer = invites
+		start, end := invites.Window()
+		log.Info("authorizing fixed-window free-beta invite vouchers",
+			"program", invites.ProgramID(), "capacity", invites.Capacity(),
+			"not_before", start.Format(time.RFC3339), "not_after", end.Format(time.RFC3339),
+			"manifest", *inviteManifest, "receipts_db", *receiptsDB)
 	default:
-		return errors.New("eregion: no payment rail is configured; pass -btcpay for production or -open only for a local demo")
+		return errors.New("eregion: no authorization mode is configured; pass -btcpay for payments, -invite-manifest for a fixed free beta, or -open only for a local demo")
 	}
 
 	m, err := mint.New(priv, authorizer)
