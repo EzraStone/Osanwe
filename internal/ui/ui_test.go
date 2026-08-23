@@ -165,7 +165,10 @@ func TestOnlyKnownAssetsAreServed(t *testing.T) {
 		{"/_osanwe/assets/app.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/api.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/conversation.js", "text/javascript; charset=utf-8"},
+		{"/_osanwe/assets/disclosure.js", "text/javascript; charset=utf-8"},
+		{"/_osanwe/assets/lifecycle.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/models.js", "text/javascript; charset=utf-8"},
+		{"/_osanwe/assets/snippets.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/sse.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/storage.js", "text/javascript; charset=utf-8"},
 	}
