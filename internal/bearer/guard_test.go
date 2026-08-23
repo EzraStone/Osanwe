@@ -262,6 +262,12 @@ func TestStatusReportsWhatTheInterfaceNeeds(t *testing.T) {
 	if st.Retained != "nothing" {
 		t.Fatalf("retained = %q", st.Retained)
 	}
+	if st.Privacy.ProviderAccount != "user_account" || st.Privacy.GatewayContentAccess != "no_osanwe_gateway" {
+		t.Fatalf("BYOK privacy = %+v", st.Privacy)
+	}
+	if st.Privacy.ConversationHistory != "not_stored_by_osanwe_services" {
+		t.Fatalf("conversation history = %q", st.Privacy.ConversationHistory)
+	}
 }
 
 // The status document is read by a page. Anything in it that could be spent or
@@ -298,6 +304,15 @@ func TestStatusReportsTokenPaymentWhenItIsInUse(t *testing.T) {
 	}
 	if st.Wallet == nil || st.Wallet.OnHand != 34 || st.Wallet.Spent != 47 {
 		t.Fatalf("wallet = %+v, want 34 on hand and 47 spent", st.Wallet)
+	}
+	if st.Privacy.ProviderAccount != "pooled_gateway_account" {
+		t.Fatalf("provider account = %q", st.Privacy.ProviderAccount)
+	}
+	if st.Privacy.GatewayContentAccess != "plaintext_until_attested_execution" {
+		t.Fatalf("gateway content access = %q", st.Privacy.GatewayContentAccess)
+	}
+	if st.Privacy.OperatorSeparation != "not_verified_by_client" {
+		t.Fatalf("operator separation = %q", st.Privacy.OperatorSeparation)
 	}
 }
 
