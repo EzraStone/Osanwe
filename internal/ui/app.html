@@ -24,7 +24,8 @@
 
 <div class="view" id="chatView" role="tabpanel" aria-labelledby="chatTab">
   <div class="thread is-empty" id="thread">
-    <div class="rail" id="rail">
+    <div class="rail" id="rail" role="log" aria-label="Conversation" aria-live="polite"
+         aria-relevant="additions text" aria-busy="false">
       <div class="opening" id="opening">
         <h2>What are you thinking about?</h2>
         <p id="openingSub">Nothing here is kept, and nothing leaves this device unsealed.</p>
@@ -61,7 +62,7 @@
         <select class="model" id="model" aria-label="Model">
           <option value="claude-sonnet-5">claude-sonnet-5</option>
         </select>
-        <span class="state" id="state">Sealed</span>
+        <span class="state" id="state" role="status" aria-live="polite">Sealed</span>
       </div>
     </div>
   </div>

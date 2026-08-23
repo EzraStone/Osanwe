@@ -169,6 +169,7 @@ function turn(kind,label){
 function refresh(){
   var tokens=status&&status.paying==="tokens";
   send.disabled=busy||!tokens||!input.value.trim();
+  rail.setAttribute("aria-busy",String(busy));
   if(broken){state.textContent="Seal broken";state.classList.add("warn");return}
   state.classList.remove("warn");
   state.textContent=busy?"Answering":(tokens?"Sealed":"Carrying your tools");
