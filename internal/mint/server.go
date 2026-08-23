@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"mime"
@@ -98,14 +99,8 @@ func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req IssueRequest
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "could not parse the request")
-		return
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+	req, err := decodeIssueRequest(body)
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, "could not parse the request")
 		return
 	}
@@ -141,6 +136,46 @@ func (s *Server) handleIssue(w http.ResponseWriter, r *http.Request) {
 		KeyID:     s.m.KeyID(),
 		Signature: base64.RawURLEncoding.EncodeToString(sig),
 	})
+}
+
+func decodeIssueRequest(body []byte) (IssueRequest, error) {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	start, err := decoder.Token()
+	if err != nil || start != json.Delim('{') {
+		return IssueRequest{}, errors.New("issuance request is not one JSON object")
+	}
+	var request IssueRequest
+	seen := make(map[string]struct{}, 2)
+	for decoder.More() {
+		token, err := decoder.Token()
+		name, ok := token.(string)
+		if err != nil || !ok {
+			return IssueRequest{}, errors.New("issuance request has an invalid field name")
+		}
+		if _, duplicate := seen[name]; duplicate {
+			return IssueRequest{}, errors.New("issuance request repeats a field")
+		}
+		seen[name] = struct{}{}
+		switch name {
+		case "receipt":
+			err = decoder.Decode(&request.Receipt)
+		case "blinded":
+			err = decoder.Decode(&request.Blinded)
+		default:
+			return IssueRequest{}, errors.New("issuance request has an unknown field")
+		}
+		if err != nil {
+			return IssueRequest{}, errors.New("issuance request field is not text")
+		}
+	}
+	end, err := decoder.Token()
+	if err != nil || end != json.Delim('}') {
+		return IssueRequest{}, errors.New("issuance request object is incomplete")
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return IssueRequest{}, errors.New("issuance request has trailing data")
+	}
+	return request, nil
 }
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
