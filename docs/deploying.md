@@ -6,6 +6,14 @@ the order they have to happen.
 Read [`who-runs-what.md`](who-runs-what.md) first if you have not. Nothing here
 is something a *user* does.
 
+The operator path is Linux-only for this beta. The Windows `bearer` client is
+supported as a build target, but Windows operator processes deliberately fail
+closed when asked to open the durable spent-token store. File locking,
+permissions, restart recovery, and service supervision for the mint and
+gateway have not been validated there. Run `mithlond`, `palantir`, and public
+relay infrastructure on Linux or WSL rather than treating a successful Windows
+client build as operator support.
+
 ---
 
 ## Before anything: understand the spending boundary
