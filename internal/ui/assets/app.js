@@ -50,7 +50,7 @@ function render(){
   input.disabled=!tokens;
   input.placeholder=tokens?"Ask anything":"Not available on your own key";
   $("openingSub").textContent=tokens
-    ? "Nothing here is kept, and nothing leaves this device unsealed."
+    ? localHistoryDescription()+" Nothing leaves this device unsealed."
     : "Osanwë is carrying your tools' traffic. This window is not one of them.";
 
   $("walletBlock").hidden=!tokens||!status.wallet;
@@ -131,7 +131,8 @@ function fillPanel(){
   if(status&&status.relay)facts.push(["verified",status.relay.key_matched?"key matched the published one":"unverified"]);
   if(status&&status.directory)facts.push(["signed by",status.directory.signed_by+" authorities"]);
   if(status)facts.push(["paying",status.paying]);
-  if(status)facts.push(["retained",status.retained]);
+  if(status)facts.push(["daemon retained",status.retained]);
+  facts.push(["browser history",retentionMode==="device"?"saved on this device":"ephemeral"]);
   if(status&&status.privacy){
     facts.push(["gateway",humanize(status.privacy.gateway_content_access)]);
     facts.push(["operators",humanize(status.privacy.operator_separation)]);
@@ -455,8 +456,13 @@ model.addEventListener("change",function(){
 
 function retentionLabel(){
   $("retentionState").textContent=retentionMode==="device"?"Saved on this device":"Ephemeral";
+  if(status&&status.paying==="tokens")$("openingSub").textContent=localHistoryDescription()+" Nothing leaves this device unsealed.";
   document.querySelectorAll("input[name='retention']").forEach(function(input){input.checked=input.value===retentionMode});
   if(catalogModels.length)renderModelCards();
+}
+
+function localHistoryDescription(){
+  return retentionMode==="device"?"This conversation is saved only in this browser.":"This conversation is ephemeral.";
 }
 
 function setRetention(mode){
