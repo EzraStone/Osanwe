@@ -79,6 +79,7 @@ Roughly two minutes, in the browser:
 | Enable **Save on this device**, reload, then restore it | The conversation returns from this browser only |
 | Export a conversation | A versioned plaintext JSON file downloads without tokens, receipts, or credentials |
 | Delete current and delete all history | The page and IndexedDB records clear after confirmation |
+| Block IndexedDB, then select **Save on this device** | A warning remains below Chat, retention returns to Ephemeral, and no database error text is exposed |
 
 The fourth row is the one worth doing deliberately. A privacy tool that fails
 silently is worse than one that fails loudly, and the seal exists to make a

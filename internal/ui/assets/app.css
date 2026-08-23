@@ -139,6 +139,8 @@ body{
 .composer-state{display:flex; align-items:center; gap:.6rem}
 .retention{padding:0; border:0; background:none; color:var(--faint); cursor:pointer; font:12px var(--sans)}
 .retention:hover{color:var(--gild)}
+.storage-warning{max-width:44rem; margin:.65rem auto 0; color:var(--alarm); font-size:12.5px; line-height:1.5}
+.storage-warning[hidden]{display:none}
 
 /* notice, for when chat cannot work */
 .notice{

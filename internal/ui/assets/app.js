@@ -19,7 +19,7 @@ var status=null,busy=false,stopping=false,broken=false,inFlight=null,dialogOpene
 try{preferredModel=localStorage.getItem("osanwe-model")||""}catch(e){}
 try{if(localStorage.getItem("osanwe-retention")==="device")retentionMode="device"}catch(e){}
 if(retentionMode==="device"){
-  try{store=conversationStore("device")}catch(e){retentionMode="ephemeral";store=conversationStore("ephemeral")}
+  try{store=conversationStore("device")}catch(e){storageFailed(e)}
 }
 
 // ---- status ---------------------------------------------------------
@@ -468,27 +468,34 @@ function setRetention(mode){
   if(mode!=="device"){
     retentionMode="ephemeral";store=conversationStore("ephemeral");
     try{localStorage.setItem("osanwe-retention","ephemeral")}catch(e){}
+	clearStorageWarning();
     $("settingsStatus").textContent="This conversation is now ephemeral. Previously saved history remains until deleted.";
     retentionLabel();return Promise.resolve();
   }
-  try{store=conversationStore("device")}catch(e){return storageFailed(e)}
+  try{store=conversationStore("device")}catch(e){storageFailed(e);return Promise.reject(e)}
   return store.put(conversation).then(function(){
     retentionMode="device";
     try{localStorage.setItem("osanwe-retention","device")}catch(e){}
+	clearStorageWarning();
     $("settingsStatus").textContent="This conversation is saved only in this browser profile.";
     retentionLabel();refreshHistory();
-  }).catch(storageFailed);
+  }).catch(function(error){storageFailed(error);throw error});
 }
 
-function storageFailed(error){
+function clearStorageWarning(){
+	$("storageWarning").textContent="";$("storageWarning").hidden=true;
+}
+
+function storageFailed(){
   retentionMode="ephemeral";store=conversationStore("ephemeral");retentionLabel();
-  $("settingsStatus").textContent="Device-only history is unavailable. This conversation remains ephemeral.";
-  return Promise.reject(error);
+	var message="This conversation could not be saved. It is now ephemeral and will be lost when this page closes.";
+	$("storageWarning").textContent=message;$("storageWarning").hidden=false;
+	$("settingsStatus").textContent=message;
 }
 
 function persistConversation(){
   if(retentionMode!=="device")return;
-  store.put(conversation).catch(function(error){storageFailed(error).catch(function(){})});
+	store.put(conversation).catch(storageFailed);
 }
 
 function renderConversation(){
@@ -520,7 +527,7 @@ function refreshHistory(){
       });
       list.appendChild(button);
     });
-  }).catch(function(error){storageFailed(error).catch(function(){})});
+	}).catch(storageFailed);
 }
 
 function openSettings(){
@@ -535,12 +542,12 @@ document.querySelectorAll("input[name='retention']").forEach(function(input){
 $("deleteHistoryBtn").addEventListener("click",function(){
   if(!window.confirm("Delete every conversation saved by Osanwë in this browser? Exported files and provider copies cannot be deleted here."))return;
   var saved;
-  try{saved=conversationStore("device")}catch(e){storageFailed(e).catch(function(){});return}
+	try{saved=conversationStore("device")}catch(e){storageFailed(e);return}
   saved.clear().then(function(){
     retentionMode="ephemeral";store=conversationStore("ephemeral");
     try{localStorage.setItem("osanwe-retention","ephemeral")}catch(e){}
     $("settingsStatus").textContent="All conversations saved by Osanwë in this browser were deleted.";retentionLabel();refreshHistory();
-  }).catch(function(e){storageFailed(e).catch(function(){})});
+	}).catch(storageFailed);
 });
 $("deleteConversationBtn").addEventListener("click",function(){
   if(!window.confirm("Delete this conversation from this page and device-only history? This cannot delete provider copies or exported files."))return;
@@ -551,7 +558,7 @@ $("deleteConversationBtn").addEventListener("click",function(){
   remove.then(function(){
     conversation=createConversation({model:model.value});renderConversation();refreshHistory();
     $("settingsStatus").textContent="The current conversation was deleted from this page and Osanwë device-only history.";
-  }).catch(function(error){storageFailed(error).catch(function(){})});
+	}).catch(storageFailed);
 });
 $("exportConversationBtn").addEventListener("click",function(){
   if(!conversation.turns.length){$("settingsStatus").textContent="There is no conversation to export.";return}

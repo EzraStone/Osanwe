@@ -14,7 +14,7 @@ func TestThePageIsInTheBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("app.html is not embedded: %v", err)
 	}
-	for _, want := range []string{"<title>Osanwë</title>", "assets/app.css", "assets/app.js", `id="stop"`, `aria-label="Stop generating"`} {
+	for _, want := range []string{"<title>Osanwë</title>", "assets/app.css", "assets/app.js", `id="stop"`, `aria-label="Stop generating"`, `id="storageWarning"`, `role="alert"`} {
 		if !strings.Contains(string(page), want) {
 			t.Fatalf("the embedded page is missing %q", want)
 		}
