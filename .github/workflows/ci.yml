@@ -57,6 +57,26 @@ jobs:
       - name: relay authentication, allowlist, and tunnel tests
         run: python -m unittest discover -s tools -p 'test_phase0_tools.py' -v
 
+  windows-client:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          cache: true
+
+      - name: client packages
+        run: go test ./cmd/bearer ./internal/bearer ./internal/ui ./internal/version
+
+      - name: operator spent store fails closed
+        run: go test ./internal/mint -run '^TestWindowsSpentStoreFailsClosed$' -count=1
+
+      - name: client executable
+        run: go build -trimpath -o bearer.exe ./cmd/bearer
+
   go:
     runs-on: ubuntu-latest
     timeout-minutes: 30
