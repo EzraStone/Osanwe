@@ -61,6 +61,12 @@ func TestThePolicyPinsThePageToThisClient(t *testing.T) {
 	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("X-Content-Type-Options = %q", got)
 	}
+	permissions := rec.Header().Get("Permissions-Policy")
+	for _, denied := range []string{"camera=()", "geolocation=()", "microphone=()", "payment=()"} {
+		if !strings.Contains(permissions, denied) {
+			t.Errorf("Permissions-Policy %q does not deny %s", permissions, denied)
+		}
+	}
 }
 
 // The handler owns exactly one path. Anything else under the prefix is a
