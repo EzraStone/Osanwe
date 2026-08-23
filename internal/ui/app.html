@@ -33,6 +33,8 @@
       <div class="code-capabilities" aria-label="Available code capabilities">
         <span>Explain</span><span>Generate</span><span>Review</span>
       </div>
+      <button type="button" class="runner-launch" id="openCodeRunner">Open code runner</button>
+      <p class="runner-boundary">Runs JavaScript in a timed worker and previews script-free HTML. Network, storage, local files, and terminal access stay blocked.</p>
     </aside>
     <div class="conversation-surface">
       <div class="thread is-empty" id="thread">
@@ -83,6 +85,36 @@
         <p class="storage-warning" id="storageWarning" role="alert" hidden></p>
       </div>
     </div>
+    <aside class="code-runner" id="codeRunner" aria-labelledby="runnerTitle" hidden>
+      <div class="runner-heading">
+        <div>
+          <p class="eyebrow">Local sandbox</p>
+          <h2 id="runnerTitle">Code runner</h2>
+        </div>
+        <button type="button" class="runner-close" id="closeCodeRunner" aria-label="Close code runner">×</button>
+      </div>
+      <label class="runner-label" for="runnerLanguage">Language</label>
+      <select id="runnerLanguage" class="runner-language">
+        <option value="javascript">JavaScript</option>
+        <option value="html">HTML preview</option>
+      </select>
+      <label class="runner-label" for="runnerEditor">Code</label>
+      <textarea id="runnerEditor" class="runner-editor" rows="12" spellcheck="false"
+                placeholder="Paste JavaScript or HTML, or load a generated code block."></textarea>
+      <div class="runner-actions">
+        <button type="button" id="runCode">Run &amp; test</button>
+        <button type="button" class="secondary" id="clearRunner">Clear</button>
+      </div>
+      <p class="runner-status" id="runnerStatus" role="status" aria-live="polite">Ready. Nothing has run.</p>
+      <div class="runner-tabs" role="tablist" aria-label="Runner output">
+        <button type="button" role="tab" id="previewTab" aria-selected="true" aria-controls="runnerPreview" tabindex="0" data-runner-view="preview">Preview</button>
+        <button type="button" role="tab" id="resultsTab" aria-selected="false" aria-controls="runnerResults" tabindex="-1" data-runner-view="results">Results</button>
+      </div>
+      <iframe id="runnerPreview" class="runner-preview" title="Sandboxed code preview" role="tabpanel" aria-labelledby="previewTab"
+              sandbox="allow-scripts" src="assets/runner.html"></iframe>
+      <pre id="runnerResults" class="runner-results" role="tabpanel" aria-labelledby="resultsTab" tabindex="0" hidden>No output yet.</pre>
+      <p class="runner-note">JavaScript stops after 2.5 seconds. Tests can use <code>test(name, fn)</code> and <code>assert(condition, message)</code>. Results come from generated code and are not a security verdict.</p>
+    </aside>
   </div>
 </div>
 

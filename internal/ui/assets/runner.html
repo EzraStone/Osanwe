@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Osanwë sandbox</title>
+<link rel="stylesheet" href="runner.css">
+</head>
+<body>
+<main id="previewRoot" aria-live="polite">
+  <p class="empty">Run JavaScript to see test output, or preview HTML here.</p>
+</main>
+<script>
+const root = document.getElementById("previewRoot");
+const parentWindow = window.parent;
+let channel = "";
+let worker = null;
+let timeout = null;
+
+const workerSource = `
+(() => {
+  "use strict";
+  const send = self.postMessage.bind(self);
+  let token = "";
+  let tests = [];
+  function valueText(value) {
+    if (typeof value === "string") return value;
+    if (value instanceof Error) return value.stack || value.message;
+    try { return JSON.stringify(value); } catch (_) { return String(value); }
+  }
+  self.onmessage = async (event) => {
+    const message = event.data;
+    if (!message || message.type !== "execute" || typeof message.code !== "string" || typeof message.token !== "string") return;
+    token = message.token;
+    tests = [];
+    const emit = (kind, text, detail = {}) => send({ token, kind, text: String(text).slice(0, 12000), ...detail });
+    self.console = Object.freeze({
+      log: (...values) => emit("log", values.map(valueText).join(" ")),
+      info: (...values) => emit("info", values.map(valueText).join(" ")),
+      warn: (...values) => emit("warn", values.map(valueText).join(" ")),
+      error: (...values) => emit("error", values.map(valueText).join(" ")),
+    });
+    self.test = (name, fn) => {
+      if (typeof name !== "string" || typeof fn !== "function") throw new TypeError("test(name, fn) is required");
+      tests.push({ name: name.slice(0, 160), fn });
+    };
+    self.assert = (condition, message = "assertion failed") => {
+      if (!condition) throw new Error(String(message));
+    };
+    self.fetch = () => Promise.reject(new Error("Network access is disabled in this sandbox."));
+    self.XMLHttpRequest = undefined;
+    self.WebSocket = undefined;
+    self.EventSource = undefined;
+    self.Worker = undefined;
+    self.SharedWorker = undefined;
+    self.importScripts = undefined;
+    let topLevelFailed = false;
+    try {
+      const execute = new Function("\\\"use strict\\\"; return (async () => {\\n" + message.code + "\\n})();");
+      await execute();
+    } catch (error) {
+      topLevelFailed = true;
+      emit("error", valueText(error));
+    }
+    let passed = 0;
+    let failed = 0;
+    if (!topLevelFailed) {
+      for (const item of tests) {
+        try {
+          await item.fn();
+          passed += 1;
+          emit("test", "PASS " + item.name, { passed: true });
+        } catch (error) {
+          failed += 1;
+          emit("test", "FAIL " + item.name + " — " + valueText(error), { passed: false });
+        }
+      }
+    }
+    emit("complete", tests.length ? passed + " passed, " + failed + " failed" : (topLevelFailed ? "Run failed" : "Run completed"), { passed, failed, testCount: tests.length });
+  };
+})();
+`;
+
+function send(kind, text, detail = {}) {
+  if (!channel) return;
+  parentWindow.postMessage({ type: "osanwe-runner", channel, kind, text, ...detail }, "*");
+}
+function stopWorker() {
+  if (timeout) window.clearTimeout(timeout);
+  timeout = null;
+  if (worker) worker.terminate();
+  worker = null;
+}
+function runJavaScript(code) {
+  root.textContent = "";
+  const note = document.createElement("p");
+  note.className = "empty";
+  note.textContent = "JavaScript is running in an isolated worker. Open Results to see logs and tests.";
+  root.appendChild(note);
+  const url = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
+  const workerToken = crypto.randomUUID();
+  worker = new Worker(url);
+  URL.revokeObjectURL(url);
+  worker.onmessage = (event) => {
+    const message = event.data;
+    if (!message || message.token !== workerToken || typeof message.kind !== "string") return;
+    const detail = { passed: message.passed, failed: message.failed, testCount: message.testCount };
+    send(message.kind, message.text || "", detail);
+    if (message.kind === "complete") stopWorker();
+  };
+  worker.onerror = (event) => {
+    send("error", event.message || "The JavaScript worker failed.");
+    send("complete", "Run failed", { passed: 0, failed: 0, testCount: 0 });
+    stopWorker();
+  };
+  worker.postMessage({ type: "execute", token: workerToken, code });
+  timeout = window.setTimeout(() => {
+    send("error", "Stopped after 2.5 seconds. The code may contain an infinite loop or a long-running task.");
+    send("complete", "Timed out", { passed: 0, failed: 0, testCount: 0, timedOut: true });
+    stopWorker();
+  }, 2500);
+}
+function sanitizeHTML(code) {
+  const parsed = new DOMParser().parseFromString(code, "text/html");
+  let removed = 0;
+  parsed.querySelectorAll("script,iframe,object,embed,link,base,form,meta[http-equiv]").forEach((node) => {
+    node.remove();
+    removed += 1;
+  });
+  parsed.querySelectorAll("*").forEach((node) => {
+    for (const attribute of [...node.attributes]) {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim().toLowerCase();
+      const remoteAttribute = ["href", "action", "formaction", "srcset", "poster"].includes(name)
+        || (name === "src" && !value.startsWith("data:image/"));
+      if (name.startsWith("on") || remoteAttribute) {
+        node.removeAttribute(attribute.name);
+        removed += 1;
+      }
+    }
+  });
+  return { body: parsed.body, head: parsed.head, removed };
+}
+function previewHTML(code) {
+  stopWorker();
+  const sanitized = sanitizeHTML(code);
+  root.textContent = "";
+  sanitized.head.querySelectorAll("style").forEach((style) => root.appendChild(style.cloneNode(true)));
+  [...sanitized.body.childNodes].forEach((node) => root.appendChild(node.cloneNode(true)));
+  send("preview", sanitized.removed
+    ? `Preview ready. ${sanitized.removed} executable or remote-loading item${sanitized.removed === 1 ? " was" : "s were"} removed.`
+    : "Preview ready.", { removed: sanitized.removed });
+  send("complete", "HTML preview completed", { passed: 0, failed: 0, testCount: 0 });
+}
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (event.source !== parentWindow || !message || message.type !== "osanwe-run"
+      || typeof message.channel !== "string" || typeof message.code !== "string") return;
+  channel = message.channel;
+  stopWorker();
+  if (message.language === "javascript") runJavaScript(message.code);
+  else if (message.language === "html") previewHTML(message.code);
+  else {
+    send("error", "Only JavaScript and HTML are supported.");
+    send("complete", "Unsupported language", { passed: 0, failed: 0, testCount: 0 });
+  }
+});
+window.addEventListener("pagehide", stopWorker);
+parentWindow.postMessage({ type: "osanwe-runner-ready" }, "*");
+</script>
+</body>
+</html>

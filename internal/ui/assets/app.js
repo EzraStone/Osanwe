@@ -1,4 +1,5 @@
 import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
+import { parseCodeFences } from "./code.js";
 import { appendTurn, conversationTitle, conversationTurnText, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
 import { disclosureNarrative } from "./disclosure.js";
 import { ConversationLifecycle } from "./lifecycle.js";
@@ -15,10 +16,11 @@ var $=function(id){return document.getElementById(id)};
 var thread=$("thread"),rail=$("rail"),opening=$("opening"),
     input=$("input"),send=$("send"),stop=$("stop"),seal=$("seal"),state=$("state"),model=$("model"),
     providerKeyInput=$("providerKey"),providerConsent=$("providerConsent"),
-    panel=$("panel"),veil=$("veil"),providerSettings=$("providerSettings");
+    panel=$("panel"),veil=$("veil"),providerSettings=$("providerSettings"),runnerFrame=$("runnerPreview");
 
 var status=null,busy=false,stopping=false,broken=false,activeRequest=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
-    providerKey="",activeMode="chat",
+    providerKey="",activeMode="chat",runnerOpen=false,runnerChannel="",runnerLines=[],runnerBusy=false,
+    pendingRunnerRun=null,runnerStartupTimer=null,
     completedRequestHere=false,catalogRequest=0,transitionTail=Promise.resolve(),lifecycle=new ConversationLifecycle(),
     retentionMode="ephemeral",store=conversationStore("ephemeral"),
     conversation=createConversation({model:model.value});
@@ -27,7 +29,7 @@ var modeCopy={
   chat:{kicker:"Private chat",title:"What are you thinking about?",placeholder:"Ask anything",assistant:"Osanwë",system:""},
   code:{
     kicker:"Code assistant",title:"What should we build?",placeholder:"Describe a coding task",assistant:"Osanwë Code",
-    system:"You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. You cannot access the user's local files, run commands, or apply changes, so state that limitation whenever it matters. Prefer concise, directly usable code or patches."
+    system:"You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. You cannot access the user's local files, run commands, or apply changes, so state that limitation whenever it matters. Prefer concise, directly usable code or patches. When JavaScript or HTML can demonstrate the answer, use a fenced code block. JavaScript may include tests with test(name, fn) and assert(condition, message) for the local sandbox."
   }
 };
 document.body.dataset.mode=activeMode;
@@ -63,6 +65,7 @@ function render(){
   providerSettings.hidden=tokens;
   $("openProviderSettings").hidden=tokens||Boolean(providerKey);
   $("codeContext").hidden=activeMode!=="code";
+  $("codeRunner").hidden=activeMode!=="code"||!runnerOpen;
   input.disabled=!chatAvailable;
 	input.placeholder=!tokens&&!providerKey?"Connect a provider in Settings":(!modelsReady?"Checking active models":"No active model available");
 	if(chatAvailable)input.placeholder=modeCopy[activeMode].placeholder;
@@ -211,6 +214,25 @@ function turn(kind,label){
   d.appendChild(h);d.appendChild(b);rail.appendChild(d);return b;
 }
 
+function renderAssistantContent(body,text,withRunner){
+  body.textContent="";
+  parseCodeFences(text).forEach(function(part){
+    if(part.kind==="text"){
+      var span=document.createElement("span");span.className="assistant-text";span.textContent=part.content;body.appendChild(span);return;
+    }
+    var block=document.createElement("section");block.className="generated-code";
+    var head=document.createElement("div");head.className="generated-code-head";
+    var label=document.createElement("span");label.textContent=part.language||"code";head.appendChild(label);
+    if(withRunner&&part.runnerLanguage){
+      var loadButton=document.createElement("button");loadButton.type="button";loadButton.textContent="Load into runner";
+      loadButton.addEventListener("click",function(){loadRunnerCode(part.runnerLanguage,part.content)});
+      head.appendChild(loadButton);
+    }
+    var pre=document.createElement("pre"),code=document.createElement("code");
+    code.textContent=part.content;pre.appendChild(code);block.appendChild(head);block.appendChild(pre);body.appendChild(block);
+  });
+}
+
 function refresh(){
   var tokens=status&&status.paying==="tokens";
 	var hasCredential=tokens||Boolean(providerKey);
@@ -264,7 +286,7 @@ function submit(){
     apiStyle:status.api_style||"anthropic",
     apiKey:tokens?"":providerKey
   }).then(function(resp){
-    return stream(resp,body,caret,reply,requestConversation);
+    return stream(resp,body,caret,reply,requestConversation,requestMode);
   }).catch(function(e){
     if(e.name==="AbortError"){
       reply.status="stopped";caret.remove();
@@ -286,7 +308,7 @@ function submit(){
 //
 // Everything else on the wire -- message_start, usage records, ping -- carries
 // no words. Appending them would put JSON in the middle of a sentence.
-function stream(resp,body,caret,reply,requestConversation){
+function stream(resp,body,caret,reply,requestConversation,requestMode){
   return readProviderTextStream(resp.body,function(text){
 	reply.content+=text;
 	caret.remove();
@@ -296,6 +318,7 @@ function stream(resp,body,caret,reply,requestConversation){
   }).then(function(){
 	reply.status="complete";
 	caret.remove();
+	if(requestMode==="code")renderAssistantContent(body,reply.content,true);
 	completedRequestHere=true;
 	return persistConversation(requestConversation);
   });
@@ -312,6 +335,97 @@ function showSnippet(name){
   })[name];
   $("snippet").textContent=s.code;$("snipNote").textContent=s.note;
 }
+
+// ---- local code runner ----------------------------------------------
+function showRunnerView(name){
+  var preview=name==="preview";
+  $("runnerPreview").hidden=!preview;$("runnerResults").hidden=preview;
+  document.querySelectorAll("[data-runner-view]").forEach(function(button){
+    var selected=button.dataset.runnerView===name;
+    button.setAttribute("aria-selected",String(selected));button.tabIndex=selected?0:-1;
+  });
+}
+
+function resetRunnerFrame(reason){
+  runnerChannel="";runnerBusy=false;pendingRunnerRun=null;$("runCode").disabled=false;
+  if(runnerStartupTimer)window.clearTimeout(runnerStartupTimer);runnerStartupTimer=null;
+  runnerFrame.onload=null;
+  runnerFrame.src=PREFIX+"assets/runner.html?idle="+encodeURIComponent(String(Date.now()));
+  if(reason)$("runnerStatus").textContent=reason;
+}
+
+function setRunnerOpen(open){
+  runnerOpen=open;
+  if(!open)resetRunnerFrame("Runner stopped. Loaded code remains in the editor.");
+  render();
+  if(open)$("runnerEditor").focus();
+}
+
+function loadRunnerCode(language,code){
+  $("runnerLanguage").value=language;$("runnerEditor").value=code;
+  runnerLines=[];$("runnerResults").textContent="No output yet.";
+  $("runnerStatus").classList.remove("warn");$("runnerStatus").textContent="Loaded. Review the code, then choose Run & test.";
+  runnerOpen=true;render();$("runnerEditor").focus();
+}
+
+function addRunnerLine(kind,text){
+  var prefix={log:"LOG",info:"INFO",warn:"WARN",error:"ERROR",test:"TEST",preview:"PREVIEW",complete:"DONE"}[kind]||"OUTPUT";
+  runnerLines.push(prefix+"  "+String(text).slice(0,4000));
+  if(runnerLines.length>200)runnerLines=runnerLines.slice(-200);
+  $("runnerResults").textContent=runnerLines.join("\n")||"No output yet.";
+}
+
+function runEditorCode(){
+  var code=$("runnerEditor").value,language=$("runnerLanguage").value;
+  if(!code.trim()){
+    $("runnerStatus").textContent="Add code before running.";$("runnerStatus").classList.add("warn");$("runnerEditor").focus();return;
+  }
+  runnerChannel=crypto.randomUUID();runnerLines=[];runnerBusy=true;
+  $("runnerResults").textContent="Waiting for output…";$("runnerStatus").textContent="Running in the isolated sandbox…";
+  $("runnerStatus").classList.remove("warn");$("runCode").disabled=true;
+  showRunnerView(language==="html"?"preview":"results");
+  pendingRunnerRun={type:"osanwe-run",channel:runnerChannel,language:language,code:code};
+  var expectedChannel=runnerChannel;
+  runnerStartupTimer=window.setTimeout(function(){
+    if(!pendingRunnerRun||pendingRunnerRun.channel!==expectedChannel)return;
+    pendingRunnerRun=null;runnerBusy=false;$("runCode").disabled=false;
+    $("runnerStatus").textContent="The sandbox did not start. Try running again.";$("runnerStatus").classList.add("warn");
+  },1500);
+  runnerFrame.src=PREFIX+"assets/runner.html?run="+encodeURIComponent(expectedChannel);
+}
+
+window.addEventListener("message",function(event){
+  var message=event.data;
+  if(event.source!==runnerFrame.contentWindow||!message)return;
+  if(message.type==="osanwe-runner-ready"){
+    if(!pendingRunnerRun)return;
+    if(runnerStartupTimer)window.clearTimeout(runnerStartupTimer);runnerStartupTimer=null;
+    runnerFrame.contentWindow.postMessage(pendingRunnerRun,"*");pendingRunnerRun=null;return;
+  }
+  if(message.type!=="osanwe-runner"||message.channel!==runnerChannel)return;
+  if(["log","info","warn","error","test","preview","complete"].indexOf(message.kind)<0)return;
+  addRunnerLine(message.kind,message.text||"");
+  if(message.kind==="error")$("runnerStatus").classList.add("warn");
+  if(message.kind==="preview")$("runnerStatus").textContent=message.text||"Preview ready.";
+  if(message.kind==="complete"){
+    runnerBusy=false;$("runCode").disabled=false;
+    var failed=Number.isSafeInteger(message.failed)?message.failed:0;
+    var tests=Number.isSafeInteger(message.testCount)?message.testCount:0;
+    if(message.timedOut){$("runnerStatus").textContent="Stopped at the 2.5 second limit.";$("runnerStatus").classList.add("warn")}
+    else if(failed){$("runnerStatus").textContent=message.text||"One or more tests failed.";$("runnerStatus").classList.add("warn")}
+    else if(tests){$("runnerStatus").textContent=message.text||"All declared tests passed."}
+    else if($("runnerLanguage").value==="javascript"){$("runnerStatus").textContent="Run completed. No tests were declared."}
+  }
+});
+
+$("openCodeRunner").addEventListener("click",function(){setRunnerOpen(true)});
+$("closeCodeRunner").addEventListener("click",function(){setRunnerOpen(false)});
+$("runCode").addEventListener("click",runEditorCode);
+$("clearRunner").addEventListener("click",function(){
+  $("runnerEditor").value="";runnerLines=[];$("runnerResults").textContent="No output yet.";$("runnerStatus").classList.remove("warn");
+  resetRunnerFrame("Cleared. Nothing has run.");$("runnerEditor").focus();
+});
+document.querySelectorAll("[data-runner-view]").forEach(function(button){button.addEventListener("click",function(){showRunnerView(button.dataset.runnerView)})});
 
 // ---- wiring ---------------------------------------------------------
 function connectProviderKey(){
@@ -381,6 +495,7 @@ document.querySelectorAll("[data-mode]").forEach(function(btn){
       await stopActiveRequest();await lifecycle.idle();
       modeConversations[activeMode]=conversation;
       activeMode=want;conversation=modeConversations[want];conversation.model=model.value;
+      if(activeMode!=="code"&&runnerOpen){runnerOpen=false;resetRunnerFrame("Runner stopped. Loaded code remains in the editor.")}
       document.body.dataset.mode=activeMode;
       document.querySelectorAll("[data-mode]").forEach(function(b){
         b.setAttribute("aria-selected",String(b===btn));
@@ -584,8 +699,9 @@ function renderConversation(){
   conversation.turns.forEach(function(item){
     var kind=item.role==="user"?"you":(item.status==="error"?"err":"reply");
     var label=item.role==="user"?"You":modeCopy[activeMode].assistant;
-    var body=turn(kind,label);
-    body.textContent=conversationTurnText(item);
+    var body=turn(kind,label),text=conversationTurnText(item);
+    if(activeMode==="code"&&item.role==="assistant"&&item.status==="complete")renderAssistantContent(body,text,true);
+    else body.textContent=text;
   });
   setEmpty(conversation.turns.length===0);
   if(catalogModels.some(function(item){return item.id===conversation.model}))model.value=conversation.model;
@@ -643,7 +759,7 @@ $("deleteConversationBtn").addEventListener("click",function(){
     await stopActiveRequest();
     var saved=conversationStore("device");
     await lifecycle.delete(saved,target.id);
-    if(conversation.id===target.id){conversation=createConversation({model:model.value});renderConversation()}
+    if(conversation.id===target.id){conversation=createConversation({model:model.value});modeConversations[activeMode]=conversation;renderConversation()}
     refreshHistory();
     $("settingsStatus").textContent="The current conversation was deleted from this page and Osanwë device-only history.";
   }).catch(deletionFailed);

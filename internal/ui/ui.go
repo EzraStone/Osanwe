@@ -29,31 +29,55 @@ const contentSecurityPolicy = "default-src 'none'; " +
 	"script-src 'self'; " +
 	"img-src 'self' data:; " +
 	"connect-src 'self'; " +
+	"frame-src 'self'; " +
 	"form-action 'none'; " +
 	"base-uri 'none'; " +
 	"frame-ancestors 'none'"
 
+// The runner is always embedded without allow-same-origin. Its only executable
+// input is JavaScript placed in a disposable, timed worker; it cannot connect
+// to the client or any remote origin. This narrower document policy permits
+// that worker without weakening the credential-bearing parent page.
+const runnerContentSecurityPolicy = "default-src 'none'; " +
+	"style-src 'self' 'unsafe-inline'; " +
+	"script-src 'unsafe-inline' 'unsafe-eval'; " +
+	"worker-src blob:; " +
+	"img-src data: blob:; " +
+	"connect-src 'none'; " +
+	"font-src 'none'; " +
+	"media-src 'none'; " +
+	"object-src 'none'; " +
+	"frame-src 'none'; " +
+	"form-action 'none'; " +
+	"base-uri 'none'; " +
+	"frame-ancestors 'self'"
+
 type asset struct {
 	body        []byte
 	contentType string
+	csp         string
 }
 
 var assetFiles = []struct {
 	path        string
 	file        string
 	contentType string
+	csp         string
 }{
-	{"/", "app.html", "text/html; charset=utf-8"},
-	{"/assets/app.css", "assets/app.css", "text/css; charset=utf-8"},
-	{"/assets/app.js", "assets/app.js", "text/javascript; charset=utf-8"},
-	{"/assets/api.js", "assets/api.js", "text/javascript; charset=utf-8"},
-	{"/assets/conversation.js", "assets/conversation.js", "text/javascript; charset=utf-8"},
-	{"/assets/disclosure.js", "assets/disclosure.js", "text/javascript; charset=utf-8"},
-	{"/assets/lifecycle.js", "assets/lifecycle.js", "text/javascript; charset=utf-8"},
-	{"/assets/models.js", "assets/models.js", "text/javascript; charset=utf-8"},
-	{"/assets/snippets.js", "assets/snippets.js", "text/javascript; charset=utf-8"},
-	{"/assets/sse.js", "assets/sse.js", "text/javascript; charset=utf-8"},
-	{"/assets/storage.js", "assets/storage.js", "text/javascript; charset=utf-8"},
+	{"/", "app.html", "text/html; charset=utf-8", ""},
+	{"/assets/app.css", "assets/app.css", "text/css; charset=utf-8", ""},
+	{"/assets/app.js", "assets/app.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/api.js", "assets/api.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/code.js", "assets/code.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/conversation.js", "assets/conversation.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/disclosure.js", "assets/disclosure.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/lifecycle.js", "assets/lifecycle.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/models.js", "assets/models.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/runner.css", "assets/runner.css", "text/css; charset=utf-8", ""},
+	{"/assets/runner.html", "assets/runner.html", "text/html; charset=utf-8", runnerContentSecurityPolicy},
+	{"/assets/snippets.js", "assets/snippets.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/sse.js", "assets/sse.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/storage.js", "assets/storage.js", "text/javascript; charset=utf-8", ""},
 }
 
 // Handler serves the interface rooted at prefix.
@@ -66,7 +90,7 @@ func Handler(prefix string) http.Handler {
 			// which case failing loudly beats serving a partial application.
 			panic("ui: " + spec.file + " is missing from the binary: " + err.Error())
 		}
-		assets[spec.path] = asset{body: body, contentType: spec.contentType}
+		assets[spec.path] = asset{body: body, contentType: spec.contentType, csp: spec.csp}
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +110,11 @@ func Handler(prefix string) http.Handler {
 		}
 		w.Header().Set("Content-Type", asset.contentType)
 
-		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
+		csp := asset.csp
+		if csp == "" {
+			csp = contentSecurityPolicy
+		}
+		w.Header().Set("Content-Security-Policy", csp)
 		// The page reflects live local state, and a cached copy showing a relay
 		// that is no longer in use would be a confident lie.
 		w.Header().Set("Cache-Control", "no-store")

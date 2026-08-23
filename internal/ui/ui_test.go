@@ -66,6 +66,9 @@ func TestPrimaryModesAndProviderSettingsAreHonest(t *testing.T) {
 		`id="themeIcon"`,
 		`id="providerSettings"`,
 		`cannot read files, run commands, or apply changes`,
+		`id="codeRunner"`,
+		`id="runCode">Run &amp; test`,
+		`sandbox="allow-scripts"`,
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("the embedded page is missing %q", required)
@@ -78,6 +81,9 @@ func TestPrimaryModesAndProviderSettingsAreHonest(t *testing.T) {
 	}
 	if strings.Contains(text, `id="modelsTab"`) || strings.Contains(text, `id="connectTab"`) {
 		t.Fatal("the old Models or Connect primary tab is still present")
+	}
+	if strings.Contains(text, "allow-same-origin") {
+		t.Fatal("the generated-code frame must retain an opaque sandbox origin")
 	}
 }
 
@@ -114,7 +120,7 @@ func TestThePolicyPinsThePageToThisClient(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	csp := rec.Header().Get("Content-Security-Policy")
-	for _, want := range []string{"default-src 'none'", "style-src 'self'", "script-src 'self'", "connect-src 'self'", "frame-ancestors 'none'", "form-action 'none'"} {
+	for _, want := range []string{"default-src 'none'", "style-src 'self'", "script-src 'self'", "connect-src 'self'", "frame-src 'self'", "frame-ancestors 'none'", "form-action 'none'"} {
 		if !strings.Contains(csp, want) {
 			t.Fatalf("policy %q is missing %q", csp, want)
 		}
@@ -124,8 +130,8 @@ func TestThePolicyPinsThePageToThisClient(t *testing.T) {
 	if strings.Contains(csp, "connect-src *") || strings.Contains(csp, "https:") {
 		t.Fatalf("policy %q allows an outside origin", csp)
 	}
-	if strings.Contains(csp, "'unsafe-inline'") {
-		t.Fatalf("policy %q permits inline code", csp)
+	if strings.Contains(csp, "'unsafe-inline'") || strings.Contains(csp, "'unsafe-eval'") {
+		t.Fatalf("parent policy %q permits inline or evaluated code", csp)
 	}
 	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("X-Content-Type-Options = %q", got)
@@ -141,6 +147,26 @@ func TestThePolicyPinsThePageToThisClient(t *testing.T) {
 	}
 	if got := rec.Header().Get("Cross-Origin-Resource-Policy"); got != "same-origin" {
 		t.Errorf("Cross-Origin-Resource-Policy = %q", got)
+	}
+}
+
+func TestRunnerPolicyPermitsOnlyTheDisposableWorker(t *testing.T) {
+	rec := httptest.NewRecorder()
+	Handler("/_osanwe/").ServeHTTP(rec, httptest.NewRequest("GET", "/_osanwe/assets/runner.html", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("runner status = %d, want 200", rec.Code)
+	}
+	csp := rec.Header().Get("Content-Security-Policy")
+	for _, want := range []string{
+		"default-src 'none'", "worker-src blob:", "connect-src 'none'", "font-src 'none'",
+		"media-src 'none'", "object-src 'none'", "frame-src 'none'", "form-action 'none'", "frame-ancestors 'self'",
+	} {
+		if !strings.Contains(csp, want) {
+			t.Fatalf("runner policy %q is missing %q", csp, want)
+		}
+	}
+	if strings.Contains(csp, "connect-src *") || strings.Contains(csp, "connect-src 'self'") {
+		t.Fatalf("runner policy %q can reach another endpoint", csp)
 	}
 }
 
@@ -197,10 +223,13 @@ func TestOnlyKnownAssetsAreServed(t *testing.T) {
 		{"/_osanwe/assets/app.css", "text/css; charset=utf-8"},
 		{"/_osanwe/assets/app.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/api.js", "text/javascript; charset=utf-8"},
+		{"/_osanwe/assets/code.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/conversation.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/disclosure.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/lifecycle.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/models.js", "text/javascript; charset=utf-8"},
+		{"/_osanwe/assets/runner.css", "text/css; charset=utf-8"},
+		{"/_osanwe/assets/runner.html", "text/html; charset=utf-8"},
 		{"/_osanwe/assets/snippets.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/sse.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/storage.js", "text/javascript; charset=utf-8"},
