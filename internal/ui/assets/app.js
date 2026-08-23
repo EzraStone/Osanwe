@@ -238,29 +238,29 @@ var currentSnip="shell";
 function snippets(endpoint){
   var url="http://"+endpoint;
   return {
-    shell:{code:'<span class="c"># any tool that reads the standard variable</span>\n'+
-      'export ANTHROPIC_BASE_URL=<span class="s">'+url+'</span>\n'+
-      'export ANTHROPIC_API_KEY=<span class="s">osanwe</span>   <span class="c"># discarded locally</span>',
+    shell:{code:'# any tool that reads the standard variable\n'+
+      'export ANTHROPIC_BASE_URL='+url+'\n'+
+      'export ANTHROPIC_API_KEY=osanwe   # discarded locally',
       note:"Most tools read ANTHROPIC_BASE_URL and need nothing else changed."},
-    python:{code:'<span class="c">from</span> anthropic <span class="c">import</span> Anthropic\n\n'+
-      'client = Anthropic(\n    base_url=<span class="s">"'+url+'"</span>,\n'+
-      '    api_key=<span class="s">"osanwe"</span>,   <span class="c"># required by the SDK</span>\n)',
+    python:{code:'from anthropic import Anthropic\n\n'+
+      'client = Anthropic(\n    base_url="'+url+'",\n'+
+      '    api_key="osanwe",   # required by the SDK\n)',
       note:"The SDK insists on a key. When you are paying with tokens that string is stripped before the request leaves this machine."},
-    node:{code:'<span class="c">import</span> Anthropic <span class="c">from</span> <span class="s">"@anthropic-ai/sdk"</span>;\n\n'+
-      '<span class="c">const</span> client = <span class="c">new</span> Anthropic({\n'+
-      '  baseURL: <span class="s">"'+url+'"</span>,\n  apiKey: <span class="s">"osanwe"</span>,\n});',
+    node:{code:'import Anthropic from "@anthropic-ai/sdk";\n\n'+
+      'const client = new Anthropic({\n'+
+      '  baseURL: "'+url+'",\n  apiKey: "osanwe",\n});',
       note:"Streaming works unchanged. Nothing on the path buffers, so tokens arrive as they are produced."},
-    curl:{code:'curl <span class="s">'+url+'</span>/v1/messages \\\n'+
-      '  -H <span class="s">"content-type: application/json"</span> \\\n'+
-      '  -d <span class="s">\'{"model":"claude-sonnet-5","max_tokens":1024,</span>\n'+
-      '       <span class="s">"messages":[{"role":"user","content":"…"}]}\'</span>',
+    curl:{code:'curl '+url+'/v1/messages \\\n'+
+      '  -H "content-type: application/json" \\\n'+
+      '  -d \'{"model":"claude-sonnet-5","max_tokens":1024,\n'+
+      '       "messages":[{"role":"user","content":"…"}]}\'',
       note:"No auth header at all when tokens are in use: one is bought and attached for you, per request."}
   };
 }
 function showSnippet(name){
   currentSnip=name;
   var s=snippets(status?status.endpoint:"127.0.0.1:8080")[name];
-  $("snippet").innerHTML=s.code;$("snipNote").textContent=s.note;
+  $("snippet").textContent=s.code;$("snipNote").textContent=s.note;
 }
 
 // ---- wiring ---------------------------------------------------------
