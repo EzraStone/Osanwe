@@ -3,16 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Osanwë is an experimental privacy relay and account-unlinked gateway for AI inference. Join the first ten-person technical beta.">
+<meta name="description" content="Osanwë is experimental infrastructure designed to separate network identity from AI inference content. Join the first ten-person technical beta.">
+<meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#17242d">
-<meta property="og:title" content="Osanwë — private AI inference, honestly bounded">
-<meta property="og:description" content="A local app, an encrypted relay, and unlinkable request tokens. Technical beta preparation—not a public service yet.">
+<meta property="og:title" content="Osanwë — experimental privacy infrastructure, honestly bounded">
+<meta property="og:description" content="A local app, an encrypted relay, and blind-signed request tokens designed to resist conventional linkage. Technical beta preparation—not a public service yet.">
 <meta property="og:image" content="https://ezrastone.github.io/Osanwe/hero-og.png">
 <meta property="og:url" content="https://ezrastone.github.io/Osanwe/">
 <meta property="og:type" content="website">
 <link rel="canonical" href="https://ezrastone.github.io/Osanwe/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<title>Osanwë — Private AI inference</title>
+<title>Osanwë — Experimental privacy infrastructure</title>
 <style>
   :root{
     --night:#10202a; --paper:#f8f3e8; --paper-2:#eee4d2; --ink:#182127; --muted:#5f6a6f;
@@ -26,7 +27,7 @@
   html{scroll-behavior:smooth}
   body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.62 var(--sans);-webkit-font-smoothing:antialiased}
   a{color:inherit}
-  a:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+  a:focus-visible{outline:3px solid var(--white);outline-offset:2px;box-shadow:0 0 0 6px #00566b}
   .skip{position:fixed;left:1rem;top:-5rem;z-index:20;background:var(--white);padding:.6rem .9rem;border-radius:.4rem}
   .skip:focus{top:1rem}
   .shell{width:min(1120px,calc(100% - 2rem));margin-inline:auto}
@@ -83,6 +84,7 @@
   .roles b{color:var(--sea);font:700 .72rem var(--mono)}
   .roles span{font-size:.93rem}
   .beta-actions{display:flex;flex-wrap:wrap;align-items:center;gap:1rem;margin-top:1.6rem}
+  .cta-note{max-width:680px;margin:.75rem 0 0;color:var(--muted);font-size:.84rem}
   .beta .primary,.download-card .primary{background:var(--night);color:var(--white)}
   .quiet-link{font-size:.88rem;color:var(--sea);font-weight:650}
   .candidate{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2rem}
@@ -96,6 +98,7 @@
   .checklist{margin:0;padding:0;border-top:1px solid var(--line)}
   .checklist li{list-style:none;padding:.68rem 0;border-bottom:1px solid var(--line);font-size:.88rem;color:var(--muted)}
   .checklist li::before{content:"○";color:var(--warn);margin-right:.55rem}
+  .checklist strong{color:var(--warn)}
   footer{padding:2.4rem 0 3.5rem;background:var(--night);color:#c9d0d2}
   .footer-grid{display:flex;justify-content:space-between;gap:2rem;align-items:flex-start}
   footer strong{display:block;color:var(--white);font:600 1.1rem var(--serif)}
@@ -121,8 +124,8 @@
     <nav class="navlinks" aria-label="Primary">
       <a href="#truth">Current state</a>
       <a href="design.html">Design</a>
-      <a href="https://github.com/EzraStone/Osanwe">Source</a>
-      <a class="pill" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml">Join the beta</a>
+      <a href="https://github.com/EzraStone/Osanwe" rel="noreferrer">Source</a>
+      <a class="pill" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml" rel="noreferrer">Join the beta</a>
     </nav>
   </div>
 </header>
@@ -132,15 +135,17 @@
     <img class="hero-art" src="hero.png" alt="" aria-hidden="true">
     <div class="hero-content shell">
       <p class="status">Preparing a ten-person technical beta</p>
-      <h1 id="hero-title">No one should see both ends.</h1>
-      <p class="hero-lede">Osanwë separates who is asking from what is being asked: a local app,
-      an independently operated encrypted relay, and unlinkable request tokens for AI inference.</p>
+      <h1 id="hero-title">Designed so no one sees both ends.</h1>
+      <p class="hero-lede">Osanwë is designed to separate who is asking from what is being asked:
+      a local app, an encrypted relay intended to have a separate operator, and blind-signed request
+      tokens designed not to be conventionally linkable between issuance and redemption.</p>
       <div class="actions">
-        <a class="button primary" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml">Apply for one of ten seats</a>
+        <a class="button primary" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml" rel="noreferrer">Apply for one of ten seats</a>
         <a class="button secondary" href="#truth">See what is actually ready</a>
       </div>
-      <p class="hero-note">Free, invited, text-only, and non-sensitive. This is not yet a public gateway,
-      a production privacy promise, or a real-money service.</p>
+      <p class="hero-note">Applying requires GitHub sign-in and creates a public issue linked to your
+      GitHub username. The beta is free, invited, text-only, and limited to non-sensitive prompts.
+      This is not yet a public gateway, a production privacy promise, or a real-money service.</p>
     </div>
   </section>
 
@@ -179,13 +184,14 @@
   <section class="path-section" aria-labelledby="path-title">
     <div class="shell">
       <p class="eyebrow">One request, divided knowledge</p>
-      <h2 id="path-title">Privacy comes from separation, not a reassuring label.</h2>
-      <p class="section-lede">Each component learns something. The bet is that no single independent
-      operator learns enough to link identity, content, and provider account together.</p>
+      <h2 id="path-title">The privacy design depends on separation, not a reassuring label.</h2>
+      <p class="section-lede">Each component learns something. When relay and gateway actually have
+      separate operators, this experimental design aims to prevent one operator from directly joining
+      network identity, content, and provider account. Timing analysis or collusion can still link them.</p>
       <ol class="path">
         <li><h3>Local app</h3><p>Sees the conversation and keeps history ephemeral unless you explicitly save it in this browser.</p></li>
         <li><h3>Relay</h3><p>Sees source address, timing, volume, and allowed destination—but carries encrypted content.</p></li>
-        <li><h3>Gateway</h3><p>Sees plaintext and a blind-signed token, not the relay-side network identity.</p></li>
+        <li><h3>Gateway</h3><p>Sees plaintext and a blind-signed token, but is not sent the relay-side network identity.</p></li>
         <li><h3>Model provider</h3><p>Sees content under the gateway account, subject to its own retention and training policy.</p></li>
       </ol>
     </div>
@@ -202,7 +208,7 @@
       <dl class="facts">
         <div><dt>Provider learns</dt><dd>Prompt and answer; gateway account instead of tester account in token mode</dd></div>
         <div><dt>Relay learns</dt><dd>Source address, timing, traffic volume, and constrained destination</dd></div>
-        <div><dt>Gateway learns</dt><dd>Prompt, answer, model, and an unlinkable single-use token</dd></div>
+        <div><dt>Gateway learns</dt><dd>Prompt, answer, model, and a single-use token designed not to be conventionally linkable to its issuance receipt</dd></div>
         <div><dt>Osanwë stores</dt><dd>No server-side conversation history; optional browser-only local history</dd></div>
         <div><dt>Not yet protected</dt><dd>Gateway plaintext from its operator through attested execution</dd></div>
       </dl>
@@ -223,9 +229,11 @@
         <li><b>09</b><span>Reliability or DevOps operator</span></li><li><b>10</b><span>Privacy-conscious product tester</span></li>
       </ol>
       <div class="beta-actions">
-        <a class="button primary" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml">Apply on GitHub</a>
-        <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/beta.md">Read the complete beta charter →</a>
+        <a class="button primary" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml" rel="noreferrer">Apply on GitHub</a>
+        <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/beta.md" rel="noreferrer">Read the complete beta charter →</a>
       </div>
+      <p class="cta-note">GitHub sign-in is required. Submitting the form creates a public issue linked
+      to your GitHub username; do not include private contact details, prompts, or answers.</p>
     </div>
   </section>
 
@@ -250,8 +258,8 @@
         </article>
       </div>
       <div class="beta-actions">
-        <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/phase0-results.md">Read Phase 0 results →</a>
-        <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/providers/ox-alpha.md">Read the Ox Alpha gate →</a>
+        <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/phase0-results.md" rel="noreferrer">Read Phase 0 results →</a>
+        <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/providers/ox-alpha.md" rel="noreferrer">Read the Ox Alpha gate →</a>
       </div>
     </div>
   </section>
@@ -262,20 +270,21 @@
         <p class="eyebrow">Website, not web chat</p>
         <h2 id="download-title">Download locally. Keep the public page out of the conversation.</h2>
         <p class="section-lede">The website explains, recruits, and will publish checksummed archives.
-        The chat stays on <code>127.0.0.1</code>; this site has no prompt box, analytics, account, key
-        field, or access to local history. Invited testers receive a non-secret connection file and
-        paste secrets only into the local launcher.</p>
+        The chat stays on <code>127.0.0.1</code>; this site has no prompt box, analytics, Osanwë account
+        system, key field, or access to local history. The separate beta application uses a public
+        GitHub account. Invited testers receive a non-secret connection file and paste secrets only
+        into the local launcher.</p>
         <div class="beta-actions">
-          <a class="button primary" href="https://github.com/EzraStone/Osanwe/releases">Check releases</a>
-          <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/joining.md">Technical setup →</a>
+          <a class="button primary" href="https://github.com/EzraStone/Osanwe/releases" rel="noreferrer">Check releases</a>
+          <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/joining.md" rel="noreferrer">Technical setup →</a>
         </div>
       </div>
       <ul class="checklist" aria-label="Download gates">
-        <li>Windows, macOS, and Linux client archives</li>
-        <li>SHA-256 checksums and embedded version identity</li>
-        <li>One-click launcher with runtime-only secrets</li>
-        <li>Provider permission before a pooled model route</li>
-        <li>Independent relay before privacy beta traffic</li>
+        <li><strong>Not yet:</strong> published Windows, macOS, and Linux client archives</li>
+        <li><strong>Not yet:</strong> published SHA-256 checksums and embedded version identity</li>
+        <li><strong>Not yet:</strong> clean-platform validation of launchers and OS warning paths</li>
+        <li><strong>Not yet:</strong> provider permission for a pooled model route</li>
+        <li><strong>Not yet:</strong> an independently operated relay for experimental privacy traffic</li>
       </ul>
     </div>
   </section>
@@ -286,9 +295,9 @@
     <div><strong>Osanwë</strong><p>Experimental open-source privacy infrastructure. No public service,
     uptime promise, or real-money beta is represented by this website.</p></div>
     <nav aria-label="Footer">
-      <a href="design.html">Design</a><a href="https://github.com/EzraStone/Osanwe/blob/main/docs/product/privacy-boundaries.md">Privacy</a>
-      <a href="https://github.com/EzraStone/Osanwe/security/policy">Security</a>
-      <a href="https://github.com/EzraStone/Osanwe">GitHub</a>
+      <a href="design.html">Design</a><a href="https://github.com/EzraStone/Osanwe/blob/main/docs/product/privacy-boundaries.md" rel="noreferrer">Privacy</a>
+      <a href="https://github.com/EzraStone/Osanwe/security/policy" rel="noreferrer">Security</a>
+      <a href="https://github.com/EzraStone/Osanwe" rel="noreferrer">GitHub</a>
     </nav>
   </div>
 </footer>
