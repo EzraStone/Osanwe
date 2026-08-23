@@ -6,7 +6,7 @@
 <title>Osanwë — Design &amp; Threat Model</title>
 <style>
   :root{
-    --bg:#fbfaf7; --panel:#ffffff; --ink:#1c1a17; --muted:#6b6459; --faint:#938b7e;
+    --bg:#fbfaf7; --panel:#ffffff; --ink:#1c1a17; --muted:#6b6459; --faint:#756e63;
     --line:#e3ded4; --accent:#7a5c2e; --accent-soft:#f0e7d6;
     --warn-bg:#fdf4e8; --warn-line:#d9a441; --warn-ink:#6b4b12;
     --bad-bg:#fdf0ee; --bad-line:#c4614c; --bad-ink:#7a2f20;
@@ -18,7 +18,7 @@
   }
   @media (prefers-color-scheme: dark){
     :root{
-      --bg:#14130f; --panel:#1b1a16; --ink:#e8e3d8; --muted:#a49b8b; --faint:#7d7566;
+      --bg:#14130f; --panel:#1b1a16; --ink:#e8e3d8; --muted:#a49b8b; --faint:#9b9282;
       --line:#302d26; --accent:#d3ab6a; --accent-soft:#2a2419;
       --warn-bg:#241d10; --warn-line:#8a6a24; --warn-ink:#e0bf7d;
       --bad-bg:#251512; --bad-line:#8c463a; --bad-ink:#e8a595;
@@ -27,7 +27,7 @@
     }
   }
   :root[data-theme="dark"]{
-      --bg:#14130f; --panel:#1b1a16; --ink:#e8e3d8; --muted:#a49b8b; --faint:#7d7566;
+      --bg:#14130f; --panel:#1b1a16; --ink:#e8e3d8; --muted:#a49b8b; --faint:#9b9282;
       --line:#302d26; --accent:#d3ab6a; --accent-soft:#2a2419;
       --warn-bg:#241d10; --warn-line:#8a6a24; --warn-ink:#e0bf7d;
       --bad-bg:#251512; --bad-line:#8c463a; --bad-ink:#e8a595;
@@ -35,7 +35,7 @@
       --code-bg:#1f1d18;
   }
   :root[data-theme="light"]{
-    --bg:#fbfaf7; --panel:#ffffff; --ink:#1c1a17; --muted:#6b6459; --faint:#938b7e;
+    --bg:#fbfaf7; --panel:#ffffff; --ink:#1c1a17; --muted:#6b6459; --faint:#756e63;
     --line:#e3ded4; --accent:#7a5c2e; --accent-soft:#f0e7d6;
     --warn-bg:#fdf4e8; --warn-line:#d9a441; --warn-ink:#6b4b12;
     --bad-bg:#fdf0ee; --bad-line:#c4614c; --bad-ink:#7a2f20;
@@ -49,6 +49,9 @@
     font-family:var(--sans); font-size:16.5px; line-height:1.65;
     -webkit-font-smoothing:antialiased;
   }
+  a:focus-visible{outline:3px solid var(--accent); outline-offset:3px; border-radius:2px}
+  .skip{position:fixed; left:1rem; top:-5rem; z-index:10; padding:.55rem .85rem; border-radius:5px; background:var(--panel); color:var(--ink); font-weight:650}
+  .skip:focus{top:1rem}
   .wrap{display:grid; grid-template-columns:255px minmax(0,1fr); gap:3rem; max-width:1220px; margin:0 auto; padding:0 1.5rem}
   /* ---- sidebar ---- */
   nav{position:sticky; top:0; align-self:start; max-height:100vh; overflow-y:auto; padding:2.5rem 0 3rem; font-size:13.5px}
@@ -63,6 +66,7 @@
   header.doc{border-bottom:1px solid var(--line); padding-bottom:2rem; margin-bottom:2.5rem}
   header.doc h1{font-family:var(--serif); font-size:clamp(2.1rem,5vw,3.1rem); line-height:1.08; margin:0 0 .5rem; font-weight:600; letter-spacing:-.01em}
   header.doc .tag{font-size:1.12rem; color:var(--muted); margin:0 0 1.4rem; max-width:60ch; line-height:1.55}
+  header.doc .box{margin-top:1.2rem}
   .meta{display:flex; flex-wrap:wrap; gap:.5rem}
   .meta span{font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); background:var(--accent-soft); border:1px solid var(--line); border-radius:100px; padding:.24rem .7rem}
   h2{font-family:var(--serif); font-size:1.72rem; font-weight:600; margin:3.4rem 0 .9rem; padding-top:.9rem; border-top:1px solid var(--line); letter-spacing:-.005em; scroll-margin-top:1rem}
@@ -124,12 +128,14 @@
     nav .cols{columns:2; column-gap:1.5rem}
     main{padding-top:1.5rem}
   }
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <div class="wrap">
 
-<nav>
+<nav aria-label="Document sections">
   <div class="brand">Osanwë</div>
   <div class="brand-sub">Design &amp; Threat Model</div>
   <div class="cols">
@@ -158,17 +164,25 @@
   </div>
 </nav>
 
-<main>
+<main id="main" tabindex="-1">
 
 <header class="doc">
   <h1>Osanwë</h1>
-  <p class="tag">An anonymity network for AI inference. Use frontier models without the provider
-  being able to link the prompt to a person — and pool contributed hardware to serve open-weight
-  models for those who would rather trust no one at all.</p>
+  <p class="tag"><b>Design target:</b> separate provider-visible content from a person's network,
+  provider-account, and payment identity, while pooling contributed hardware for open-weight
+  models. This document describes an intended architecture, not a currently available anonymity
+  service.</p>
   <div class="meta">
     <span>Design document</span>
-    <span>Status: prototype implementation</span>
+    <span>Status: target architecture incomplete</span>
     <span>Revision 2</span>
+  </div>
+  <div class="box warn">
+    <span class="lbl">Current implementation boundary</span>
+    <p>The prototype has no independently operated public relay, deployed attested gateway, or
+    approved pooled-provider route. Its gateway can read prompts, and prompt content, writing style,
+    timing, or collusion can still identify a person. See the <a href="./#truth">current project
+    status</a> before treating any design goal below as a present capability.</p>
   </div>
 </header>
 
@@ -212,8 +226,9 @@ common except a node network.</p>
 <p>The second reframe is just as load-bearing: <b>routing is the easy half of anonymity, and it is
 not the half that matters here.</b> Onion routing hides your IP address. But the request still
 carries an API key bound to a credit card bound to your name. Ten hops do not help. The real
-problem is <em>anonymous authorization</em>, and it is solved with blind signatures, not with
-circuits.</p>
+problem is <em>account-unlinked authorization</em>. Blind signatures can prevent direct
+issuance-to-redemption matching; they do not by themselves defeat timing analysis, prompt
+self-identification, or collusion.</p>
 
 <!-- ========================================================= -->
 <h2 id="s2"><span class="n">02</span>The premise, examined</h2>
@@ -245,7 +260,7 @@ through five distinct channels, and they are not equally hard.</p>
   <tbody>
     <tr><td>1</td><td>IP address / network location</td><td><b>Yes</b></td><td>Any relay. One hop suffices</td></tr>
     <tr><td>2</td><td>API key / account identity</td><td>No</td><td>Blind-signed tokens + pooled access</td></tr>
-    <tr><td>3</td><td>Payment instrument</td><td>No</td><td>Unlinkable issuance; Monero or cash-equivalent</td></tr>
+    <tr><td>3</td><td>Payment instrument</td><td>No</td><td>Blind issuance plus a privacy-preserving rail; timing still leaks</td></tr>
     <tr><td>4</td><td>Prompt content &amp; writing style</td><td>No</td><td class="bad-c"><b>Nothing. Unfixable at network layer</b></td></tr>
     <tr><td>5</td><td>Traffic timing correlation</td><td>Partly</td><td>Padding, cover traffic, mixnet — all costly</td></tr>
   </tbody>
@@ -345,16 +360,20 @@ this section, and any decision that cannot be traced back to it is decoration.</
 </div>
 
 <h3>4.3 Security goals</h3>
+<p>These are conditional targets for the completed architecture, not claims about the current
+prototype. They assume correctly implemented cryptography, separately operated relays and gateways,
+approved pooled access, and the explicit non-goals below.</p>
 <ol>
-  <li><b>Unlinkability at the provider.</b> The provider can serve the request but cannot tie it
-  to a name, payment instrument, or IP.</li>
-  <li><b>Content confidentiality from the network.</b> No relay operator ever sees a prompt.</li>
-  <li><b>Issuance–redemption unlinkability.</b> The mint, which knows who paid, cannot correlate
-  a purchase with any later request — even in collusion with the gateway.</li>
-  <li><b>Verifiable gateway integrity.</b> Where a gateway must see plaintext, the client can
-  cryptographically verify <em>what code</em> will see it before sending.</li>
-  <li><b>Operator plausible deniability.</b> A relay operator can prove they were technically
-  incapable of reading the traffic they carried.</li>
+  <li><b>Reduced provider linkage.</b> The protocol does not give the provider the person's source
+  IP, payment identity, or provider account in token mode. Prompt content can still identify them.</li>
+  <li><b>Relay content confidentiality.</b> A correctly pinned relay receives ciphertext rather
+  than prompt text, while still observing source address, timing, and volume.</li>
+  <li><b>Issuance–redemption unlinkability.</b> Blind signing prevents cryptographic matching of a
+  redeemed token to its blinded issuance transcript. Timing and other side channels remain.</li>
+  <li><b>Verifiable gateway integrity.</b> A future attested deployment lets the client verify the
+  measured gateway code and its encryption key before sending plaintext.</li>
+  <li><b>Narrow relay knowledge.</b> The relay role has no decryption key, although deployment and
+  operator-independence claims still require operational evidence.</li>
 </ol>
 
 <h3>4.4 Explicit non-goals</h3>
@@ -398,8 +417,10 @@ split across two non-colluding parties.</p>
 <!-- ========================================================= -->
 <h2 id="s6"><span class="n">06</span>Architecture</h2>
 
-<p class="lede">Three parties, split so that no single one ever holds both halves of the user's
-identity. This is the OHTTP shape, extended with unlinkable payment and an attested gateway.</p>
+<p class="lede"><b>Target architecture:</b> three separately operated parties, split so the
+protocol does not intentionally give one party both source-network identity and content. This is
+the OHTTP shape extended with blind-signed payment credentials and a future attested gateway; side
+channels and collusion remain outside that separation.</p>
 
 <figure>
 <svg viewBox="0 0 860 400" role="img" aria-label="Osanwë three-party architecture diagram">
@@ -407,7 +428,7 @@ identity. This is the OHTTP shape, extended with unlinkable payment and an attes
   <rect class="svg-box-a" x="330" y="14" width="200" height="62" rx="8"/>
   <text class="svg-ink" x="430" y="38" text-anchor="middle" font-size="14" font-weight="650">eregion — token mint</text>
   <text class="svg-muted" x="430" y="56" text-anchor="middle" font-size="11">knows: who paid</text>
-  <text class="svg-muted" x="430" y="69" text-anchor="middle" font-size="11">never sees: any prompt</text>
+  <text class="svg-muted" x="430" y="69" text-anchor="middle" font-size="11">protocol receives: no prompt</text>
 
   <!-- arrows to/from mint -->
   <path class="svg-dash" d="M120 130 L120 45 L330 45"/>
@@ -426,21 +447,21 @@ identity. This is the OHTTP shape, extended with unlinkable payment and an attes
   <text class="svg-ink" x="95" y="158" text-anchor="middle" font-size="14" font-weight="650">bearer</text>
   <text class="svg-muted" x="95" y="176" text-anchor="middle" font-size="11">the user's client</text>
   <text class="svg-muted" x="95" y="196" text-anchor="middle" font-size="10.5">holds tokens</text>
-  <text class="svg-muted" x="95" y="210" text-anchor="middle" font-size="10.5">verifies attestation</text>
+  <text class="svg-muted" x="95" y="210" text-anchor="middle" font-size="10.5">target: verify attestation</text>
 
   <!-- Relay -->
   <rect class="svg-box" x="235" y="130" width="150" height="96" rx="8"/>
   <text class="svg-ink" x="310" y="158" text-anchor="middle" font-size="14" font-weight="650">ranger</text>
   <text class="svg-muted" x="310" y="176" text-anchor="middle" font-size="11">relay node</text>
   <text class="svg-accent" x="310" y="196" text-anchor="middle" font-size="10.5">sees: IP</text>
-  <text class="svg-muted" x="310" y="210" text-anchor="middle" font-size="10.5">never: content</text>
+  <text class="svg-muted" x="310" y="210" text-anchor="middle" font-size="10.5">content: encrypted</text>
 
   <!-- Gateway -->
   <rect class="svg-box" x="450" y="130" width="160" height="96" rx="8"/>
   <text class="svg-ink" x="530" y="158" text-anchor="middle" font-size="14" font-weight="650">mithlond</text>
-  <text class="svg-muted" x="530" y="176" text-anchor="middle" font-size="11">exit gateway · in TEE</text>
+  <text class="svg-muted" x="530" y="176" text-anchor="middle" font-size="11">exit gateway · target TEE</text>
   <text class="svg-accent" x="530" y="196" text-anchor="middle" font-size="10.5">sees: content</text>
-  <text class="svg-muted" x="530" y="210" text-anchor="middle" font-size="10.5">never: who</text>
+  <text class="svg-muted" x="530" y="210" text-anchor="middle" font-size="10.5">no source IP in protocol</text>
 
   <!-- Provider -->
   <rect class="svg-box" x="675" y="130" width="160" height="96" rx="8"/>
@@ -465,7 +486,7 @@ identity. This is the OHTTP shape, extended with unlinkable payment and an attes
   <rect class="svg-box-a" x="90" y="296" width="295" height="17" rx="3"/>
   <text class="svg-accent" x="237" y="308.5" text-anchor="middle" font-size="10.5">known to mint and relay</text>
   <rect x="450" y="296" width="385" height="17" rx="3" fill="none" stroke="var(--line)" stroke-dasharray="3 3"/>
-  <text class="svg-muted" x="642" y="308.5" text-anchor="middle" font-size="10.5">unknown beyond this line</text>
+  <text class="svg-muted" x="642" y="308.5" text-anchor="middle" font-size="10.5">not carried past relay</text>
 
   <text class="svg-muted" x="20" y="338" font-size="11.5">content →</text>
   <rect x="90" y="326" width="295" height="17" rx="3" fill="none" stroke="var(--line)" stroke-dasharray="3 3"/>
@@ -473,37 +494,40 @@ identity. This is the OHTTP shape, extended with unlinkable payment and an attes
   <rect class="svg-box-a" x="450" y="326" width="385" height="17" rx="3"/>
   <text class="svg-accent" x="642" y="338.5" text-anchor="middle" font-size="10.5">readable — hence the TEE</text>
 
-  <text class="svg-muted" x="20" y="378" font-size="11">The security of the whole system rests on the mint, the relay and the gateway not colluding.</text>
+  <text class="svg-muted" x="20" y="378" font-size="11">Target security assumes mint, relay and gateway are separately operated and do not collude.</text>
 </svg>
-<figcaption>The three-party split. Identity is known to the left of the divide; content is
-readable only to the right of it. No party sits on both sides — that separation <em>is</em> the
-product.</figcaption>
+<figcaption>The target three-party split. The protocol limits source-network identity to the relay
+side and content to the gateway/provider side. That boundary holds only when the roles are
+separately operated and do not collude; prompt content and traffic analysis remain risks.</figcaption>
 </figure>
 
 <h3>6.1 <code>eregion</code> — the token mint</h3>
-<p>The user pays by card, bank transfer, or Monero for <i>N</i> request-tokens. The mint issues
-them through a <b>blind signature</b>, so the tokens it later sees redeemed are cryptographically
-unlinkable to the purchase that produced them. The mint learns a billing identity and precisely
-nothing else — not a prompt, not a model choice, not a timestamp of use.</p>
-<p>The mint is the one component that may be centrally operated and KYC-compliant without
-weakening the system, which is convenient: it is also the component that must handle money.</p>
+<p>In the target design, a payment adapter authorizes <i>N</i> request-tokens and the mint issues
+them through a <b>blind signature</b>. A redeemed token is not conventionally linkable to the
+blinded issuance transcript, but payment metadata, issuance time, traffic timing, small anonymity
+sets, or collusion can still narrow who used it. The mint learns the payment entitlement and
+issuance event; the protocol does not give it prompt or model-choice text.</p>
+<p>The mint may be centrally operated and KYC-compliant without breaking the blind-signature
+property. That does not make payment itself anonymous: the chosen payment rail may identify the
+purchaser.</p>
 
 <h3>6.2 <code>ranger</code> — the relay</h3>
-<p>Sees the client's IP address and an encapsulated request body it cannot decrypt. Forwards it to
-a gateway. Cannot read content, cannot learn which provider or model was requested, cannot link
-two requests from the same user unless the user is careless about circuit reuse.</p>
-<p>Because relays never touch plaintext, running one carries dramatically less legal exposure than
-running a Tor exit — a fact that should be central to operator recruitment.</p>
+<p>In the target protocol, a correctly pinned relay sees the client's IP address, timing, volume,
+and an encapsulated request body for an allowed destination. It has no content-decryption key and
+the protocol does not disclose the requested model, but traffic shape and connection reuse can
+still support inference or linkage.</p>
+<p>Keeping prompt plaintext out of the relay role is intended to reduce operator exposure relative
+to a Tor exit; it is a technical boundary, not a legal guarantee.</p>
 
 <h3>6.3 <code>mithlond</code> — the exit gateway</h3>
-<p>Terminates the encapsulated request, verifies the token has not been spent, and calls the
-provider using a pooled account key. It sees prompt content but never learns which user sent it.</p>
-<p>To keep "sees content" from meaning "the operator reads your prompts", the gateway runs inside
-an attested Trusted Execution Environment — Intel TDX for the CPU domain plus NVIDIA Confidential
-Computing where GPU work is involved. Composite CPU+GPU attestation lets <code>bearer</code> verify
-the exact gateway binary <em>before</em> transmitting anything. Measured overhead for confidential
-LLM inference is under roughly 7%, dominated by PCIe bus encryption rather than compute — an
-affordable price.</p>
+<p>The gateway terminates the encapsulated request, verifies the token has not been spent, and calls
+the provider using a pooled account key. It sees prompt content. The relay protocol does not forward
+the person's source IP, but prompt content, timing, or collusion may still identify them.</p>
+<p>The target design calls for an attested Trusted Execution Environment — Intel TDX for the CPU
+domain plus NVIDIA Confidential Computing where GPU work is involved — so <code>bearer</code> can
+verify a measured gateway binary and bound encryption key before transmitting. That attested path
+is not implemented. Published confidential-computing overhead figures cited here are third-party
+measurements and must be reproduced for this workload.</p>
 
 <div class="box warn">
   <span class="lbl">State the assumption loudly</span>
@@ -576,8 +600,9 @@ measurement makes the whole attestation theatre.</p>
   <li><b>Directory (<code>council</code>).</b> Signed node descriptors, consensus documents,
   bandwidth weighting — borrow Tor's design rather than inventing one. It is a solved problem with
   two decades of adversarial review.</li>
-  <li><b>Relay selection.</b> Weight by measured bandwidth and latency, constrained so that relay
-  and gateway never share an operator, an ASN, or a jurisdiction.</li>
+  <li><b>Relay selection.</b> Weight by measured bandwidth and latency. Directory policy should
+  reject known operator, ASN, or jurisdiction overlap between relay and gateway, while acknowledging
+  that public metadata cannot prove the absence of undisclosed common control.</li>
   <li><b>Circuit lifetime.</b> Requests from one user over one circuit are linkable to each other
   by the relay. Rotate per conversation by default; expose a "new identity" control.</li>
   <li><b>Cert pinning.</b> The client pins provider certificates so a hostile gateway cannot
@@ -678,19 +703,19 @@ coherent postures:</p>
     <tr>
       <td><b>Bring-your-own-key</b><br><em>ships first</em></td>
       <td>User supplies their own key. Network hides IP and location only. End-to-end TLS; no node sees plaintext</td>
-      <td>Partial — defeats channel 1</td>
-      <td class="good-c"><b>Fully compliant. Ship immediately</b></td>
+      <td>Partial — addresses channel 1 under a separately operated relay</td>
+      <td class="good-c"><b>First deployable posture after provider and beta gates</b></td>
     </tr>
     <tr>
       <td><b>Cooperative</b><br><em>pursue in parallel</em></td>
       <td>Approach providers about a sanctioned privacy-preserving access mode, OHTTP-style</td>
-      <td>Full, and legitimate</td>
+      <td>Removes direct account/IP linkage under stated assumptions; content and timing remain</td>
       <td class="good-c"><b>Slowest, by far most durable</b></td>
     </tr>
     <tr>
       <td><b>Adversarial</b></td>
       <td>Pooled keys, expect bans, engineer for rapid rotation</td>
-      <td>Full, until the key dies</td>
+      <td>Same narrow linkage target, until the key dies; content and timing remain</td>
       <td class="bad-c"><b>Do not build the company on this</b></td>
     </tr>
   </tbody>
@@ -699,12 +724,12 @@ coherent postures:</p>
 
 <div class="box good">
   <span class="lbl">Decided — see <a href="decisions/0001-byok-first.md">ADR 0001</a></span>
-  <p>Ship <b>BYOK</b> as v1. It is honest, compliant, immediately useful, and it builds the relay
-  network, the operator community and the latency data needed for everything else. Open the
-  <b>cooperative</b> conversation with providers in parallel — they have a genuine reputational
-  interest in users being able to prove privacy rather than trust it, and at least one major
-  platform vendor has already shipped a relay of this exact shape. Treat the adversarial path as a
-  research branch, never the roadmap.</p>
+  <p>Use <b>BYOK</b> as the first deployable posture once the independent-relay, provider, and beta
+  gates are met. It offers a narrower, testable address-separation property and builds the relay
+  network, operator community, and latency data needed for everything else. Open the
+  <b>cooperative</b> conversation with providers in parallel; a sanctioned pooled route is required
+  before making the token-mode linkage claim. Treat the adversarial path as a research branch,
+  never the roadmap.</p>
 </div>
 
 <!-- ========================================================= -->
@@ -732,20 +757,21 @@ the first incident, because after the first incident there is no project.</p>
 <table>
   <thead><tr><th>Control</th><th>Mechanism</th><th>Preserves anonymity?</th></tr></thead>
   <tbody>
-    <tr><td><b>Anonymous rate limiting</b></td><td>Anonymous credentials with per-epoch spending caps — enforce limits without learning which user</td><td><b>Yes</b> — this is the whole point of the primitive</td></tr>
-    <tr><td><b>Safety systems left intact</b></td><td>Provider-side filtering is never stripped, degraded or proxied around</td><td><b>Yes</b> — orthogonal to identity</td></tr>
-    <tr><td><b>Mint-level refusal</b></td><td>The mint can decline to sell to a purchaser identity; unspent tokens revocable by epoch</td><td><b>Yes</b> — mint never learns prompts</td></tr>
-    <tr><td><b>Cost as friction</b></td><td>Tokens are prepaid. Abuse at scale costs real money</td><td><b>Yes</b></td></tr>
+    <tr><td><b>Anonymous rate limiting</b></td><td>Anonymous credentials with per-epoch spending caps — enforce limits without a stable gateway account</td><td>Designed to preserve blind-credential unlinkability; timing remains</td></tr>
+    <tr><td><b>Safety systems left intact</b></td><td>Provider-side filtering is not stripped, degraded or proxied around</td><td>Orthogonal to the protocol's narrow identity-separation goal</td></tr>
+    <tr><td><b>Mint-level refusal</b></td><td>The mint can decline to sell to a purchaser identity; unspent tokens revocable by epoch</td><td>The protocol gives the mint no prompt text; payment metadata remains</td></tr>
+    <tr><td><b>Cost as friction</b></td><td>Tokens are prepaid. Abuse at scale costs real money</td><td>Does not itself add an identity guarantee</td></tr>
     <tr><td><b>Published policy</b></td><td>Abuse policy and transparency reporting live before launch</td><td>n/a</td></tr>
   </tbody>
 </table>
 </div>
 
 <div class="box key">
-  <span class="lbl">The positioning, stated once and everywhere</span>
-  <p>Osanwë provides <b>anonymity from identity linkage</b>. It explicitly does <b>not</b> provide
-  freedom from model safety policy. Those are different products; only one of them is defensible,
-  and conflating them would poison the first. Every piece of marketing copy must hold this line.</p>
+  <span class="lbl">Target positioning, stated narrowly</span>
+  <p>Under the non-collusion and deployment assumptions above, token mode aims to remove direct
+  provider-account, payment, and source-IP linkage from the inference path. It does not make prompt
+  content anonymous, defeat traffic analysis, or provide freedom from model safety policy. The
+  current prototype does not yet meet those deployment assumptions.</p>
 </div>
 
 <!-- ========================================================= -->
@@ -850,9 +876,10 @@ aggregate throughput under concurrency.</p>
 
 <div class="phase">
   <h3><span class="p">PHASE 3</span> <code>eregion</code> + <code>mithlond</code> <span class="d">months</span></h3>
-  <p>Blind-signed tokens, pooled access, TEE gateway with client-side attestation verification and
-  reproducible builds. This is where "the provider cannot identify you" becomes literally true —
-  and where the §10 ToS decision must already have been made.</p>
+  <p>Blind-signed tokens, approved pooled access, a TEE gateway with client-side attestation
+  verification, and reproducible builds. This phase targets removal of direct provider-account and
+  source-IP linkage; prompt content, writing style, timing, and collusion can still identify a
+  person. The §10 ToS decision must already have been made.</p>
   <p class="exit"><b>Exit criterion:</b> an external cryptographic review of the issuance protocol,
   plus a demonstration that the client refuses a gateway whose measurement does not match the
   published build.</p>
@@ -960,7 +987,7 @@ skips verification works perfectly until the day it matters.</p>
 </ul>
 
 <hr class="end">
-<p class="foot">Revision 2 · prototype design and implementation document. Figures cited from third-party
+<p class="foot">Revision 2 · target design with an incomplete prototype implementation. Figures cited from third-party
 benchmarks are unverified by this project and must be independently re-measured before publication.
 Sections 10 and 11 describe risks capable of ending the project and should be resolved before
 Phase&nbsp;3 begins.</p>
