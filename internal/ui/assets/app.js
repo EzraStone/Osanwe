@@ -12,8 +12,9 @@ var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
     input=$("input"),send=$("send"),seal=$("seal"),state=$("state"),model=$("model"),
     panel=$("panel"),veil=$("veil"),chatView=$("chatView"),modelsView=$("modelsView"),devView=$("devView");
 
-var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,catalogModels=[],
+var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,catalogModels=[],preferredModel="",
     conversation=createConversation({model:model.value});
+try{preferredModel=localStorage.getItem("osanwe-model")||""}catch(e){}
 
 // ---- status ---------------------------------------------------------
 function load(){
@@ -373,7 +374,7 @@ function loadModels(){
         $("catalogState").textContent="The connected endpoint did not report a model catalog.";
         return;
       }
-      var current=model.value;
+      var current=preferredModel||model.value;
       model.textContent="";
       catalogModels.forEach(function(m){
         var o=document.createElement("option");
@@ -420,22 +421,29 @@ function renderModelCards(){
     choose.setAttribute("aria-pressed",String(selected));
     choose.textContent=selected?"Using in Chat":"Use in Chat";
     choose.addEventListener("click",function(){
-      model.value=item.id;conversation.model=item.id;renderModelCards();
+      model.value=item.id;conversation.model=item.id;rememberModel(item.id);renderModelCards();
     });
     card.appendChild(choose);grid.appendChild(card);
   });
 }
 
-model.addEventListener("change",function(){conversation.model=model.value;renderModelCards()});
+function rememberModel(id){
+  preferredModel=id;
+  try{localStorage.setItem("osanwe-model",id)}catch(e){}
+}
+
+model.addEventListener("change",function(){
+  conversation.model=model.value;rememberModel(model.value);renderModelCards();
+});
 
 // ---- appearance -----------------------------------------------------
 // Three states rather than two, because "follow the system" is a real
 // preference and not the absence of one: a machine that switches itself at
 // dusk should be able to take this with it.
 //
-// The choice is the only thing this page stores. It says nothing about what
-// was asked, of whom, or when -- and a window that forgot which way round it
-// was every time you opened it would be its own small annoyance.
+// Theme and model identifiers are the only values kept in localStorage. They
+// say nothing about what was asked, or when; conversation text never belongs
+// in this small synchronous settings store.
 (function(){
   var btn=$("themeBtn"),modes=["auto","light","dark"],
       labels={auto:"Auto",light:"Light",dark:"Dark"},mode="auto";
