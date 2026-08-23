@@ -90,7 +90,10 @@ jobs:
           if [[ "${TARGET_OS}" == "windows" ]]; then
             output="${output}.exe"
           fi
-          CGO_ENABLED=0 GOOS="${TARGET_OS}" GOARCH="${TARGET_ARCH}" +            go build -trimpath -buildvcs=true +              -ldflags="-s -w -X github.com/EzraStone/osanwe/internal/version.Version=${version} -X github.com/EzraStone/osanwe/internal/version.Commit=${GITHUB_SHA} -X github.com/EzraStone/osanwe/internal/version.Date=${built_at}" +              -o "${output}" ./cmd/bearer
+          CGO_ENABLED=0 GOOS="${TARGET_OS}" GOARCH="${TARGET_ARCH}" \
+            go build -trimpath -buildvcs=true \
+              -ldflags="-s -w -X github.com/EzraStone/osanwe/internal/version.Version=${version} -X github.com/EzraStone/osanwe/internal/version.Commit=${GITHUB_SHA} -X github.com/EzraStone/osanwe/internal/version.Date=${built_at}" \
+              -o "${output}" ./cmd/bearer
 
           cp packaging/client/QUICKSTART.md LICENSE NOTICE SECURITY.md THIRD_PARTY_NOTICES.md "${stage}/"
           cp packaging/client/osanwe.example.json "${stage}/"
