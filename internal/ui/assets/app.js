@@ -536,6 +536,17 @@ $("deleteHistoryBtn").addEventListener("click",function(){
     $("settingsStatus").textContent="All conversations saved by Osanwë in this browser were deleted.";retentionLabel();refreshHistory();
   }).catch(function(e){storageFailed(e).catch(function(){})});
 });
+$("deleteConversationBtn").addEventListener("click",function(){
+  if(!window.confirm("Delete this conversation from this page and device-only history? This cannot delete provider copies or exported files."))return;
+  if(inFlight)inFlight.abort();
+  var deletedID=conversation.id,saved;
+  try{saved=conversationStore("device")}catch(e){saved=null}
+  var remove=saved?saved.delete(deletedID):Promise.resolve();
+  remove.then(function(){
+    conversation=createConversation({model:model.value});renderConversation();refreshHistory();
+    $("settingsStatus").textContent="The current conversation was deleted from this page and Osanwë device-only history.";
+  }).catch(function(error){storageFailed(error).catch(function(){})});
+});
 $("exportConversationBtn").addEventListener("click",function(){
   if(!conversation.turns.length){$("settingsStatus").textContent="There is no conversation to export.";return}
   var documentBody=JSON.stringify(exportConversation(conversation),null,2)+"\n";
