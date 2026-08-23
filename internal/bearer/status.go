@@ -57,6 +57,7 @@ type Status struct {
 	Wallet    *WalletInfo    `json:"wallet,omitempty"`
 
 	Requests RequestInfo `json:"requests"`
+	Privacy  PrivacyInfo `json:"privacy"`
 
 	// Retained says what this process is keeping. It is a constant, and it is
 	// here so the interface can state it rather than assert it.
@@ -95,6 +96,18 @@ type RequestInfo struct {
 	CrossOrigin int64 `json:"cross_origin_refused"`
 }
 
+// PrivacyInfo is a set of machine-readable facts for the local disclosure UI.
+// Values are deliberately descriptive rather than a score: a client must not
+// turn several different risks into one reassuring color.
+type PrivacyInfo struct {
+	RelayContentAccess   string `json:"relay_content_access"`
+	RelayAddressAccess   string `json:"relay_address_access"`
+	GatewayContentAccess string `json:"gateway_content_access"`
+	ProviderAccount      string `json:"provider_account"`
+	ConversationHistory  string `json:"conversation_history"`
+	OperatorSeparation   string `json:"operator_separation"`
+}
+
 // Status assembles the current state.
 func (s *Server) Status() Status {
 	st := Status{
@@ -102,6 +115,14 @@ func (s *Server) Status() Status {
 		Upstream: s.cfg.Upstream,
 		Paying:   "your own key",
 		Retained: "nothing",
+		Privacy: PrivacyInfo{
+			RelayContentAccess:   "encrypted_only",
+			RelayAddressAccess:   "source_address_visible",
+			GatewayContentAccess: "no_osanwe_gateway",
+			ProviderAccount:      "user_account",
+			ConversationHistory:  "not_stored_by_osanwe_services",
+			OperatorSeparation:   "not_applicable",
+		},
 		Requests: RequestInfo{
 			Total:       s.metrics.Requests.Load(),
 			TunnelFails: s.metrics.TunnelFails.Load(),
@@ -114,6 +135,9 @@ func (s *Server) Status() Status {
 	}
 	if s.cfg.Tokens != nil {
 		st.Paying = "tokens"
+		st.Privacy.GatewayContentAccess = "plaintext_until_attested_execution"
+		st.Privacy.ProviderAccount = "pooled_gateway_account"
+		st.Privacy.OperatorSeparation = "not_verified_by_client"
 		if w, ok := s.cfg.Tokens.(WalletStatus); ok {
 			st.Wallet = &WalletInfo{OnHand: w.Len(), Spent: w.Spent()}
 		}
