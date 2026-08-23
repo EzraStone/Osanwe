@@ -15,6 +15,8 @@ func TestClientConfigContainsOnlyNonSecretConnectionFacts(t *testing.T) {
   "relay": "relay.example:8443",
   "pin": "sha256/example",
   "upstream": "https://gateway.example",
+  "api_style": "openai",
+  "models": ["stealth/ox-alpha"],
   "upstream_ca": "gateway.crt",
   "mint": "https://mint.example",
   "mint_key_id": "mint-example"
@@ -27,6 +29,9 @@ func TestClientConfigContainsOnlyNonSecretConnectionFacts(t *testing.T) {
 	}
 	if cfg.Relay != "relay.example:8443" || cfg.Pin != "sha256/example" || cfg.MintKeyID != "mint-example" {
 		t.Fatalf("config = %+v", cfg)
+	}
+	if cfg.APIStyle != "openai" || len(cfg.Models) != 1 || cfg.Models[0] != "stealth/ox-alpha" {
+		t.Fatalf("embedded chat config = %+v", cfg)
 	}
 	if cfg.UpstreamCA != filepath.Join(dir, "gateway.crt") {
 		t.Fatalf("relative CA = %q", cfg.UpstreamCA)

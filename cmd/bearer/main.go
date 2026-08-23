@@ -44,7 +44,7 @@ func main() {
 }
 
 func run() error {
-	var dirURLs, authKeys stringList
+	var dirURLs, authKeys, chatModels stringList
 
 	fs := flag.NewFlagSet("bearer", flag.ContinueOnError)
 	configPath := fs.String("config", "", "JSON file of non-secret connection settings. Command-line flags override it")
@@ -56,6 +56,8 @@ func run() error {
 	fs.Var(&authKeys, "authority", "trusted directory authority key (repeatable)")
 	threshold := fs.Int("threshold", 2, "how many authorities must have signed the consensus")
 	upstream := fs.String("upstream", "", "provider or gateway base URL (defaults to Anthropic in BYOK mode; required with -mint)")
+	apiStyle := fs.String("api-style", bearer.APIStyleAnthropic, "embedded-chat provider API: anthropic or openai")
+	fs.Var(&chatModels, "model", "model to show in the embedded chat (repeatable; empty shows the upstream catalog)")
 	upstreamCA := fs.String("upstream-ca", "", "PEM file of extra roots for verifying the provider. For a self-hosted gateway with a private CA; there is deliberately no option to skip verification")
 	allowExposed := fs.Bool("allow-exposed", false, "permit binding a non-loopback address. Traffic between your tools and bearer is plaintext, so this puts prompts on the network in the clear")
 	mintURL := fs.String("mint", "", "mint to buy tokens from. Switches to paying with tokens instead of your own API key, and -upstream must then be a gateway")
@@ -110,6 +112,12 @@ func run() error {
 		}
 		if !set["upstream"] {
 			*upstream = cfg.Upstream
+		}
+		if !set["api-style"] && cfg.APIStyle != "" {
+			*apiStyle = cfg.APIStyle
+		}
+		if !set["model"] {
+			chatModels = append(chatModels[:0], cfg.Models...)
 		}
 		if !set["upstream-ca"] {
 			*upstreamCA = cfg.UpstreamCA
@@ -280,6 +288,8 @@ func run() error {
 	cfg := bearer.Config{
 		Addr:             *addr,
 		Upstream:         *upstream,
+		APIStyle:         *apiStyle,
+		Models:           append([]string(nil), chatModels...),
 		Dialer:           dialer,
 		UpstreamRootCAs:  roots,
 		AllowNonLoopback: *allowExposed,

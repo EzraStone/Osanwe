@@ -22,6 +22,8 @@ type clientFileConfig struct {
 	Authorities   []string `json:"authorities,omitempty"`
 	Threshold     *int     `json:"threshold,omitempty"`
 	Upstream      string   `json:"upstream,omitempty"`
+	APIStyle      string   `json:"api_style,omitempty"`
+	Models        []string `json:"models,omitempty"`
 	UpstreamCA    string   `json:"upstream_ca,omitempty"`
 	Mint          string   `json:"mint,omitempty"`
 	MintKeyID     string   `json:"mint_key_id,omitempty"`

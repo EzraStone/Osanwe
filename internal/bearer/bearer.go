@@ -59,6 +59,8 @@ const (
 	canonicalAccept           = "application/json"
 	canonicalContentType      = "application/json"
 	canonicalAnthropicVersion = "2023-06-01"
+	APIStyleAnthropic         = "anthropic"
+	APIStyleOpenAI            = "openai"
 )
 
 // Timeouts. ResponseHeaderTimeout is generous because a model may think for a
@@ -100,6 +102,16 @@ type Config struct {
 
 	// Upstream is the provider base URL.
 	Upstream string
+
+	// APIStyle tells the local interface which provider-compatible request
+	// shape to use. It does not change arbitrary proxy traffic from existing
+	// tools; it only prevents the embedded chat from guessing a provider API.
+	APIStyle string
+
+	// Models optionally limits the model names shown by the embedded chat.
+	// The caller still owns a BYOK credential, so this is an onboarding and
+	// disclosure boundary rather than an authorization boundary.
+	Models []string
 
 	// Dialer opens tunnels. Required.
 	Dialer Dialer
@@ -189,6 +201,26 @@ func New(cfg Config) (*Server, error) {
 		}
 		cfg.Upstream = DefaultUpstream
 	}
+	if cfg.APIStyle == "" {
+		cfg.APIStyle = APIStyleAnthropic
+	}
+	if cfg.APIStyle != APIStyleAnthropic && cfg.APIStyle != APIStyleOpenAI {
+		return nil, fmt.Errorf("bearer: APIStyle must be %q or %q, got %q", APIStyleAnthropic, APIStyleOpenAI, cfg.APIStyle)
+	}
+	seenModels := make(map[string]struct{}, len(cfg.Models))
+	models := make([]string, 0, len(cfg.Models))
+	for _, candidate := range cfg.Models {
+		name := strings.TrimSpace(candidate)
+		if name == "" || len(name) > 256 || strings.ContainsAny(name, "\r\n\x00") {
+			return nil, fmt.Errorf("bearer: model names must be non-empty, at most 256 bytes, and contain no control line breaks")
+		}
+		if _, duplicate := seenModels[name]; duplicate {
+			continue
+		}
+		seenModels[name] = struct{}{}
+		models = append(models, name)
+	}
+	cfg.Models = models
 	if cfg.ResponseHeaderTimeout <= 0 {
 		cfg.ResponseHeaderTimeout = DefaultResponseHeaderTimeout
 	}

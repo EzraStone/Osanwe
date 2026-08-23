@@ -50,6 +50,8 @@ type Status struct {
 	Endpoint string    `json:"endpoint"`
 	Upstream string    `json:"upstream"`
 	Build    BuildInfo `json:"build"`
+	APIStyle string    `json:"api_style"`
+	Models   []string  `json:"models,omitempty"`
 
 	// Paying is "tokens" or "your own key".
 	Paying string `json:"paying"`
@@ -133,6 +135,8 @@ func (s *Server) Status() Status {
 	st := Status{
 		Endpoint: s.cfg.Addr,
 		Upstream: s.cfg.Upstream,
+		APIStyle: s.cfg.APIStyle,
+		Models:   append([]string(nil), s.cfg.Models...),
 		Build: BuildInfo{
 			Version: version.Version,
 			Commit:  version.Commit,
