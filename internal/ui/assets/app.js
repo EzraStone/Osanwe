@@ -567,9 +567,9 @@ $("exportConversationBtn").addEventListener("click",function(){
 // preference and not the absence of one: a machine that switches itself at
 // dusk should be able to take this with it.
 //
-// Theme and model identifiers are the only values kept in localStorage. They
-// say nothing about what was asked, or when; conversation text never belongs
-// in this small synchronous settings store.
+// Theme, model identifier, and the retention-mode choice are the only values
+// kept in localStorage. They say nothing about what was asked, or when;
+// conversation text never belongs in this small synchronous settings store.
 (function(){
   var btn=$("themeBtn"),modes=["auto","light","dark"],
       labels={auto:"Auto",light:"Light",dark:"Dark"},mode="auto";
