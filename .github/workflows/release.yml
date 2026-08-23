@@ -1,0 +1,159 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: release-surface tests
+        run: |
+          go test ./cmd/bearer ./cmd/ranger ./internal/bearer ./internal/mint ./internal/ui ./internal/version
+          node --test internal/ui/test/*.test.js
+
+      - name: launcher syntax
+        shell: bash
+        run: |
+          bash -n packaging/client/start-osanwe.sh
+          bash -n "packaging/client/Start Osanwe.command"
+
+  client-archives:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            archive: zip
+          - goos: linux
+            goarch: amd64
+            archive: tar.gz
+          - goos: darwin
+            goarch: amd64
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          cache: true
+
+      - name: build and assemble
+        shell: bash
+        env:
+          TARGET_OS: ${{ matrix.goos }}
+          TARGET_ARCH: ${{ matrix.goarch }}
+          ARCHIVE_KIND: ${{ matrix.archive }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
+            version="dev-${GITHUB_SHA:0:12}"
+          fi
+          built_at="$(git show -s --format=%cI "${GITHUB_SHA}")"
+          base="osanwe-client_${version}_${TARGET_OS}_${TARGET_ARCH}"
+          stage="dist/${base}"
+          mkdir -p "${stage}"
+
+          output="${stage}/bearer"
+          if [[ "${TARGET_OS}" == "windows" ]]; then
+            output="${output}.exe"
+          fi
+          CGO_ENABLED=0 GOOS="${TARGET_OS}" GOARCH="${TARGET_ARCH}" +            go build -trimpath -buildvcs=true +              -ldflags="-s -w -X github.com/EzraStone/osanwe/internal/version.Version=${version} -X github.com/EzraStone/osanwe/internal/version.Commit=${GITHUB_SHA} -X github.com/EzraStone/osanwe/internal/version.Date=${built_at}" +              -o "${output}" ./cmd/bearer
+
+          cp packaging/client/QUICKSTART.md LICENSE NOTICE SECURITY.md THIRD_PARTY_NOTICES.md "${stage}/"
+          cp packaging/client/osanwe.example.json "${stage}/"
+          if [[ "${TARGET_OS}" == "windows" ]]; then
+            cp "packaging/client/Start Osanwe.cmd" packaging/client/start-osanwe.ps1 "${stage}/"
+          else
+            cp packaging/client/start-osanwe.sh "${stage}/"
+            chmod +x "${stage}/bearer" "${stage}/start-osanwe.sh"
+            if [[ "${TARGET_OS}" == "darwin" ]]; then
+              cp "packaging/client/Start Osanwe.command" "${stage}/"
+              chmod +x "${stage}/Start Osanwe.command"
+            fi
+          fi
+
+          if [[ "${ARCHIVE_KIND}" == "zip" ]]; then
+            (cd dist && zip -qr "${base}.zip" "${base}")
+            echo "ARCHIVE=dist/${base}.zip" >> "${GITHUB_ENV}"
+          else
+            tar -C dist -czf "dist/${base}.tar.gz" "${base}"
+            echo "ARCHIVE=dist/${base}.tar.gz" >> "${GITHUB_ENV}"
+          fi
+
+      - name: upload client archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.ARCHIVE }}
+          if-no-files-found: error
+          retention-days: 14
+
+  draft-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: client-archives
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: client-*
+          path: release-files
+          merge-multiple: true
+
+      - name: verify archive set and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t archives < <(find release-files -maxdepth 1 -type f \( -name '*.zip' -o -name '*.tar.gz' \) | sort)
+          if [[ "${#archives[@]}" -ne 4 ]]; then
+            printf 'expected 4 client archives, found %s\n' "${#archives[@]}" >&2
+            find release-files -maxdepth 2 -type f -print >&2
+            exit 1
+          fi
+          (cd release-files && sha256sum osanwe-client_* > SHA256SUMS)
+
+      - name: create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "${GITHUB_REF_NAME}" release-files/osanwe-client_* release-files/SHA256SUMS \
+            --verify-tag \
+            --draft \
+            --title "Osanwe ${GITHUB_REF_NAME}" \
+            --notes "Draft client release for invited technical testing. Review checksums, platform smoke results, provider approval, and the beta gates before publishing. These archives do not enable a public gateway or real-money payment."
