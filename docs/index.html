@@ -171,7 +171,7 @@
           <ul>
             <li>No independently operated public relay is enrolled</li>
             <li>The gateway can read prompts; attested execution is not built</li>
-            <li>Per-invite anonymous fairness is not complete</li>
+            <li><a href="https://github.com/EzraStone/Osanwe/blob/main/docs/beta-invites.md" rel="noreferrer">Per-invite fairness has no client wallet yet</a></li>
             <li>The payment path has no independent security review</li>
             <li>Ox Alpha integration permission and conflicting data-use language are unresolved</li>
             <li>Clean native installs and OS warning paths have not passed all three platform smoke tests</li>
@@ -208,7 +208,7 @@
       <dl class="facts">
         <div><dt>Provider learns</dt><dd>Prompt and answer; gateway account instead of tester account in token mode</dd></div>
         <div><dt>Relay learns</dt><dd>Source address, timing, traffic volume, and constrained destination</dd></div>
-        <div><dt>Gateway learns</dt><dd>Prompt, answer, model, and a single-use token designed not to be conventionally linkable to its issuance receipt</dd></div>
+        <div><dt>Gateway learns</dt><dd>Prompt, answer, model, and a single-use token that cannot be directly cryptographically matched to its blinded issuance transcript; timing and collusion remain</dd></div>
         <div><dt>Osanwë stores</dt><dd>No server-side conversation history; optional browser-only local history</dd></div>
         <div><dt>Not yet protected</dt><dd>Gateway plaintext from its operator through attested execution</dd></div>
       </dl>
