@@ -2,6 +2,7 @@ import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } fr
 import { appendTurn, createConversation, toRequestMessages } from "./conversation.js";
 import { humanize, modelFacts, normalizeCatalog } from "./models.js";
 import { anthropicTextDelta, SSEParser } from "./sse.js";
+import { conversationStore } from "./storage.js";
 
 (function(){
 "use strict";
@@ -13,8 +14,10 @@ var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
     panel=$("panel"),veil=$("veil"),chatView=$("chatView"),modelsView=$("modelsView"),devView=$("devView");
 
 var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,catalogModels=[],preferredModel="",
+    retentionMode="ephemeral",store=conversationStore("ephemeral"),
     conversation=createConversation({model:model.value});
 try{preferredModel=localStorage.getItem("osanwe-model")||""}catch(e){}
+try{if(localStorage.getItem("osanwe-retention")==="device")retentionMode="device"}catch(e){}
 
 // ---- status ---------------------------------------------------------
 function load(){
@@ -418,7 +421,7 @@ function renderModelCards(){
     card.appendChild(caps);
 
     var facts=document.createElement("dl");facts.className="model-facts";
-    modelFacts(item,status,"ephemeral").forEach(function(pair){
+    modelFacts(item,status,retentionMode).forEach(function(pair){
       var row=document.createElement("div"),term=document.createElement("dt"),value=document.createElement("dd");
       term.textContent=pair[0];value.textContent=pair[1];row.appendChild(term);row.appendChild(value);facts.appendChild(row);
     });
@@ -441,6 +444,53 @@ function rememberModel(id){
 
 model.addEventListener("change",function(){
   conversation.model=model.value;rememberModel(model.value);renderModelCards();
+});
+
+function retentionLabel(){
+  $("retentionState").textContent=retentionMode==="device"?"Saved on this device":"Ephemeral";
+  document.querySelectorAll("input[name='retention']").forEach(function(input){input.checked=input.value===retentionMode});
+  if(catalogModels.length)renderModelCards();
+}
+
+function setRetention(mode){
+  if(mode!=="device"){
+    retentionMode="ephemeral";store=conversationStore("ephemeral");
+    try{localStorage.setItem("osanwe-retention","ephemeral")}catch(e){}
+    $("settingsStatus").textContent="This conversation is now ephemeral. Previously saved history remains until deleted.";
+    retentionLabel();return Promise.resolve();
+  }
+  try{store=conversationStore("device")}catch(e){return storageFailed(e)}
+  return store.put(conversation).then(function(){
+    retentionMode="device";
+    try{localStorage.setItem("osanwe-retention","device")}catch(e){}
+    $("settingsStatus").textContent="This conversation is saved only in this browser profile.";
+    retentionLabel();
+  }).catch(storageFailed);
+}
+
+function storageFailed(error){
+  retentionMode="ephemeral";store=conversationStore("ephemeral");retentionLabel();
+  $("settingsStatus").textContent="Device-only history is unavailable. This conversation remains ephemeral.";
+  return Promise.reject(error);
+}
+
+function openSettings(){
+  retentionLabel();$("settingsStatus").textContent="";$("settingsDialog").showModal();
+}
+$("settingsBtn").addEventListener("click",openSettings);
+$("retentionState").addEventListener("click",openSettings);
+$("closeSettingsBtn").addEventListener("click",function(){$("settingsDialog").close()});
+document.querySelectorAll("input[name='retention']").forEach(function(input){
+  input.addEventListener("change",function(){setRetention(input.value).catch(function(){})});
+});
+$("deleteHistoryBtn").addEventListener("click",function(){
+  var saved;
+  try{saved=conversationStore("device")}catch(e){storageFailed(e).catch(function(){});return}
+  saved.clear().then(function(){
+    retentionMode="ephemeral";store=conversationStore("ephemeral");
+    try{localStorage.setItem("osanwe-retention","ephemeral")}catch(e){}
+    $("settingsStatus").textContent="All conversations saved by Osanwë in this browser were deleted.";retentionLabel();
+  }).catch(function(e){storageFailed(e).catch(function(){})});
 });
 
 // ---- appearance -----------------------------------------------------

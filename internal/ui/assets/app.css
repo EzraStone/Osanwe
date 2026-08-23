@@ -132,6 +132,9 @@ body{
 .model:hover{color:var(--gild)}
 .state{font-size:12px; color:var(--faint)}
 .state.warn{color:var(--alarm)}
+.composer-state{display:flex; align-items:center; gap:.6rem}
+.retention{padding:0; border:0; background:none; color:var(--faint); cursor:pointer; font:12px var(--sans)}
+.retention:hover{color:var(--gild)}
 
 /* notice, for when chat cannot work */
 .notice{
@@ -239,6 +242,19 @@ pre.code .s{color:var(--gild)}
   font-family:var(--sans); font-size:12.5px; color:var(--muted); background:none;
   border:1px solid var(--line); border-radius:100px; padding:.35rem .9rem; cursor:pointer;
 }
+.settings-dialog{width:min(92vw,31rem); padding:0; border:1px solid var(--line); border-radius:14px; background:var(--raised); color:var(--ink)}
+.settings-dialog::backdrop{background:color-mix(in srgb,var(--ground) 76%,transparent)}
+.settings-inner{padding:1.35rem}
+.settings-inner h2{margin:0 0 .25rem; font:600 1.2rem var(--serif)}
+.settings-inner>p:not(.eyebrow):not(.settings-status){margin:.2rem 0 1rem; color:var(--muted); font-size:13.5px}
+.settings-inner fieldset{display:grid; grid-template-columns:auto 1fr; gap:.35rem .55rem; margin:0; padding:.9rem; border:1px solid var(--line); border-radius:9px}
+.settings-inner legend{padding:0 .3rem; color:var(--faint); font-size:11px; text-transform:uppercase; letter-spacing:.1em}
+.settings-inner label{grid-column:1 / -1; color:var(--ink); font-size:13.5px}
+.settings-inner fieldset span{grid-column:2; margin:0 0 .45rem; color:var(--faint); font-size:12px}
+.settings-status{min-height:1.4em; color:var(--muted); font-size:12px}
+.settings-actions{display:flex; justify-content:space-between; align-items:center; gap:1rem}
+.settings-actions button{padding:.38rem .75rem; border:1px solid var(--line); border-radius:100px; background:none; color:var(--muted); cursor:pointer; font:12px var(--sans)}
+.settings-actions .danger-button{color:var(--alarm)}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important; transition-duration:.01ms !important}}
 @media (max-width:34rem){
   .chrome{align-items:flex-start; flex-wrap:wrap}

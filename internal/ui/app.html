@@ -19,6 +19,7 @@
   </div>
   <div style="display:flex;align-items:center;gap:.15rem">
     <button type="button" class="ghost" id="themeBtn" title="Light, dark, or follow the system">Auto</button>
+    <button type="button" class="ghost" id="settingsBtn">Settings</button>
     <button type="button" class="ghost" id="newBtn">New</button>
   </div>
 </div>
@@ -63,7 +64,10 @@
         <select class="model" id="model" aria-label="Model">
           <option value="claude-sonnet-5">claude-sonnet-5</option>
         </select>
-        <span class="state" id="state" role="status" aria-live="polite">Sealed</span>
+        <div class="composer-state">
+          <button type="button" class="retention" id="retentionState">Ephemeral</button>
+          <span class="state" id="state" role="status" aria-live="polite">Sealed</span>
+        </div>
       </div>
     </div>
   </div>
@@ -151,6 +155,26 @@
     <button type="button" class="close" id="closePanel">Close</button>
   </div>
 </div>
+
+<dialog class="settings-dialog" id="settingsDialog" aria-labelledby="settingsTitle">
+  <div class="settings-inner">
+    <p class="eyebrow">This browser only</p>
+    <h2 id="settingsTitle">Conversation history</h2>
+    <p>Osanwë services keep no conversation record. You can optionally save one in this browser profile.</p>
+    <fieldset>
+      <legend>Retention</legend>
+      <label><input type="radio" name="retention" value="ephemeral" checked> Ephemeral</label>
+      <span>Closing or reloading this page loses the conversation.</span>
+      <label><input type="radio" name="retention" value="device"> Save on this device</label>
+      <span>Other people or malware with this browser profile may read it.</span>
+    </fieldset>
+    <p class="settings-status" id="settingsStatus" role="status" aria-live="polite"></p>
+    <div class="settings-actions">
+      <button type="button" class="danger-button" id="deleteHistoryBtn">Delete all saved history</button>
+      <button type="button" class="close" id="closeSettingsBtn">Done</button>
+    </div>
+  </div>
+</dialog>
 
 <script type="module" src="assets/app.js"></script>
 </body>
