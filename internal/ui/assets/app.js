@@ -10,10 +10,10 @@ var PREFIX="/_osanwe/";
 
 var $=function(id){return document.getElementById(id)};
 var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
-    input=$("input"),send=$("send"),seal=$("seal"),state=$("state"),model=$("model"),
+    input=$("input"),send=$("send"),stop=$("stop"),seal=$("seal"),state=$("state"),model=$("model"),
     panel=$("panel"),veil=$("veil"),chatView=$("chatView"),modelsView=$("modelsView"),devView=$("devView");
 
-var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
+var status=null,busy=false,stopping=false,broken=false,inFlight=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
     retentionMode="ephemeral",store=conversationStore("ephemeral"),
     conversation=createConversation({model:model.value});
 try{preferredModel=localStorage.getItem("osanwe-model")||""}catch(e){}
@@ -189,11 +189,13 @@ function turn(kind,label){
 function refresh(){
   var tokens=status&&status.paying==="tokens";
 	var activeModel=catalogModels.some(function(item){return item.id===model.value});
+  send.hidden=busy;stop.hidden=!busy;
+  stop.disabled=!busy||stopping;
   send.disabled=busy||!tokens||!modelsReady||!activeModel||!input.value.trim();
   rail.setAttribute("aria-busy",String(busy));
   if(broken){state.textContent="Seal broken";state.classList.add("warn");return}
   state.classList.remove("warn");
-	state.textContent=busy?"Answering":(tokens?(modelsReady&&activeModel?"Sealed":(modelsReady?"No active models":"Checking models")):"Carrying your tools");
+	state.textContent=busy?(stopping?"Stopping":"Answering"):(tokens?(modelsReady&&activeModel?"Sealed":(modelsReady?"No active models":"Checking models")):"Carrying your tools");
 }
 
 function fail(body,message){
@@ -221,9 +223,8 @@ function submit(){
   var body=turn("reply","Osanwë");
   var caret=document.createElement("span");caret.className="caret";
   body.appendChild(caret);
-  busy=true;refresh();
-
   inFlight=new AbortController();
+	busy=true;stopping=false;refresh();
   sendMessages({
     model:model.value,
     messages:toRequestMessages(conversation)
@@ -234,13 +235,13 @@ function submit(){
       reply.status="stopped";caret.remove();
       if(!reply.content)body.textContent="Stopped";
       persistConversation();
-      busy=false;refresh();return;
+	  return;
     }
     reply.status="error";reply.content=e.message||String(e);
     caret.remove();
     fail(body,reply.content);persistConversation();
-  }).then(function(){
-    busy=false;inFlight=null;refresh();
+  }).finally(function(){
+	busy=false;stopping=false;inFlight=null;refresh();input.focus();
     // Spending a token changes the wallet, so the numbers behind Connect are
     // stale the moment a request finishes.
     load();
@@ -301,6 +302,10 @@ input.addEventListener("keydown",function(e){
   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit()}
 });
 send.addEventListener("click",submit);
+stop.addEventListener("click",function(){
+	if(!busy||!inFlight||stopping)return;
+	stopping=true;refresh();inFlight.abort();
+});
 seal.addEventListener("click",function(){openPanel(!panel.classList.contains("open"))});
 $("closePanel").addEventListener("click",function(){openPanel(false)});
 veil.addEventListener("click",function(){openPanel(false)});

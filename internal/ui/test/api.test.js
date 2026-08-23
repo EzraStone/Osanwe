@@ -60,6 +60,19 @@ test("sendMessages cannot add an arbitrary endpoint or request field", async () 
   assert.deepEqual(Object.keys(JSON.parse(seen.options.body)).sort(), ["max_tokens", "messages", "model", "stream"]);
 });
 
+test("sendMessages passes the caller's exact abort signal to fetch", async () => {
+  const controller = new AbortController();
+  let seenSignal;
+  await sendMessages(
+	{ model: "m", messages: [{ role: "user", content: "hello" }] },
+	{ signal: controller.signal, fetchImpl: async (_url, options) => {
+	  seenSignal = options.signal;
+	  return { ok: true };
+	} },
+  );
+  assert.equal(seenSignal, controller.signal);
+});
+
 test("structured and plain API errors remain readable", async () => {
   assert.match(
     (await responseError({ text: async () => '{"error":{"message":"budget full"}}' }, "fallback")).message,

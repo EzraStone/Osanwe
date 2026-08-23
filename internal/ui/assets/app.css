@@ -119,12 +119,15 @@ body{
 @keyframes press{35%{transform:scale(.82)}100%{transform:scale(1)}}
 .seal.broken{color:var(--alarm)}
 .seal.broken .mark{stroke-dasharray:2.5 3}
-.send{
+.send,.stop{
   flex:0 0 auto; width:34px; height:34px; border-radius:9px; cursor:pointer;
   background:var(--gild); border:none; color:var(--ground); display:grid; place-items:center;
 }
-.send:disabled{opacity:.3; cursor:default}
-.send svg{width:16px; height:16px}
+.stop{background:var(--alarm)}
+.send:disabled,.stop:disabled{opacity:.3; cursor:default}
+.send svg,.stop svg{width:16px; height:16px}
+.stop svg{fill:currentColor}
+.send[hidden],.stop[hidden]{display:none}
 .underline{display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:.55rem; padding:0 .2rem}
 .model{
   font-family:var(--sans); font-size:12.5px; color:var(--faint);
