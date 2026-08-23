@@ -13,7 +13,7 @@ var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
     input=$("input"),send=$("send"),seal=$("seal"),state=$("state"),model=$("model"),
     panel=$("panel"),veil=$("veil"),chatView=$("chatView"),modelsView=$("modelsView"),devView=$("devView");
 
-var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,catalogModels=[],preferredModel="",
+var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
     retentionMode="ephemeral",store=conversationStore("ephemeral"),
     conversation=createConversation({model:model.value});
 try{preferredModel=localStorage.getItem("osanwe-model")||""}catch(e){}
@@ -38,6 +38,7 @@ function plural(n,word){return n+" "+word+(n===1?"":"s")}
 function render(){
   if(!status)return;
   var tokens=status.paying==="tokens";
+	var chatAvailable=tokens&&modelsReady&&catalogModels.some(function(item){return item.id===model.value});
 
   $("endpointText").textContent="http://"+status.endpoint;
   $("copyEndpoint").dataset.copy="http://"+status.endpoint;
@@ -47,11 +48,12 @@ function render(){
   // Chat only works when the client can pay. On a bring-your-own-key setup
   // there is no key in this process to send with, which is the point.
   byok.hidden=tokens;
-  input.disabled=!tokens;
-  input.placeholder=tokens?"Ask anything":"Not available on your own key";
-  $("openingSub").textContent=tokens
-    ? localHistoryDescription()+" Nothing leaves this device unsealed."
-    : "Osanwë is carrying your tools' traffic. This window is not one of them.";
+  input.disabled=!chatAvailable;
+  input.placeholder=!tokens?"Not available on your own key":(!modelsReady?"Checking active models":"No active model available");
+	if(chatAvailable)input.placeholder="Ask anything";
+  $("openingSub").textContent=!tokens
+	? "Osanwë is carrying your tools' traffic. This window is not one of them."
+	: (chatAvailable?localHistoryDescription()+" Nothing leaves this device unsealed.":"The gateway currently reports no active model. No request can be sent.");
 
   $("walletBlock").hidden=!tokens||!status.wallet;
   if(status.wallet){
@@ -186,11 +188,12 @@ function turn(kind,label){
 
 function refresh(){
   var tokens=status&&status.paying==="tokens";
-  send.disabled=busy||!tokens||!input.value.trim();
+	var activeModel=catalogModels.some(function(item){return item.id===model.value});
+  send.disabled=busy||!tokens||!modelsReady||!activeModel||!input.value.trim();
   rail.setAttribute("aria-busy",String(busy));
   if(broken){state.textContent="Seal broken";state.classList.add("warn");return}
   state.classList.remove("warn");
-  state.textContent=busy?"Answering":(tokens?"Sealed":"Carrying your tools");
+	state.textContent=busy?"Answering":(tokens?(modelsReady&&activeModel?"Sealed":(modelsReady?"No active models":"Checking models")):"Carrying your tools");
 }
 
 function fail(body,message){
@@ -202,7 +205,8 @@ function fail(body,message){
 
 function submit(){
   var text=input.value.trim();
-  if(!text||busy||!status||status.paying!=="tokens")return;
+  if(!text||busy||!status||status.paying!=="tokens"||!modelsReady||
+	!catalogModels.some(function(item){return item.id===model.value}))return;
 
   setEmpty(false);
   appendTurn(conversation,"user",text);
@@ -387,10 +391,13 @@ function loadModels(){
   return fetchModels()
     .then(function(cat){
       catalogModels=normalizeCatalog(cat);
+	  modelsReady=true;
       if(!catalogModels.length){
         $("catalogState").textContent="The connected endpoint did not report a model catalog.";
+		model.textContent="";model.disabled=true;conversation.model="";render();renderModelCards();
         return;
       }
+	  model.disabled=false;
       var current=preferredModel||model.value;
       model.textContent="";
       catalogModels.forEach(function(m){
@@ -401,9 +408,10 @@ function loadModels(){
       // Keep the selection if it survived, otherwise take the first.
       if(catalogModels.some(function(m){return m.id===current}))model.value=current;
       conversation.model=model.value;
-      renderModelCards();
+	  render();renderModelCards();
     })
     .catch(function(){
+	  modelsReady=true;catalogModels=[];model.textContent="";model.disabled=true;conversation.model="";render();renderModelCards();
       $("catalogState").textContent="The local model catalog is unavailable.";
     });
 }
@@ -455,7 +463,9 @@ model.addEventListener("change",function(){
 
 function retentionLabel(){
   $("retentionState").textContent=retentionMode==="device"?"Saved on this device":"Ephemeral";
-  if(status&&status.paying==="tokens")$("openingSub").textContent=localHistoryDescription()+" Nothing leaves this device unsealed.";
+	if(status&&status.paying==="tokens"&&catalogModels.some(function(item){return item.id===model.value})){
+	$("openingSub").textContent=localHistoryDescription()+" Nothing leaves this device unsealed.";
+	}
   document.querySelectorAll("input[name='retention']").forEach(function(input){input.checked=input.value===retentionMode});
   if(catalogModels.length)renderModelCards();
 }

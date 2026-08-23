@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { humanize, modelFacts, normalizeCatalog } from "../assets/models.js";
+import { humanize, lifecycleLabel, modelFacts, normalizeCatalog, policySourceLabel } from "../assets/models.js";
 
 test("model metadata is normalized without inventing policy", () => {
   const [model] = normalizeCatalog({
@@ -19,6 +19,42 @@ test("model metadata is normalized without inventing policy", () => {
   assert.equal(model.limits.maxOutputTokens, 4096);
   assert.equal(model.privacy.providerRetention, "unknown");
   assert.equal(model.privacy.providerTraining, "unknown");
+	assert.equal(model.privacy.providerIdentity, "unknown");
+	assert.deepEqual(model.lifecycle, { experimental: false, expiresAt: "unknown" });
+});
+
+test("sourced provider policy and temporary lifecycle are normalized", () => {
+  const [model] = normalizeCatalog({
+	schema_version: 2,
+	data: [{
+	  id: "stealth/ox-alpha",
+	  osanwe: {
+		provider_retention: "retained",
+		provider_training: "unknown",
+		provider_identity: "undisclosed",
+		policy_source: "https://openrouter.ai/stealth/ox-alpha",
+		policy_checked_at: "2026-08-22",
+	  },
+	  lifecycle: { experimental: true, expires_at: "2026-08-29T00:00:00Z" },
+	}],
+  });
+  assert.equal(model.privacy.providerIdentity, "undisclosed");
+  assert.equal(model.privacy.policyCheckedAt, "2026-08-22");
+  assert.equal(policySourceLabel(model.privacy.policySource), "openrouter.ai");
+  assert.equal(model.lifecycle.expiresAt, "2026-08-29T00:00:00.000Z");
+  assert.match(lifecycleLabel(model.lifecycle), /Experimental; expires 2026-08-29 00:00:00 UTC/);
+});
+
+test("invalid policy dates, links, and lifecycle times stay unknown", () => {
+  const [model] = normalizeCatalog({ data: [{
+	id: "m",
+	osanwe: { policy_source: "http://insecure.example", policy_checked_at: "2026-02-31" },
+	lifecycle: { experimental: true, expires_at: "eventually" },
+  }] });
+  assert.equal(model.privacy.policySource, "unknown");
+  assert.equal(model.privacy.policyCheckedAt, "unknown");
+  assert.equal(model.lifecycle.expiresAt, "unknown");
+  assert.equal(lifecycleLabel(model.lifecycle), "Experimental; expiry unknown");
 });
 
 test("legacy catalogs remain usable with unknown labels", () => {
