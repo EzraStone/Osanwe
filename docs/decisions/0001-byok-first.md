@@ -1,7 +1,8 @@
-# ADR 0001 — Ship bring-your-own-key first; pursue provider cooperation in parallel
+# ADR 0001 — Implement bring-your-own-key first; pursue provider cooperation in parallel
 
-- **Status:** Accepted for the first deployable path. The repository also contains a pre-launch
-  token-path prototype; that does not change the v1 claim or make the pooled gateway public-ready.
+- **Status:** Accepted as the candidate first deployable path, subject to provider-specific approval,
+  counsel review, independent-relay evidence, and the beta gates. The repository also contains a
+  pre-launch token-path prototype; that does not make either path public-ready.
 - **Decides:** Design document §10 (Existential risk I — Terms of Service)
 - **Supersedes:** nothing
 - **Revisit when:** a provider offers a sanctioned privacy-preserving access mode, or Phase 2
@@ -26,14 +27,15 @@ Three postures were considered:
 
 | Posture | Direct provider account/IP separation | Durability |
 |---|---|---|
-| Bring-your-own-key | IP path only; provider still knows the account | Fully compliant |
+| Bring-your-own-key | IP path only; provider still knows the account | Provider-specific review required |
 | Cooperative (sanctioned mode) | Both, if operational separation holds; content and timing remain | Slowest, most durable |
 | Adversarial (pooled keys, expect bans) | Both until the key dies; content and timing remain | Fragile by construction |
 
 ## Decision
 
-**Ship bring-your-own-key as v1 (Phase 2). Open the cooperative conversation with providers in
-parallel. Treat the adversarial path as a research branch that never becomes the roadmap.**
+**Use bring-your-own-key as the candidate v1 posture after provider-specific approval, counsel
+review, independent-relay evidence, and the beta gates. Open the cooperative conversation with
+providers in parallel. Treat the adversarial path as a research branch that never becomes the roadmap.**
 
 Under BYOK the user supplies their own API key to the loopback client. The client handles plaintext
 locally and holds the TLS session to the provider through a `CONNECT` tunnel, so the relay receives
@@ -43,20 +45,21 @@ source address; timing and request content can still identify them.
 
 ## Rationale
 
-- **It is honest and compliant.** No terms are violated, nothing is misrepresented, and no component
-  of the system depends on a counterparty's forbearance.
+- **It is the least presumptive posture.** Each person uses their own provider account instead of a
+  pooled credential. Whether a particular integration complies with provider terms or other legal
+  requirements remains provider- and deployment-specific and must be reviewed before use.
 - **The partial win is a real win.** Reducing direct IP and location linkage is meaningful on its
   own when the relay is separately operated, while still leaving timing, content, and collusion as
   explicit risks.
 - **It unblocks everything else.** Phase 2 builds the relay network, the operator community, the
   directory, the client, and the latency dataset. All of that is a prerequisite for Phase 3
   regardless of which posture eventually wins.
-- **It preserves the cooperative option.** Arriving at a provider with a working, compliant,
+- **It preserves the cooperative option.** Arriving at a provider with a working, carefully bounded,
   well-operated privacy relay is a far stronger position from which to ask for a sanctioned mode
   than arriving with a proposal — or with a history of ban evasion.
-- **Providers have a genuine interest here.** Users being able to *prove* privacy rather than
-  *trust* it is reputationally valuable to a model vendor, and at least one major platform vendor
-  has already shipped a relay of substantially this shape.
+- **Providers may have a genuine interest here.** Letting users verify narrow technical properties
+  instead of accepting an unqualified privacy label may be reputationally valuable to a model
+  vendor, and at least one major platform vendor has deployed a relay of substantially this shape.
 
 ## Consequences
 
@@ -69,15 +72,16 @@ source address; timing and request content can still identify them.
   thing the project could do to its credibility.
 - The `eregion` mint and token machinery are deferred to Phase 3, so the cryptographic work is not
   validated early. Mitigated by prototyping issuance against a mock gateway during Phase 2.
-- If no provider ever offers a sanctioned mode, the full claim may never ship compliantly. That is
-  an acceptable outcome: a durable partial-privacy network is worth more than a full-privacy network
-  that dies on its first key revocation.
+- If no provider ever offers a sanctioned mode, the full claim may never have a sanctioned
+  deployment. That is an acceptable outcome: a durable partial-privacy network is worth more than a
+  full-privacy network that dies on its first key revocation.
 
 **Enabled:**
 
-- Phase 2 can ship without any legal blocker.
-- Relay operators face materially less risk than Tor exit operators, since they provably cannot read
-  traffic — a fact that should be central to operator recruitment.
+- Phase 2 engineering can continue while provider-specific terms and legal review remain explicit
+  deployment gates.
+- A correctly pinned relay is designed to carry provider TLS ciphertext rather than prompt text;
+  operator identity, deployment correctness, and independence still require operational evidence.
 - The §10 decision no longer gates Phase 0 or Phase 2 work.
 
 ## Follow-up
