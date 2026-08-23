@@ -46,6 +46,7 @@ func run() error {
 	var dirURLs, authKeys stringList
 
 	fs := flag.NewFlagSet("bearer", flag.ContinueOnError)
+	configPath := fs.String("config", "", "JSON file of non-secret connection settings. Command-line flags override it")
 	addr := fs.String("addr", "127.0.0.1:8080", "loopback address to listen on")
 	relay := fs.String("relay", "", "ranger address as host:port. Required")
 	pin := fs.String("pin", "", "the ranger's public-key pin, as printed by `ranger -pin`. Required")
@@ -60,6 +61,7 @@ func run() error {
 	mintKeyID := fs.String("mint-key-id", "", "the mint's key id, obtained anywhere other than the mint itself. Required with -mint")
 	receipt := fs.String("receipt", "", "proof of payment to present to the mint (or set OSANWE_RECEIPT)")
 	noUI := fs.Bool("no-ui", false, "do not serve the local interface")
+	openUI := fs.Bool("open-ui", false, "open the local interface in the default browser after startup")
 	buyToken := fs.Bool("buy-token", false, "buy one token, print it and exit. Needs -mint and -mint-key-id, and nothing else")
 	verbose := fs.Bool("v", false, "verbose logging")
 
@@ -74,6 +76,43 @@ func run() error {
 			return nil
 		}
 		return err
+	}
+	if *configPath != "" {
+		cfg, err := loadClientFileConfig(*configPath)
+		if err != nil {
+			return err
+		}
+		set := explicitlySetFlags(fs)
+		if !set["relay"] {
+			*relay = cfg.Relay
+		}
+		if !set["pin"] {
+			*pin = cfg.Pin
+		}
+		if !set["directory"] {
+			dirURLs = append(dirURLs[:0], cfg.Directories...)
+		}
+		if !set["authority"] {
+			authKeys = append(authKeys[:0], cfg.Authorities...)
+		}
+		if !set["threshold"] && cfg.Threshold != nil {
+			*threshold = *cfg.Threshold
+		}
+		if !set["upstream"] {
+			*upstream = cfg.Upstream
+		}
+		if !set["upstream-ca"] {
+			*upstreamCA = cfg.UpstreamCA
+		}
+		if !set["mint"] {
+			*mintURL = cfg.Mint
+		}
+		if !set["mint-key-id"] {
+			*mintKeyID = cfg.MintKeyID
+		}
+	}
+	if *openUI && *noUI {
+		return errors.New("bearer: -open-ui cannot be combined with -no-ui")
 	}
 
 	// Buying a single token needs no relay, no secret and no listener, so it
@@ -276,6 +315,12 @@ func run() error {
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve() }()
+	if *openUI {
+		localURL := "http://" + srv.Addr().String() + bearer.Prefix
+		if err := openLocalBrowser(localURL); err != nil {
+			log.Warn("could not open the local interface automatically", "url", localURL, "error", err)
+		}
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -290,6 +335,12 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(ctx)
+}
+
+func explicitlySetFlags(fs *flag.FlagSet) map[string]bool {
+	set := make(map[string]bool)
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	return set
 }
 
 // stringList collects a repeatable, comma-separated flag.
