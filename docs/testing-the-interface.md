@@ -69,11 +69,16 @@ Roughly two minutes, in the browser:
 | Do this | Expect |
 |---|---|
 | Type a question and send | Words arrive one at a time, not in a lump at the end |
+| Ask a follow-up that depends on the first answer | The model receives the complete prior transcript |
+| Open **Models** | Only the live gateway catalog appears, with text limits and unknown policies visible |
 | Open **Connect** | Tokens on hand drops by one per message sent |
 | Click the seal | Plain-language account of what happened, then the raw facts |
 | Kill the relay, then send | The seal turns red and says the relay is not answering |
 | Restart the relay, send again | It recovers on its own, with no restart of the client |
 | Switch your OS between light and dark | Both are designed; neither is an inversion of the other |
+| Enable **Save on this device**, reload, then restore it | The conversation returns from this browser only |
+| Export a conversation | A versioned plaintext JSON file downloads without tokens, receipts, or credentials |
+| Delete current and delete all history | The page and IndexedDB records clear after confirmation |
 
 The fourth row is the one worth doing deliberately. A privacy tool that fails
 silently is worse than one that fails loudly, and the seal exists to make a
@@ -116,13 +121,14 @@ curl -sI http://127.0.0.1:8080/_osanwe/status | grep -i access-control
 ## What the automated tests already cover
 
 ```bash
+node --test internal/ui/test/*.test.js
 go test ./...              # everything, including the checks above
 ./demo/run.sh              # the relay carries what it cannot read
 ./demo/tokens.sh           # buy a token, spend it, fail to spend it twice
 ./demo/harden.sh           # a token buys one request and nothing else
 ```
 
-All three run in CI. They are the only thing that exercises the daemons as a
+The interface tests and all three demos run in CI. The demos are the only checks that exercise the daemons as a
 person runs them — real processes, real sockets — and the unit tests have
 stayed green through several bugs that only those caught.
 
@@ -139,7 +145,11 @@ wallet.
 - **The gateway reads prompts.** The design calls for it to run in an attested
   enclave so its operator provably cannot. That is not built, so running a
   gateway means asking users to trust whoever runs it.
-- **The mint sells nothing.** Payment is one interface away and unimplemented.
+- **The payment path is not audited.** BTCPay checkout and one-shot invoice authorization are
+  implemented, but interrupted issuance still lacks an idempotent recovery design. Do not infer
+  public-launch readiness from passing tests.
+- **Paid wallet restart recovery is not shipped.** Unspent tokens are currently memory-only, so a
+  client restart loses them. Real-money use needs a protected durable wallet.
 - **Cross-host redemption storage is not shipped.** The local journal survives
   restarts and coordinates processes on one host. Several gateway hosts need a
   shared `mint.RedemptionStore` with an atomic claim operation.
