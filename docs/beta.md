@@ -1,0 +1,72 @@
+# First technical beta
+
+**Current state: recruiting and preparation, not open traffic.**
+
+The first Osanwë beta should be ten invited people, free of charge, using synthetic or deliberately
+non-sensitive prompts. It is a reliability and privacy-boundary test, not a public launch. A small
+cohort makes failures diagnosable and keeps the operator able to stop the entire service before a
+provider limit or privacy assumption is crossed.
+
+## The ten seats
+
+Recruit for roles, not audience size:
+
+1. An independent relay operator who is not part of the Osanwë gateway operation.
+2. An application-security engineer who will try to break origin, token, and secret boundaries.
+3. A privacy or applied-cryptography reviewer who understands unlinkability claims.
+4. A heavy AI coding-tool user who can exercise streaming and long-running agent work.
+5. A nontechnical Windows user who will expose installation and onboarding friction.
+6. A macOS user who will test Gatekeeper, launch, browser opening, and removal.
+7. A Linux developer who will test the archive, service lifecycle, and logs.
+8. A keyboard-only or screen-reader user who can assess the local interface.
+9. A reliability or DevOps operator who will test reconnects, failure modes, and the kill switch.
+10. A privacy-conscious product tester who will challenge whether the disclosures are understandable.
+
+Avoid recruiting people who need to submit real medical, legal, financial, employment, school, or
+children's data. Do not use journalists or vulnerable-source workflows as an early proof point.
+
+## Entry gates
+
+The beta begins only when:
+
+- one relay is operated independently and its key distribution path is documented;
+- the chosen provider has approved the exact integration and its current data-use facts are shown
+  in the model catalog;
+- the client has signed, checksummed downloads and launches its local interface without requiring
+  a build toolchain;
+- a clean Windows, macOS, and Linux install has been exercised;
+- incomplete streams, cancellation, local storage failures, and relay verification are shown
+  truthfully in the interface;
+- aggregate limits and per-invite issuance are enabled, and the operator has rehearsed disabling
+  the route;
+- the beta agreement says it is free, experimental, text-only, and unsuitable for sensitive data;
+- Phase 0 has three-region evidence or the product is explicitly positioned for async and agentic
+  work rather than interactive chat.
+
+Provider permission, security review, and privacy correctness outrank any free-credit or preview
+deadline. Missing a temporary credit costs convenience; rushing an unresolved data or money path
+can permanently cost trust.
+
+## Website and local app boundary
+
+The public website should explain the project, publish downloads and checksums, show current
+limitations, and collect beta interest. It should not host the chat. The chat remains on
+`127.0.0.1` so the website cannot read prompts, API keys, tokens, or local history. A downloaded
+launcher should start the local client and open that loopback page for the user.
+
+Until signed downloads and an approved provider route exist, the website must say **Join the
+technical beta**, not **Start chatting**.
+
+## What each tester does
+
+Each seat gets a short, role-specific checklist plus the same core run:
+
+1. Install from a signed or checksummed archive.
+2. Confirm the relay and model disclosures before sending anything.
+3. Run five supplied synthetic prompts, including one long stream and one cancellation.
+4. Disconnect the relay during a request and record the failure shown.
+5. Export or delete local history and verify the stated result.
+6. Complete a ten-minute comprehension survey without sending prompt text back to the operator.
+
+Feedback should contain version, operating system, timings, and error categories. It should never
+contain a tester's prompt or response unless they knowingly used the supplied synthetic fixture.
