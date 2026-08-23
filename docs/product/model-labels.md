@@ -49,6 +49,27 @@ Osanwë reports only its own retention behavior from runtime state:
 Provider retention or training behavior must be labeled **unknown** unless model metadata includes a
 dated source. Product copy must not translate “API” into “not trained” or “zero retention.”
 
+The route metadata uses deliberately narrow values:
+
+- retention: `unknown`, `none`, or `retained`;
+- training: `unknown`, `not_used`, or `may_be_used`; and
+- provider identity: `unknown`, `disclosed`, or `undisclosed`.
+
+`undisclosed` means the model developer or operator is not named. It does not mean the user is
+anonymous. Any non-unknown value requires an attributable HTTPS policy source and the calendar date
+on which an operator checked it. A source and date explain where a claim came from; they do not make
+that claim permanently current.
+
+## Lifecycle
+
+An experimental route requires an RFC 3339 expiry. At that exact instant the gateway removes the
+model from its catalog and refuses it before reserving provider budget or spending a token. Extending
+an expiry is therefore an affirmative policy review, not a background availability assumption.
+
+The client renders an absolute UTC expiry instead of a countdown. A countdown invites urgency and
+can imply the provider promised availability until zero; neither is appropriate for a temporary
+preview.
+
 ## Price
 
 Do not infer retail price from gateway cost rates. One anonymous credential may include provider
