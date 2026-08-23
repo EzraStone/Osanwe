@@ -883,6 +883,7 @@ func (s *Server) modifyResponse(resp *http.Response) error {
 	}
 	stripProviderCredentialHeaders(resp.Header, credential)
 	stripNetworkTriggerHeaders(resp.Header)
+	setPrivateResponseHeaders(resp.Header)
 	// Trailer values arrive while the body is being streamed, after this hook
 	// runs, so they cannot be inspected safely here. This API needs none: drop
 	// the declaration and map rather than let response trailers bypass the
@@ -940,7 +941,7 @@ func replaceRedirectResponse(resp *http.Response, message string) {
 	resp.Status = fmt.Sprintf("%d %s", http.StatusBadGateway, http.StatusText(http.StatusBadGateway))
 	resp.Header = make(http.Header)
 	resp.Header.Set("Content-Type", "application/json")
-	resp.Header.Set("Cache-Control", "no-store")
+	setPrivateResponseHeaders(resp.Header)
 	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 	resp.ContentLength = int64(len(body))
@@ -962,6 +963,13 @@ func stripNetworkTriggerHeaders(header http.Header) {
 			header.Del(name)
 		}
 	}
+}
+
+func setPrivateResponseHeaders(header http.Header) {
+	header.Set("Cache-Control", "no-store")
+	header.Set("Pragma", "no-cache")
+	header.Set("Referrer-Policy", "no-referrer")
+	header.Set("X-Content-Type-Options", "nosniff")
 }
 
 // stripProviderCredentialHeaders catches the accidental response-echo cases a
@@ -1093,6 +1101,7 @@ func neverDispatched(err error) bool {
 // tool surfaces it rather than choking on it.
 func (s *Server) refuse(w http.ResponseWriter, status int, kind, message string) {
 	w.Header().Set("Content-Type", "application/json")
+	setPrivateResponseHeaders(w.Header())
 	w.WriteHeader(status)
 	fmt.Fprintf(w, `{"type":"error","error":{"type":%q,"message":%q}}`+"\n", "osanwe_"+kind, message)
 }

@@ -82,7 +82,7 @@ func (s *Server) handleModels(w http.ResponseWriter) {
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
+	setPrivateResponseHeaders(w.Header())
 	_ = json.NewEncoder(w).Encode(out)
 }
 

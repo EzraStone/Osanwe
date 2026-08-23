@@ -314,6 +314,7 @@ func TestProviderCredentialEchoHeadersAreRemoved(t *testing.T) {
 		w.Header().Set("Authorization", "Bearer "+pooledKey)
 		w.Header().Set("X-Debug-Credential", pooledKey)
 		w.Header().Set("X-Safe-Provider-Header", "safe")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
 		fmt.Fprint(w, `{"ok":true}`)
 	})
 	resp := h.post(t, h.token(t), nil)
@@ -325,6 +326,15 @@ func TestProviderCredentialEchoHeadersAreRemoved(t *testing.T) {
 	}
 	if got := resp.Header.Get("X-Safe-Provider-Header"); got != "safe" {
 		t.Fatalf("unrelated provider header = %q, want safe", got)
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("provider made a private inference cacheable: Cache-Control = %q", got)
+	}
+	if got := resp.Header.Get("Referrer-Policy"); got != "no-referrer" {
+		t.Fatalf("Referrer-Policy = %q", got)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q", got)
 	}
 }
 
