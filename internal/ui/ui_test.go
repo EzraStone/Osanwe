@@ -67,6 +67,12 @@ func TestThePolicyPinsThePageToThisClient(t *testing.T) {
 			t.Errorf("Permissions-Policy %q does not deny %s", permissions, denied)
 		}
 	}
+	if got := rec.Header().Get("Cross-Origin-Opener-Policy"); got != "same-origin" {
+		t.Errorf("Cross-Origin-Opener-Policy = %q", got)
+	}
+	if got := rec.Header().Get("Cross-Origin-Resource-Policy"); got != "same-origin" {
+		t.Errorf("Cross-Origin-Resource-Policy = %q", got)
+	}
 }
 
 // The handler owns exactly one path. Anything else under the prefix is a
