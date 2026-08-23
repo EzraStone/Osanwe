@@ -1,0 +1,971 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Osanwë — Design &amp; Threat Model</title>
+<style>
+  :root{
+    --bg:#fbfaf7; --panel:#ffffff; --ink:#1c1a17; --muted:#6b6459; --faint:#938b7e;
+    --line:#e3ded4; --accent:#7a5c2e; --accent-soft:#f0e7d6;
+    --warn-bg:#fdf4e8; --warn-line:#d9a441; --warn-ink:#6b4b12;
+    --bad-bg:#fdf0ee; --bad-line:#c4614c; --bad-ink:#7a2f20;
+    --good-bg:#eef5ee; --good-line:#5d8a5f; --good-ink:#2f4d31;
+    --code-bg:#f4f1ea;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14130f; --panel:#1b1a16; --ink:#e8e3d8; --muted:#a49b8b; --faint:#7d7566;
+      --line:#302d26; --accent:#d3ab6a; --accent-soft:#2a2419;
+      --warn-bg:#241d10; --warn-line:#8a6a24; --warn-ink:#e0bf7d;
+      --bad-bg:#251512; --bad-line:#8c463a; --bad-ink:#e8a595;
+      --good-bg:#16201a; --good-line:#4a6b4d; --good-ink:#a6c9a8;
+      --code-bg:#1f1d18;
+    }
+  }
+  :root[data-theme="dark"]{
+      --bg:#14130f; --panel:#1b1a16; --ink:#e8e3d8; --muted:#a49b8b; --faint:#7d7566;
+      --line:#302d26; --accent:#d3ab6a; --accent-soft:#2a2419;
+      --warn-bg:#241d10; --warn-line:#8a6a24; --warn-ink:#e0bf7d;
+      --bad-bg:#251512; --bad-line:#8c463a; --bad-ink:#e8a595;
+      --good-bg:#16201a; --good-line:#4a6b4d; --good-ink:#a6c9a8;
+      --code-bg:#1f1d18;
+  }
+  :root[data-theme="light"]{
+    --bg:#fbfaf7; --panel:#ffffff; --ink:#1c1a17; --muted:#6b6459; --faint:#938b7e;
+    --line:#e3ded4; --accent:#7a5c2e; --accent-soft:#f0e7d6;
+    --warn-bg:#fdf4e8; --warn-line:#d9a441; --warn-ink:#6b4b12;
+    --bad-bg:#fdf0ee; --bad-line:#c4614c; --bad-ink:#7a2f20;
+    --good-bg:#eef5ee; --good-line:#5d8a5f; --good-ink:#2f4d31;
+    --code-bg:#f4f1ea;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:1.5rem}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--sans); font-size:16.5px; line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{display:grid; grid-template-columns:255px minmax(0,1fr); gap:3rem; max-width:1220px; margin:0 auto; padding:0 1.5rem}
+  /* ---- sidebar ---- */
+  nav{position:sticky; top:0; align-self:start; max-height:100vh; overflow-y:auto; padding:2.5rem 0 3rem; font-size:13.5px}
+  nav .brand{font-family:var(--serif); font-size:23px; letter-spacing:.01em; margin-bottom:.15rem; color:var(--ink)}
+  nav .brand-sub{color:var(--faint); font-size:12px; letter-spacing:.09em; text-transform:uppercase; margin-bottom:1.6rem}
+  nav a{display:block; color:var(--muted); text-decoration:none; padding:.28rem 0 .28rem .7rem; border-left:2px solid var(--line); line-height:1.35}
+  nav a:hover{color:var(--accent); border-left-color:var(--accent)}
+  nav a .n{color:var(--faint); font-variant-numeric:tabular-nums; margin-right:.45rem; font-size:12px}
+  nav .grp{margin-top:1rem; color:var(--faint); font-size:11px; letter-spacing:.1em; text-transform:uppercase; padding-left:.7rem}
+  /* ---- content ---- */
+  main{padding:2.5rem 0 7rem; min-width:0}
+  header.doc{border-bottom:1px solid var(--line); padding-bottom:2rem; margin-bottom:2.5rem}
+  header.doc h1{font-family:var(--serif); font-size:clamp(2.1rem,5vw,3.1rem); line-height:1.08; margin:0 0 .5rem; font-weight:600; letter-spacing:-.01em}
+  header.doc .tag{font-size:1.12rem; color:var(--muted); margin:0 0 1.4rem; max-width:60ch; line-height:1.55}
+  .meta{display:flex; flex-wrap:wrap; gap:.5rem}
+  .meta span{font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); background:var(--accent-soft); border:1px solid var(--line); border-radius:100px; padding:.24rem .7rem}
+  h2{font-family:var(--serif); font-size:1.72rem; font-weight:600; margin:3.4rem 0 .9rem; padding-top:.9rem; border-top:1px solid var(--line); letter-spacing:-.005em; scroll-margin-top:1rem}
+  h2 .n{color:var(--accent); font-size:1rem; font-family:var(--mono); margin-right:.6rem; vertical-align:.12em}
+  h3{font-size:1.11rem; font-weight:650; margin:2.1rem 0 .55rem; letter-spacing:.005em}
+  h4{font-size:.94rem; font-weight:650; margin:1.5rem 0 .4rem; color:var(--muted); letter-spacing:.03em; text-transform:uppercase}
+  p{margin:0 0 1rem; max-width:74ch}
+  ul,ol{max-width:74ch; padding-left:1.25rem; margin:0 0 1rem}
+  li{margin-bottom:.42rem}
+  strong{font-weight:650}
+  code{font-family:var(--mono); font-size:.855em; background:var(--code-bg); padding:.13em .38em; border-radius:4px; border:1px solid var(--line)}
+  pre{background:var(--code-bg); border:1px solid var(--line); border-radius:8px; padding:1rem 1.15rem; overflow-x:auto; font-size:13px; line-height:1.6; margin:0 0 1.2rem}
+  pre code{background:none; border:none; padding:0; font-size:inherit}
+  a{color:var(--accent)}
+  /* ---- tables ---- */
+  .tw{overflow-x:auto; margin:0 0 1.4rem; border:1px solid var(--line); border-radius:8px; background:var(--panel)}
+  table{border-collapse:collapse; width:100%; font-size:14.2px; min-width:520px}
+  th,td{text-align:left; padding:.62rem .85rem; border-bottom:1px solid var(--line); vertical-align:top}
+  th{background:var(--accent-soft); font-weight:650; font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  td code{white-space:nowrap}
+  td.good-c{background:var(--good-bg); color:var(--good-ink)}
+  td.bad-c{background:var(--bad-bg); color:var(--bad-ink)}
+  td.warn-c{background:var(--warn-bg); color:var(--warn-ink)}
+  /* ---- callouts ---- */
+  .box{border:1px solid var(--line); border-left-width:3px; border-radius:7px; padding:1rem 1.2rem; margin:0 0 1.4rem; background:var(--panel); max-width:78ch}
+  .box p:last-child,.box ul:last-child,.box ol:last-child{margin-bottom:0}
+  .box .lbl{display:block; font-size:11px; letter-spacing:.1em; text-transform:uppercase; font-weight:700; margin-bottom:.4rem}
+  .warn{background:var(--warn-bg); border-left-color:var(--warn-line)} .warn .lbl{color:var(--warn-ink)}
+  .bad{background:var(--bad-bg); border-left-color:var(--bad-line)} .bad .lbl{color:var(--bad-ink)}
+  .good{background:var(--good-bg); border-left-color:var(--good-line)} .good .lbl{color:var(--good-ink)}
+  .key{background:var(--accent-soft); border-left-color:var(--accent)} .key .lbl{color:var(--accent)}
+  /* ---- figures ---- */
+  figure{margin:1.6rem 0 1.8rem; border:1px solid var(--line); border-radius:9px; background:var(--panel); padding:1.4rem 1.2rem .9rem; overflow-x:auto}
+  figure svg{display:block; margin:0 auto; max-width:100%; height:auto}
+  figcaption{font-size:12.8px; color:var(--muted); text-align:center; margin-top:1rem; padding-top:.75rem; border-top:1px solid var(--line); line-height:1.5}
+  .svg-ink{fill:var(--ink)} .svg-muted{fill:var(--muted)} .svg-accent{fill:var(--accent)}
+  .svg-box{fill:var(--panel); stroke:var(--line); stroke-width:1.5}
+  .svg-box-a{fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.5}
+  .svg-line{stroke:var(--muted); stroke-width:1.5; fill:none}
+  .svg-dash{stroke:var(--faint); stroke-width:1.3; fill:none; stroke-dasharray:4 3}
+  text{font-family:var(--sans)}
+  .mono-t{font-family:var(--mono)}
+  /* ---- misc ---- */
+  .lede{font-size:1.06rem; color:var(--muted); border-left:3px solid var(--accent); padding-left:1.1rem; margin-bottom:1.6rem; max-width:70ch}
+  .phase{border:1px solid var(--line); border-radius:8px; background:var(--panel); padding:1.1rem 1.3rem; margin-bottom:1rem}
+  .phase h3{margin:0 0 .2rem; display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap}
+  .phase h3 .p{font-family:var(--mono); font-size:11.5px; color:var(--accent); background:var(--accent-soft); border:1px solid var(--line); border-radius:4px; padding:.14rem .45rem; letter-spacing:.05em}
+  .phase h3 .d{font-size:12px; color:var(--faint); font-weight:400; margin-left:auto; white-space:nowrap}
+  .exit{font-size:13.6px; color:var(--muted); border-top:1px dashed var(--line); margin-top:.75rem; padding-top:.55rem}
+  .exit b{color:var(--ink); font-weight:650}
+  .sources{font-size:14px; columns:1}
+  .sources li{margin-bottom:.5rem; break-inside:avoid}
+  hr.end{border:none; border-top:1px solid var(--line); margin:3.5rem 0 1.5rem}
+  .foot{font-size:13px; color:var(--faint); max-width:74ch}
+  @media (max-width:900px){
+    .wrap{grid-template-columns:1fr; gap:0}
+    nav{position:static; max-height:none; padding:2rem 0 1rem; border-bottom:1px solid var(--line); margin-bottom:1rem}
+    nav .cols{columns:2; column-gap:1.5rem}
+    main{padding-top:1.5rem}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav>
+  <div class="brand">Osanwë</div>
+  <div class="brand-sub">Design &amp; Threat Model</div>
+  <div class="cols">
+	<a href="./"><span class="n">←</span>Project home</a>
+    <a href="#s1"><span class="n">1</span>Summary</a>
+    <a href="#s2"><span class="n">2</span>The premise, examined</a>
+    <a href="#s3"><span class="n">3</span>Naming</a>
+    <div class="grp">Security</div>
+    <a href="#s4"><span class="n">4</span>Threat model</a>
+    <a href="#s5"><span class="n">5</span>Why not a Tor clone</a>
+    <div class="grp">System A — Relay</div>
+    <a href="#s6"><span class="n">6</span>Architecture</a>
+    <a href="#s7"><span class="n">7</span>Protocol detail</a>
+    <a href="#s8"><span class="n">8</span>Hop count</a>
+    <a href="#s9"><span class="n">9</span>Latency budget</a>
+    <div class="grp">Existential</div>
+    <a href="#s10"><span class="n">10</span>Terms of Service</a>
+    <a href="#s11"><span class="n">11</span>Abuse</a>
+    <div class="grp">System B — Compute</div>
+    <a href="#s12"><span class="n">12</span>Erebor</a>
+    <div class="grp">Execution</div>
+    <a href="#s13"><span class="n">13</span>Build phases</a>
+    <a href="#s14"><span class="n">14</span>Verification</a>
+    <a href="#s15"><span class="n">15</span>Open questions</a>
+    <a href="#s16"><span class="n">16</span>Sources</a>
+  </div>
+</nav>
+
+<main>
+
+<header class="doc">
+  <h1>Osanwë</h1>
+  <p class="tag">An anonymity network for AI inference. Use frontier models without the provider
+  being able to link the prompt to a person — and pool contributed hardware to serve open-weight
+  models for those who would rather trust no one at all.</p>
+  <div class="meta">
+    <span>Design document</span>
+    <span>Status: prototype implementation</span>
+    <span>Revision 2</span>
+  </div>
+</header>
+
+<!-- ========================================================= -->
+<h2 id="s1"><span class="n">01</span>Executive summary</h2>
+
+<p class="lede">The original idea contained two different systems fused into one sentence.
+Separating them is the single most valuable thing this document does, because one of the two is
+crowded and largely solved, and the other is genuinely open.</p>
+
+<p>The starting premise was: <em>a Tor-like P2P network where people contribute DGX Sparks to share
+compute, with traffic routed through multiple nodes, giving users anonymity with frontier
+models.</em></p>
+
+<p>Frontier models are closed-weight. Nobody can run Claude or GPT&#8209;5 on a donated DGX Spark. So in
+any frontier-model path, contributed hardware is not performing inference — it is forwarding
+bytes. That single fact splits the project cleanly in two, and the halves have almost nothing in
+common except a node network.</p>
+
+<div class="tw">
+<table>
+  <thead><tr><th></th><th>System A — the relay (<code>osanwe</code>)</th><th>System B — the compute market (<code>erebor</code>)</th></tr></thead>
+  <tbody>
+    <tr><td><b>Models</b></td><td>Frontier, closed (Claude, GPT)</td><td>Open-weight (Llama, Qwen, DeepSeek)</td></tr>
+    <tr><td><b>What a node does</b></td><td>Forwards encrypted bytes</td><td>Actually executes model layers</td></tr>
+    <tr><td><b>Hardware needed</b></td><td>A $5/mo VPS. A DGX Spark is wasted here</td><td>The DGX Spark, genuinely</td></tr>
+    <tr><td><b>The hard problem</b></td><td>Anonymous <em>authorization</em> and payment</td><td>WAN latency, work verification, privacy</td></tr>
+    <tr><td><b>Prior art</b></td><td>Tor, Nym, OHTTP, Apple Private Relay</td><td>Petals, exo, Prime Intellect, io.net</td></tr>
+    <tr><td><b>Field state</b></td><td class="good-c"><b>Open.</b> No one has shipped this well</td><td><b>Crowded.</b> Competing on execution</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box key">
+  <span class="lbl">Recommendation</span>
+  <p>Build <b>System A first</b>. It is the differentiated piece, it needs no GPUs to bootstrap,
+  and it can ship a real product in weeks rather than quarters. System B reuses System A's node
+  identity, reputation and payment rails, so this ordering forecloses nothing.</p>
+</div>
+
+<p>The second reframe is just as load-bearing: <b>routing is the easy half of anonymity, and it is
+not the half that matters here.</b> Onion routing hides your IP address. But the request still
+carries an API key bound to a credit card bound to your name. Ten hops do not help. The real
+problem is <em>anonymous authorization</em>, and it is solved with blind signatures, not with
+circuits.</p>
+
+<!-- ========================================================= -->
+<h2 id="s2"><span class="n">02</span>The premise, examined</h2>
+
+<h3>2.1 What contributed hardware can and cannot do</h3>
+
+<p>A DGX Spark contributed to this network can do exactly one of two things:</p>
+
+<ol>
+  <li><b>Forward packets</b> toward a frontier provider. This requires ~0% of its compute. A
+  Raspberry Pi does it equally well. The Spark is a $4,000 router.</li>
+  <li><b>Run open-weight models</b>, either alone or as one stage of a pipeline split across
+  peers. This is real work — but the output is Llama or Qwen, not Claude.</li>
+</ol>
+
+<p>There is no third option in which donated consumer hardware contributes compute to a frontier
+model. The weights are not public and never leave the provider's datacenter. Any pitch that
+implies otherwise is, on inspection, false, and will be recognized as false by exactly the
+technically literate audience this project needs.</p>
+
+<h3>2.2 What the relay actually buys the user</h3>
+
+<p>The threat to defend is: <em>the provider links this prompt to this person.</em> Identity leaks
+through five distinct channels, and they are not equally hard.</p>
+
+<div class="tw">
+<table>
+  <thead><tr><th>#</th><th>Leak channel</th><th>Fixed by onion routing?</th><th>What actually fixes it</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>IP address / network location</td><td><b>Yes</b></td><td>Any relay. One hop suffices</td></tr>
+    <tr><td>2</td><td>API key / account identity</td><td>No</td><td>Blind-signed tokens + pooled access</td></tr>
+    <tr><td>3</td><td>Payment instrument</td><td>No</td><td>Unlinkable issuance; Monero or cash-equivalent</td></tr>
+    <tr><td>4</td><td>Prompt content &amp; writing style</td><td>No</td><td class="bad-c"><b>Nothing. Unfixable at network layer</b></td></tr>
+    <tr><td>5</td><td>Traffic timing correlation</td><td>Partly</td><td>Padding, cover traffic, mixnet — all costly</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box bad">
+  <span class="lbl">The uncomfortable one</span>
+  <p>Channel 4 cannot be engineered away. A user who pastes their proprietary codebase, names
+  their employer, or simply writes in a distinctive voice has deanonymized themselves regardless
+  of how many hops the packet took. Stylometric attribution over long-form text is effective and
+  well studied. <b>This must be stated plainly in user-facing documentation, not buried.</b> A
+  privacy product that lets users believe they have protection they do not have is worse than no
+  product.</p>
+</div>
+
+<h3>2.3 The favourable asymmetry Tor does not have</h3>
+
+<p>Tor's exit node must handle plaintext because it speaks arbitrary protocols to arbitrary
+destinations. That is the origin of Tor's worst operational problem: exit operators see traffic,
+attract abuse complaints, and get raided.</p>
+
+<p>Osanwë's destination set is small and known, and every member speaks TLS. If relays act as
+plain <code>CONNECT</code> tunnels, the client's TLS session terminates at
+<code>api.anthropic.com</code> and <b>no node in the network ever observes a prompt</b>. The exit
+node problem disappears.</p>
+
+<p>But this is exactly where the argument bites back: an end-to-end TLS session must present a
+credential the provider accepts, and that credential is the identity (channel 2). Resolving that
+tension is the entire architecture in <a href="#s6">§6</a>.</p>
+
+<!-- ========================================================= -->
+<h2 id="s3"><span class="n">03</span>Naming</h2>
+
+<p>The repository is <code>Osanwe</code> in ASCII contexts. The intended prose name is
+<b>Osanwë</b>.</p>
+
+<p>The name is well chosen and is retained. In Tolkien's <em>Ósanwe-kenta</em> — "Enquiry into the
+Communication of Thought" — <i>ósanwë</i> is direct mind-to-mind transmission of thought. The
+essay's central doctrine is that a mind is open by nature but may <b>close itself against
+intrusion</b>, and that no power can rightfully force it open. That is this project's thesis
+almost verbatim: a prompt is thought in transit, and the network is the barrier.</p>
+
+<p>Rendered <code>osanwe</code> in ASCII contexts — package names, domains, the repository — with
+<b>Osanwë</b> in prose. Components take their names from the same world:</p>
+
+<div class="tw">
+<table>
+  <thead><tr><th>Component</th><th>Name</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Client SDK / CLI</td><td><code>bearer</code></td><td>The Ring-bearer; and Privacy Pass tokens are literally bearer tokens</td></tr>
+    <tr><td>Token mint</td><td><code>eregion</code></td><td>The realm where the Rings were forged in secret, unseen by the Enemy</td></tr>
+    <tr><td>Relay node</td><td><code>ranger</code></td><td>The Dúnedain, who guarded the roads unseen and unthanked — volunteer relay operators exactly</td></tr>
+    <tr><td>Exit gateway</td><td><code>mithlond</code></td><td>The Grey Havens: the last harbour before passage out of the world</td></tr>
+    <tr><td>Directory authority</td><td><code>council</code></td><td>The White Council — decides who is trusted</td></tr>
+    <tr><td>Compute market</td><td><code>erebor</code></td><td>The Lonely Mountain; a hoard of contributed treasure</td></tr>
+    <tr><td>The adversary (docs)</td><td><b>the Eye</b></td><td>Threat-model shorthand for the global observer</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The repository and module use the same ASCII spelling so clones, imports and inbound links do
+not depend on the original sanitized name.</p>
+
+<!-- ========================================================= -->
+<h2 id="s4"><span class="n">04</span>Threat model</h2>
+
+<p class="lede">Written first, deliberately. Every architectural decision below is downstream of
+this section, and any decision that cannot be traced back to it is decoration.</p>
+
+<h3>4.1 Assets</h3>
+<ul>
+  <li><b>Prompt and completion content</b> — often the most sensitive thing a user owns: code,
+  medical questions, legal strategy, unpublished writing, security research.</li>
+  <li><b>The linkage</b> between a user's real identity and their prompts. Distinct from content,
+  and the primary asset this system protects.</li>
+  <li><b>The fact of use</b> — that a given person uses AI at all, or at what volume.</li>
+  <li><b>Node operator safety</b> — operators must not be exposed to liability for traffic they
+  cannot read.</li>
+</ul>
+
+<h3>4.2 Adversaries</h3>
+
+<div class="tw">
+<table>
+  <thead><tr><th>Adversary</th><th>Capability</th><th>In scope?</th></tr></thead>
+  <tbody>
+    <tr><td><b>The provider</b></td><td>Sees every prompt in plaintext; wants to attribute it to an account, card, IP</td><td class="good-c"><b>Primary target</b></td></tr>
+    <tr><td><b>A relay operator</b></td><td>Sees client IP, packet timing, volume. Malicious or merely curious</td><td><b>Yes</b></td></tr>
+    <tr><td><b>A gateway operator</b></td><td>Sees prompt content; wants to attribute it to a user</td><td><b>Yes</b></td></tr>
+    <tr><td><b>The user's ISP / employer</b></td><td>Sees the user's uplink; wants to know they use AI</td><td><b>Yes</b></td></tr>
+    <tr><td><b>Colluding relay + gateway</b></td><td>Together reconstruct the full linkage</td><td class="warn-c"><b>Explicitly assumed not to occur</b></td></tr>
+    <tr><td><b>Global passive adversary</b></td><td>Observes the entire network; correlates by timing</td><td class="bad-c"><b>Out of scope</b> — see §8</td></tr>
+    <tr><td><b>Adversary who compromises the client</b></td><td>Endpoint malware, keylogger</td><td class="bad-c"><b>Out of scope</b></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>4.3 Security goals</h3>
+<ol>
+  <li><b>Unlinkability at the provider.</b> The provider can serve the request but cannot tie it
+  to a name, payment instrument, or IP.</li>
+  <li><b>Content confidentiality from the network.</b> No relay operator ever sees a prompt.</li>
+  <li><b>Issuance–redemption unlinkability.</b> The mint, which knows who paid, cannot correlate
+  a purchase with any later request — even in collusion with the gateway.</li>
+  <li><b>Verifiable gateway integrity.</b> Where a gateway must see plaintext, the client can
+  cryptographically verify <em>what code</em> will see it before sending.</li>
+  <li><b>Operator plausible deniability.</b> A relay operator can prove they were technically
+  incapable of reading the traffic they carried.</li>
+</ol>
+
+<h3>4.4 Explicit non-goals</h3>
+<div class="box bad">
+  <span class="lbl">Osanwë does not, and will not, protect against</span>
+  <ul>
+    <li>Self-deanonymization through prompt content or writing style (§2.2, channel 4).</li>
+    <li>A global passive adversary performing end-to-end timing correlation.</li>
+    <li>Relay and gateway colluding against a specific targeted user.</li>
+    <li>Compromise of the user's own device.</li>
+    <li><b>Evading the provider's safety systems.</b> This is a non-goal by intent, not by
+    limitation — see <a href="#s11">§11</a>.</li>
+  </ul>
+</div>
+
+<!-- ========================================================= -->
+<h2 id="s5"><span class="n">05</span>Why this is not a Tor clone</h2>
+
+<p>Tor's design answers a harder and differently-shaped question than ours, and copying it would
+import cost without importing benefit.</p>
+
+<div class="tw">
+<table>
+  <thead><tr><th>Property</th><th>Tor</th><th>Osanwë</th><th>Consequence</th></tr></thead>
+  <tbody>
+    <tr><td>Destination set</td><td>The entire internet, arbitrary protocols</td><td>A handful of known TLS APIs</td><td>We can pin certs and require TLS. No plaintext exit</td></tr>
+    <tr><td>Exit sees plaintext</td><td>Yes — Tor's core operational wound</td><td>No, in the BYOK path</td><td>Removes abuse-complaint exposure for relays</td></tr>
+    <tr><td>Authorization</td><td>None — the web is open</td><td><b>Mandatory</b> — APIs are paid and keyed</td><td>This is our hard problem; Tor never had it</td></tr>
+    <tr><td>Traffic shape</td><td>Bursty page loads</td><td>Long-lived token streams</td><td>Streaming is far more fingerprintable</td></tr>
+    <tr><td>Latency tolerance</td><td>Seconds acceptable</td><td>TTFT is the product</td><td>Hop count is a product decision, not a security dial</td></tr>
+    <tr><td>Sybil defence</td><td>Directory authorities, consensus</td><td>Same idea — reuse it, don't reinvent</td><td>Borrow Tor's consensus design wholesale</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The right ancestor is not Tor but <b>Oblivious HTTP</b> (RFC 9458) and the deployed systems built
+on it — Apple's iCloud Private Relay, Cloudflare's Oblivious DoH. Those systems solve precisely
+our shape of problem: a known destination, a mandatory credential, and a hard latency budget,
+split across two non-colluding parties.</p>
+
+<!-- ========================================================= -->
+<h2 id="s6"><span class="n">06</span>Architecture</h2>
+
+<p class="lede">Three parties, split so that no single one ever holds both halves of the user's
+identity. This is the OHTTP shape, extended with unlinkable payment and an attested gateway.</p>
+
+<figure>
+<svg viewBox="0 0 860 400" role="img" aria-label="Osanwë three-party architecture diagram">
+  <!-- Mint -->
+  <rect class="svg-box-a" x="330" y="14" width="200" height="62" rx="8"/>
+  <text class="svg-ink" x="430" y="38" text-anchor="middle" font-size="14" font-weight="650">eregion — token mint</text>
+  <text class="svg-muted" x="430" y="56" text-anchor="middle" font-size="11">knows: who paid</text>
+  <text class="svg-muted" x="430" y="69" text-anchor="middle" font-size="11">never sees: any prompt</text>
+
+  <!-- arrows to/from mint -->
+  <path class="svg-dash" d="M120 130 L120 45 L330 45"/>
+  <text class="svg-muted" x="150" y="38" font-size="10.5">1. pay →</text>
+  <path class="svg-dash" d="M330 60 L120 60" marker-end="url(#ar)"/>
+  <text class="svg-muted" x="150" y="75" font-size="10.5">2. ← blind-signed tokens</text>
+
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" class="svg-muted"/>
+    </marker>
+  </defs>
+
+  <!-- Client -->
+  <rect class="svg-box-a" x="20" y="130" width="150" height="96" rx="8"/>
+  <text class="svg-ink" x="95" y="158" text-anchor="middle" font-size="14" font-weight="650">bearer</text>
+  <text class="svg-muted" x="95" y="176" text-anchor="middle" font-size="11">the user's client</text>
+  <text class="svg-muted" x="95" y="196" text-anchor="middle" font-size="10.5">holds tokens</text>
+  <text class="svg-muted" x="95" y="210" text-anchor="middle" font-size="10.5">verifies attestation</text>
+
+  <!-- Relay -->
+  <rect class="svg-box" x="235" y="130" width="150" height="96" rx="8"/>
+  <text class="svg-ink" x="310" y="158" text-anchor="middle" font-size="14" font-weight="650">ranger</text>
+  <text class="svg-muted" x="310" y="176" text-anchor="middle" font-size="11">relay node</text>
+  <text class="svg-accent" x="310" y="196" text-anchor="middle" font-size="10.5">sees: IP</text>
+  <text class="svg-muted" x="310" y="210" text-anchor="middle" font-size="10.5">never: content</text>
+
+  <!-- Gateway -->
+  <rect class="svg-box" x="450" y="130" width="160" height="96" rx="8"/>
+  <text class="svg-ink" x="530" y="158" text-anchor="middle" font-size="14" font-weight="650">mithlond</text>
+  <text class="svg-muted" x="530" y="176" text-anchor="middle" font-size="11">exit gateway · in TEE</text>
+  <text class="svg-accent" x="530" y="196" text-anchor="middle" font-size="10.5">sees: content</text>
+  <text class="svg-muted" x="530" y="210" text-anchor="middle" font-size="10.5">never: who</text>
+
+  <!-- Provider -->
+  <rect class="svg-box" x="675" y="130" width="160" height="96" rx="8"/>
+  <text class="svg-ink" x="755" y="158" text-anchor="middle" font-size="14" font-weight="650">provider</text>
+  <text class="svg-muted" x="755" y="176" text-anchor="middle" font-size="11">Anthropic · OpenAI</text>
+  <text class="svg-muted" x="755" y="196" text-anchor="middle" font-size="10.5">sees: content +</text>
+  <text class="svg-muted" x="755" y="210" text-anchor="middle" font-size="10.5">pooled key only</text>
+
+  <!-- horizontal arrows -->
+  <path class="svg-line" d="M170 178 L228 178" marker-end="url(#ar)"/>
+  <path class="svg-line" d="M385 178 L443 178" marker-end="url(#ar)"/>
+  <path class="svg-line" d="M610 178 L668 178" marker-end="url(#ar)"/>
+  <text class="svg-muted" x="199" y="170" text-anchor="middle" font-size="10">3</text>
+  <text class="svg-muted" x="414" y="170" text-anchor="middle" font-size="10">4</text>
+  <text class="svg-muted" x="639" y="170" text-anchor="middle" font-size="10">5</text>
+
+  <!-- knowledge bar -->
+  <text class="svg-muted" x="20" y="276" font-size="11.5" font-weight="650">WHO KNOWS WHAT</text>
+  <line class="svg-line" x1="20" y1="284" x2="835" y2="284" stroke-width="1"/>
+
+  <text class="svg-muted" x="20" y="308" font-size="11.5">identity →</text>
+  <rect class="svg-box-a" x="90" y="296" width="295" height="17" rx="3"/>
+  <text class="svg-accent" x="237" y="308.5" text-anchor="middle" font-size="10.5">known to mint and relay</text>
+  <rect x="450" y="296" width="385" height="17" rx="3" fill="none" stroke="var(--line)" stroke-dasharray="3 3"/>
+  <text class="svg-muted" x="642" y="308.5" text-anchor="middle" font-size="10.5">unknown beyond this line</text>
+
+  <text class="svg-muted" x="20" y="338" font-size="11.5">content →</text>
+  <rect x="90" y="326" width="295" height="17" rx="3" fill="none" stroke="var(--line)" stroke-dasharray="3 3"/>
+  <text class="svg-muted" x="237" y="338.5" text-anchor="middle" font-size="10.5">opaque ciphertext</text>
+  <rect class="svg-box-a" x="450" y="326" width="385" height="17" rx="3"/>
+  <text class="svg-accent" x="642" y="338.5" text-anchor="middle" font-size="10.5">readable — hence the TEE</text>
+
+  <text class="svg-muted" x="20" y="378" font-size="11">The security of the whole system rests on the mint, the relay and the gateway not colluding.</text>
+</svg>
+<figcaption>The three-party split. Identity is known to the left of the divide; content is
+readable only to the right of it. No party sits on both sides — that separation <em>is</em> the
+product.</figcaption>
+</figure>
+
+<h3>6.1 <code>eregion</code> — the token mint</h3>
+<p>The user pays by card, bank transfer, or Monero for <i>N</i> request-tokens. The mint issues
+them through a <b>blind signature</b>, so the tokens it later sees redeemed are cryptographically
+unlinkable to the purchase that produced them. The mint learns a billing identity and precisely
+nothing else — not a prompt, not a model choice, not a timestamp of use.</p>
+<p>The mint is the one component that may be centrally operated and KYC-compliant without
+weakening the system, which is convenient: it is also the component that must handle money.</p>
+
+<h3>6.2 <code>ranger</code> — the relay</h3>
+<p>Sees the client's IP address and an encapsulated request body it cannot decrypt. Forwards it to
+a gateway. Cannot read content, cannot learn which provider or model was requested, cannot link
+two requests from the same user unless the user is careless about circuit reuse.</p>
+<p>Because relays never touch plaintext, running one carries dramatically less legal exposure than
+running a Tor exit — a fact that should be central to operator recruitment.</p>
+
+<h3>6.3 <code>mithlond</code> — the exit gateway</h3>
+<p>Terminates the encapsulated request, verifies the token has not been spent, and calls the
+provider using a pooled account key. It sees prompt content but never learns which user sent it.</p>
+<p>To keep "sees content" from meaning "the operator reads your prompts", the gateway runs inside
+an attested Trusted Execution Environment — Intel TDX for the CPU domain plus NVIDIA Confidential
+Computing where GPU work is involved. Composite CPU+GPU attestation lets <code>bearer</code> verify
+the exact gateway binary <em>before</em> transmitting anything. Measured overhead for confidential
+LLM inference is under roughly 7%, dominated by PCIe bus encryption rather than compute — an
+affordable price.</p>
+
+<div class="box warn">
+  <span class="lbl">State the assumption loudly</span>
+  <p><b>Non-collusion is the security assumption.</b> Mint, relay and gateway must be operated by
+  distinct parties, ideally in distinct jurisdictions, with published ownership and divergent
+  incentives. This is the same assumption Apple's Private Relay makes. It is honest and defensible
+  — but only if it is stated in the user-facing documentation rather than hidden in an appendix. A
+  privacy claim whose assumptions are concealed is a lie with extra steps.</p>
+</div>
+
+<!-- ========================================================= -->
+<h2 id="s7"><span class="n">07</span>Protocol detail</h2>
+
+<h3>7.1 Token issuance and redemption</h3>
+
+<p>Built on the Privacy Pass family — architecture in RFC 9576, the HTTP authentication scheme in
+RFC 9577, issuance protocols in RFC 9578, with RSA blind signatures per RFC 9474. These are
+deployed, reviewed standards; do not invent a bespoke scheme.</p>
+
+<pre><code>ISSUANCE                                        (bearer ↔ eregion)
+  1. bearer:   t_i     ← random nonce, for i in 1..N
+               m_i     ← RFC9474.PrepareRandomize(domain ‖ key-id ‖ t_i)
+               b_i     ← RFC9474.Blind(PSS(m_i), r_i) r_i random blinding factor
+  2. bearer  → eregion : payment, [b_1 … b_N]
+  3. eregion → bearer  : [s_1 … s_N]  where s_i = Sign(sk_mint, b_i)
+  4. bearer:   σ_i     ← RFC9474.Finalize(s_i, r_i)
+               token_i = (m_i, σ_i)                  standard RSA-PSS signature
+
+  The mint has seen b_i, never t_i. Given a redeemed (t_i, σ_i) it cannot
+  determine which blinded value it signed. Anonymity set = all tokens issued
+  under the same key epoch.
+
+REDEMPTION                                      (bearer → ranger → mithlond)
+  5. bearer:   ct      ← HPKE.Seal(pk_gateway, request ‖ token_i)
+  6. bearer  → ranger  : ct, gateway_id           ranger sees IP, cannot open ct
+  7. ranger  → mithlond: ct                        mithlond sees no client IP
+  8. mithlond: open ct; Verify(pk_mint, t_i, σ_i); check t_i ∉ spent_set
+               spent_set ← spent_set ∪ {t_i}        double-spend prevention
+  9. mithlond → provider : request, using pooled API key
+ 10. response streams back along the same path, encrypted to bearer
+</code></pre>
+
+<div class="box warn">
+  <span class="lbl">Key epochs are an anonymity parameter</span>
+  <p>All tokens signed under one mint key form a single anonymity set. Rotating keys too often
+  shrinks that set until tokens become individually identifying; rotating too rarely delays
+  revocation of compromised keys. Publish the epoch schedule, make key material auditable through
+  a transparency log, and treat "how many users share my epoch" as a number shown in the client.</p>
+</div>
+
+<h3>7.2 Attestation flow</h3>
+<pre><code>  1. bearer requests a quote from mithlond before first use
+  2. mithlond returns composite evidence:
+       - Intel TDX quote over the CPU TD measurement
+       - NVIDIA CC attestation report for the GPU, chained to the TD
+       - the HPKE public key, bound into the quote's report data
+  3. bearer verifies:
+       - signature chains to Intel / NVIDIA roots
+       - measurement == published, reproducible build of mithlond
+       - pk_gateway in report data == the key it will encrypt to
+  4. only on success does bearer transmit
+</code></pre>
+<p>Binding <code>pk_gateway</code> into the attestation report data is what prevents a
+man-in-the-middle from presenting a valid quote for a genuine enclave while substituting its own
+encryption key. Reproducible builds are a hard requirement, not a nicety: an unverifiable
+measurement makes the whole attestation theatre.</p>
+
+<h3>7.3 Circuit and directory design</h3>
+<ul>
+  <li><b>Directory (<code>council</code>).</b> Signed node descriptors, consensus documents,
+  bandwidth weighting — borrow Tor's design rather than inventing one. It is a solved problem with
+  two decades of adversarial review.</li>
+  <li><b>Relay selection.</b> Weight by measured bandwidth and latency, constrained so that relay
+  and gateway never share an operator, an ASN, or a jurisdiction.</li>
+  <li><b>Circuit lifetime.</b> Requests from one user over one circuit are linkable to each other
+  by the relay. Rotate per conversation by default; expose a "new identity" control.</li>
+  <li><b>Cert pinning.</b> The client pins provider certificates so a hostile gateway cannot
+  transparently proxy in the BYOK path.</li>
+</ul>
+
+<!-- ========================================================= -->
+<h2 id="s8"><span class="n">08</span>How many hops</h2>
+
+<p>Three hops is Tor's answer to a different question. For a known TLS destination the calculus
+changes completely.</p>
+
+<div class="tw">
+<table>
+  <thead><tr><th>Configuration</th><th>Defeats</th><th>Fails against</th><th>Latency cost</th></tr></thead>
+  <tbody>
+    <tr><td><b>1 relay + gateway</b> <em>(default)</em></td><td>Provider linking prompt→IP; gateway learning identity</td><td>Relay+gateway collusion</td><td>One extra RTT</td></tr>
+    <tr><td><b>2+ relays</b></td><td>Additionally, a single hostile relay near the client</td><td>Global observer</td><td>Meaningful; measure it</td></tr>
+    <tr><td><b>Mixnet</b> (Nym-style)</td><td>Global passive adversary</td><td>—</td><td class="bad-c"><b>Seconds. Disqualifying</b></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box bad">
+  <span class="lbl">Do not promise a mixnet</span>
+  <p>Mixnets defeat a global passive adversary by <em>deliberately</em> adding latency: batching,
+  reordering and cover traffic. They are designed for unlinkable one-shot messages, not for a
+  session that streams tokens for thirty seconds. Routing interactive LLM traffic through one
+  produces an unusable product. If a nation-state threat model is genuinely required, the honest
+  answer is a different product — asynchronous, batch, store-and-forward — not a slower version of
+  this one.</p>
+</div>
+
+<p>The empirical evidence on hop cost is encouraging: the <em>processing</em> overhead of extending
+a Tor circuit is small — roughly 3&ndash;4&nbsp;ms of added latency per additional hop. Tor feels slow
+not because of its cryptography but because of circuitous paths, congestion and unweighted relay
+selection. A small, well-provisioned, latency-weighted relay set should perform far better than
+public Tor. <b>This is a testable hypothesis and Phase&nbsp;0 tests it.</b></p>
+
+<p><b>Design decision:</b> circuit length is a user-selectable policy defaulting to one relay, with
+measured latency published for each setting. Do not pick a number on vibes and do not let a
+security aesthetic silently tax every user.</p>
+
+<!-- ========================================================= -->
+<h2 id="s9"><span class="n">09</span>Latency budget</h2>
+
+<p>The product lives or dies on <b>time to first token</b>. Users forgive throughput; they do not
+forgive a cursor that sits still. Inter-token latency matters second, because a stream that
+stutters reads as broken even when total time is fine.</p>
+
+<div class="tw">
+<table>
+  <thead><tr><th>Path</th><th>TTFT target</th><th>Verdict if met</th></tr></thead>
+  <tbody>
+    <tr><td>Direct to provider</td><td>baseline (measure per region)</td><td>control</td></tr>
+    <tr><td><b>1 relay + gateway</b></td><td><b>&lt; baseline + 150 ms</b></td><td class="good-c">Viable for interactive chat</td></tr>
+    <tr><td>2 relays + gateway</td><td>&lt; baseline + 400 ms</td><td>Viable as a hardened opt-in</td></tr>
+    <tr><td>3-hop Tor-style</td><td>measure — expect several hundred ms to seconds</td><td>Batch workloads only</td></tr>
+    <tr><td>Mixnet</td><td>seconds</td><td class="bad-c">Reposition or abandon</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Measurement methodology</h4>
+<ul>
+  <li>Measure from at least three client regions against at least two provider regions.</li>
+  <li>Report <b>p50, p95 and p99</b>. A privacy tool with a good median and a terrible tail is a
+  bad product; the tail is what users remember.</li>
+  <li>Separate <b>connection setup</b> (amortizable across a session) from <b>per-request</b>
+  overhead (not amortizable). Only the latter belongs in the steady-state budget.</li>
+  <li>Measure inter-token latency distribution, not just TTFT.</li>
+  <li>Hold the prompt and model fixed; provider-side variance will otherwise swamp the signal.</li>
+</ul>
+
+<div class="box key">
+  <span class="lbl">Go / no-go</span>
+  <p>If the single-hop path lands within ~150&nbsp;ms of baseline, Osanwë is a chat product. If it
+  does not, it is an async and agentic-workload product — still valuable, but a different
+  positioning, a different UI and a different go-to-market. <b>Learn this in week one, from
+  measurement, before any protocol code exists.</b></p>
+</div>
+
+<!-- ========================================================= -->
+<h2 id="s10"><span class="n">10</span>Existential risk I — Terms of Service</h2>
+
+<p>Pooling API keys so that many users share one provider account is very likely a violation of
+provider terms: account sharing, misrepresentation of the account holder, and circumvention of
+rate-limiting and abuse controls. A pooled key can be revoked at any moment, which makes it a
+single point of failure for the entire network.</p>
+
+<p>This is not a compliance footnote. It determines whether the company can exist. There are three
+coherent postures:</p>
+
+<div class="tw">
+<table>
+  <thead><tr><th>Posture</th><th>What it means</th><th>Anonymity delivered</th><th>Durability</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>Bring-your-own-key</b><br><em>ships first</em></td>
+      <td>User supplies their own key. Network hides IP and location only. End-to-end TLS; no node sees plaintext</td>
+      <td>Partial — defeats channel 1</td>
+      <td class="good-c"><b>Fully compliant. Ship immediately</b></td>
+    </tr>
+    <tr>
+      <td><b>Cooperative</b><br><em>pursue in parallel</em></td>
+      <td>Approach providers about a sanctioned privacy-preserving access mode, OHTTP-style</td>
+      <td>Full, and legitimate</td>
+      <td class="good-c"><b>Slowest, by far most durable</b></td>
+    </tr>
+    <tr>
+      <td><b>Adversarial</b></td>
+      <td>Pooled keys, expect bans, engineer for rapid rotation</td>
+      <td>Full, until the key dies</td>
+      <td class="bad-c"><b>Do not build the company on this</b></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box good">
+  <span class="lbl">Decided — see <a href="decisions/0001-byok-first.md">ADR 0001</a></span>
+  <p>Ship <b>BYOK</b> as v1. It is honest, compliant, immediately useful, and it builds the relay
+  network, the operator community and the latency data needed for everything else. Open the
+  <b>cooperative</b> conversation with providers in parallel — they have a genuine reputational
+  interest in users being able to prove privacy rather than trust it, and at least one major
+  platform vendor has already shipped a relay of this exact shape. Treat the adversarial path as a
+  research branch, never the roadmap.</p>
+</div>
+
+<!-- ========================================================= -->
+<h2 id="s11"><span class="n">11</span>Existential risk II — abuse</h2>
+
+<p>An anonymous, unattributable frontier-model proxy is precisely the tool someone wants for
+generating CSAM, malware, targeted harassment or fraud at scale. If the project's answer is "we
+cannot tell, we are anonymous," then the network becomes the abuse vector, and it will be shut
+down — deservedly.</p>
+
+<p>Abuse resistance must be designed in from the first commit. It is not a feature to add after
+the first incident, because after the first incident there is no project.</p>
+
+<div class="box good">
+  <span class="lbl">Written up — see the abuse policy</span>
+  <p>The controls below are specified in full in <a href="abuse-policy.md">docs/abuse-policy.md</a>,
+  together with prohibited uses, an honest account of what each component can and cannot see, the
+  deliberately excluded controls (no content logging, no backdoors, no client-side scanning), the
+  in-enclave classification tradeoff, legal obligations for counsel, and incident response. Note
+  that <b>System B is the harder case</b>: open weights on donated hardware have no upstream
+  provider safety layer behind them at all.</p>
+</div>
+
+<div class="tw">
+<table>
+  <thead><tr><th>Control</th><th>Mechanism</th><th>Preserves anonymity?</th></tr></thead>
+  <tbody>
+    <tr><td><b>Anonymous rate limiting</b></td><td>Anonymous credentials with per-epoch spending caps — enforce limits without learning which user</td><td><b>Yes</b> — this is the whole point of the primitive</td></tr>
+    <tr><td><b>Safety systems left intact</b></td><td>Provider-side filtering is never stripped, degraded or proxied around</td><td><b>Yes</b> — orthogonal to identity</td></tr>
+    <tr><td><b>Mint-level refusal</b></td><td>The mint can decline to sell to a purchaser identity; unspent tokens revocable by epoch</td><td><b>Yes</b> — mint never learns prompts</td></tr>
+    <tr><td><b>Cost as friction</b></td><td>Tokens are prepaid. Abuse at scale costs real money</td><td><b>Yes</b></td></tr>
+    <tr><td><b>Published policy</b></td><td>Abuse policy and transparency reporting live before launch</td><td>n/a</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="box key">
+  <span class="lbl">The positioning, stated once and everywhere</span>
+  <p>Osanwë provides <b>anonymity from identity linkage</b>. It explicitly does <b>not</b> provide
+  freedom from model safety policy. Those are different products; only one of them is defensible,
+  and conflating them would poison the first. Every piece of marketing copy must hold this line.</p>
+</div>
+
+<!-- ========================================================= -->
+<h2 id="s12"><span class="n">12</span>System B — <code>erebor</code>, the compute market</h2>
+
+<p>Deferred to Phase 4, and reshaped by two findings that undercut the intuitive design.</p>
+
+<h3>12.1 Splitting a model across peers is not a privacy mechanism</h3>
+
+<div class="box bad">
+  <span class="lbl">This is the finding that changes the design</span>
+  <p>Petals-style pipeline parallelism passes intermediate activations between peers. Recent
+  <b>prompt inversion</b> research recovers the original input prompt from those activations at
+  near-perfect fidelity. The reassuring intuition — "each node only sees a meaningless slice" — is
+  <b>false</b>. Related work demonstrates the same reconstruction for images in distributed
+  multimodal inference.</p>
+</div>
+
+<p>Consequently, privacy in <code>erebor</code> comes from <b>per-node TEE attestation</b>, exactly
+as in <code>mithlond</code>, and not from the topology. Proposed mitigations such as
+information-bottleneck privacy adapters — compressing activations through a low-dimensional
+subspace with bounded reconstruction error — are promising but unproven at production quality;
+track them, do not depend on them.</p>
+
+<h3>12.2 The DGX Spark's real shape</h3>
+
+<div class="tw">
+<table>
+  <thead><tr><th>Spec</th><th>Value</th><th>Implication</th></tr></thead>
+  <tbody>
+    <tr><td>Unified memory</td><td>128 GB LPDDR5X</td><td class="good-c">Holds models a consumer GPU cannot</td></tr>
+    <tr><td>Memory bandwidth</td><td>~273 GB/s</td><td class="bad-c">The binding constraint on generation</td></tr>
+    <tr><td>CPU</td><td>20-core ARM Neoverse-V2</td><td>Ample for orchestration and relay duty</td></tr>
+    <tr><td>Prompt processing</td><td>Compute-bound — strong</td><td>Good at long-context ingest</td></tr>
+    <tr><td>Token generation</td><td>Memory-bound — weak</td><td>The user-visible weakness</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Reported generation figures vary by runtime and quantization, but the shape is consistent: on
+the order of tens of tokens per second for a large MoE model in a 4-bit format, falling to low
+single digits for a 70B dense model at 8-bit. Published benchmarks put a 120B MoE around
+38&nbsp;tok/s and a 70B dense model at Q8 near 2&ndash;3&nbsp;tok/s. <b>Re-measure independently
+before publishing any number</b>; single-stream review figures also understate achievable
+aggregate throughput under concurrency.</p>
+
+<div class="box key">
+  <span class="lbl">Position honestly</span>
+  <p>The Spark's contribution is <b>capacity, not speed</b> — it holds models that will not fit
+  elsewhere. Combine that with WAN latency between peers and the honest niche for
+  <code>erebor</code> is <b>batch, asynchronous and agentic workloads</b>: overnight document
+  processing, bulk evaluation, long-running agent loops. It is not an interactive chat backend,
+  and marketing it as one guarantees churn from disappointed users.</p>
+</div>
+
+<h3>12.3 Additional unsolved problems</h3>
+<ul>
+  <li><b>Verification of work.</b> How do you know a node ran the model it claimed rather than a
+  cheaper one? Redundant execution costs multiples; TEE attestation is the more practical answer.</li>
+  <li><b>Integrity under malicious nodes.</b> A peer can return subtly wrong activations. Detection
+  is an open research area.</li>
+  <li><b>Straggler sensitivity.</b> Pipeline parallelism runs at the speed of the slowest
+  participant; one residential uplink can stall a whole circuit.</li>
+  <li><b>Free-riding and Sybil resistance</b> in whatever incentive model is chosen.</li>
+</ul>
+
+<!-- ========================================================= -->
+<h2 id="s13"><span class="n">13</span>Build phases</h2>
+
+<div class="phase">
+  <h3><span class="p">PHASE 0</span> Latency spike <span class="d">days · do this first</span></h3>
+  <p>Before any protocol design: a throwaway single-hop TLS <code>CONNECT</code> proxy on a VPS in
+  another region. Stream a real provider API call through it. Measure TTFT and inter-token latency
+  against a direct call, per the methodology in §9.</p>
+  <p><b>The tooling for this is written and tested</b> — see
+  <a href="../tools/README.md"><code>tools/README.md</code></a>. It needs an API key and a VPS in
+  another region, and takes about twenty minutes.</p>
+  <p class="exit"><b>Exit criterion:</b> a latency table committed to
+  <a href="phase0-results.md"><code>docs/phase0-results.md</code></a>, and a written go/no-go on
+  whether Osanwë is a chat product or a batch product. <b>Every later phase depends on this
+  answer</b>, so nothing else starts until it exists.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="p">PHASE 1</span> Documentation <span class="d">days</span></h3>
+  <p>This document, split and committed as <code>docs/architecture.html</code>,
+  <code>docs/product/privacy-boundaries.md</code> and <code>docs/abuse-policy.md</code>. The privacy boundaries state
+  explicitly what is <em>not</em> defended — especially stylometric self-deanonymization. Rename
+  the repository to <code>osanwe</code>.</p>
+  <p class="exit"><b>Exit criterion:</b> a reader can state, unprompted, what Osanwë does not
+  protect against.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="p">PHASE 2</span> <code>bearer</code> + <code>ranger</code>, BYOK <span class="d">weeks · v1 product</span></h3>
+  <p>Client and relay. The user's own API key, end-to-end TLS to the provider, no node able to see
+  plaintext. Signed node descriptors and a minimal <code>council</code> directory modelled on Tor's
+  consensus. ToS-clean, shippable, genuinely useful.</p>
+  <p class="exit"><b>Exit criterion:</b> a third party runs a <code>ranger</code> the team does not
+  control, and a packet capture at that relay demonstrably contains no plaintext prompt.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="p">PHASE 3</span> <code>eregion</code> + <code>mithlond</code> <span class="d">months</span></h3>
+  <p>Blind-signed tokens, pooled access, TEE gateway with client-side attestation verification and
+  reproducible builds. This is where "the provider cannot identify you" becomes literally true —
+  and where the §10 ToS decision must already have been made.</p>
+  <p class="exit"><b>Exit criterion:</b> an external cryptographic review of the issuance protocol,
+  plus a demonstration that the client refuses a gateway whose measurement does not match the
+  published build.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="p">PHASE 4</span> <code>erebor</code> <span class="d">months</span></h3>
+  <p>Open-weight models on contributed hardware, TEE-attested nodes, reusing Phase 2 node identity
+  and Phase 3 payment rails. Positioned for batch and agentic workloads per §12.</p>
+  <p class="exit"><b>Exit criterion:</b> a job runs across three independently-operated nodes with
+  verified attestation and a cost per token beating centralized inference for the target
+  workload.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="p">PHASE 5</span> Traffic-analysis hardening <span class="d">ongoing</span></h3>
+  <p>Padding, cover traffic, multi-hop circuits, pluggable-transport-style obfuscation — all as
+  opt-in modes with honestly published latency costs.</p>
+  <p class="exit"><b>Exit criterion:</b> a documented adversary exercise showing measured
+  resistance to a stated traffic-analysis attack, with its latency price stated alongside.</p>
+</div>
+
+<!-- ========================================================= -->
+<h2 id="s14"><span class="n">14</span>Verification</h2>
+
+<div class="tw">
+<table>
+  <thead><tr><th>Phase</th><th>Test</th><th>Passes when</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>Latency comparison harness</td><td>p50/p95/p99 TTFT table produced across ≥3 client regions</td></tr>
+    <tr><td>2</td><td>Stream fidelity</td><td>A relayed streaming completion is byte-identical to a direct one</td></tr>
+    <tr><td>2</td><td>Relay blindness</td><td><code>tcpdump</code> at the relay contains no plaintext prompt fragment</td></tr>
+    <tr><td>2</td><td>Directory integrity</td><td>Client rejects an unsigned or stale consensus document</td></tr>
+    <tr><td>3</td><td>Issuance unlinkability</td><td>Mint given a redeemed token cannot identify which blinded value it signed, better than chance</td></tr>
+    <tr><td>3</td><td>Double-spend</td><td>Replaying a spent token is rejected at every gateway, not merely the issuing one</td></tr>
+    <tr><td>3</td><td>Attestation enforcement</td><td>Client refuses a gateway whose measurement differs from the published build by one byte</td></tr>
+    <tr><td>3</td><td>Key-binding</td><td>Client refuses a valid quote whose report data does not contain the offered HPKE key</td></tr>
+    <tr><td>4</td><td>Activation privacy</td><td>Documented inversion attempt against a live <code>erebor</code> circuit, with results published</td></tr>
+    <tr><td>all</td><td>Adversary exercise</td><td>Threat model re-run against the implementation each phase; deltas recorded</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Two of these deserve emphasis. <b>Relay blindness</b> is the claim most users will care about
+and the easiest to verify convincingly — make it a reproducible demo, not a test buried in CI.
+<b>Attestation enforcement</b> is the claim most likely to silently regress, because a client that
+skips verification works perfectly until the day it matters.</p>
+
+<!-- ========================================================= -->
+<h2 id="s15"><span class="n">15</span>Open questions</h2>
+
+<p>These were raised during design and remain unanswered. Each materially changes the plan.</p>
+
+<ol>
+  <li><b>Trust model for the node network.</b> Volunteer and reputation-based, Tor-style? Crypto-incentivized DePIN? Or federated paid operators with contractual non-collusion? This document assumes <b>federated paid operators</b>, which is the fastest route to a credible non-collusion claim but caps organic growth. A token model solves supply-side growth and imports securities questions.</li>
+  <li><b>Is the global-passive-adversary threat model actually required?</b> Assumed <b>no</b>. If yes, §8 forces a different, asynchronous product.</li>
+  <li><s><b>Which posture on §10?</b></s> <b>Resolved:</b> BYOK first, cooperative in parallel, adversarial never — recorded in <a href="decisions/0001-byok-first.md">ADR 0001</a>.</li>
+  <li><b>Jurisdiction.</b> Where do the mint and gateway incorporate? This drives the credibility of the non-collusion claim and the exposure of the entity holding money.</li>
+  <li><b>Does the mint's KYC obligation leak more than assumed?</b> A payments processor that knows purchase volume and timing may narrow the anonymity set more than the cryptography suggests.</li>
+</ol>
+
+<!-- ========================================================= -->
+<h2 id="s16"><span class="n">16</span>Sources</h2>
+
+<h4>Privacy attacks on distributed inference</h4>
+<ul class="sources">
+  <li><a href="https://arxiv.org/pdf/2503.09022">Prompt Inversion Attack against Collaborative Inference of Large Language Models</a> — near-perfect prompt recovery from intermediate activations.</li>
+  <li><a href="https://arxiv.org/pdf/2606.11592">Defense Against Prompt Inversion Attacks: An Information-Theoretic Approach</a> — privacy adapters and bottleneck bounds.</li>
+  <li><a href="https://arxiv.org/pdf/2606.18710">Image Prompt Reconstruction Attacks on Distributed MLLM Inference Frameworks</a></li>
+  <li><a href="https://arxiv.org/html/2607.19490">Integrity of peer-to-peer distributed LLM inference under malicious nodes</a></li>
+</ul>
+
+<h4>Distributed inference systems</h4>
+<ul class="sources">
+  <li><a href="https://openreview.net/pdf?id=Ls_NTjgWXZV">Petals: Collaborative Inference and Fine-tuning of Large Models</a></li>
+  <li><a href="https://research.yandex.com/blog/petals-decentralized-inference-and-finetuning-of-large-language-models">Petals — project overview</a></li>
+  <li><a href="https://corti.com/borrowing-memory-not-speed-clustering-a-mac-studio-and-a-dgx-spark-with-exo/">Borrowing Memory, Not Speed: clustering a Mac Studio and a DGX Spark with exo</a></li>
+  <li><a href="https://app.dealroom.co/news/note/decentralised-compute-landscape-peers-building-distributed-gpu-training-inference-networks">Decentralised compute landscape (Dealroom)</a> — Prime Intellect, Nous, io.net.</li>
+</ul>
+
+<h4>Confidential computing and attestation</h4>
+<ul class="sources">
+  <li><a href="https://arxiv.org/pdf/2509.18886">Confidential LLM Inference: Performance and Cost Across CPU and GPU TEEs</a></li>
+  <li><a href="https://arxiv.org/pdf/2505.16501">Performance of Confidential Computing GPUs</a></li>
+  <li><a href="https://www.nvidia.com/en-us/data-center/solutions/confidential-computing/">NVIDIA Confidential Computing</a></li>
+  <li><a href="https://docs.trustauthority.intel.com/main/articles/articles/ita/concept-gpu-attestation.html">GPU Remote Attestation with Intel Trust Authority</a></li>
+</ul>
+
+<h4>Anonymity systems and credentials</h4>
+<ul class="sources">
+  <li><a href="https://blog.cloudflare.com/private-rate-limiting/">Cloudflare — anonymous credentials and private rate limiting</a></li>
+  <li><a href="https://arxiv.org/pdf/2011.10121">Oblivious DNS over HTTPS: A Practical Privacy Enhancement to DNS</a></li>
+  <li><a href="https://fosdem.org/2026/schedule/event/U3UCKS-nym-mixnet/">NymVPN: the first real-world decentralized noise-generating mixnet (FOSDEM 2026)</a></li>
+  <li><a href="https://arxiv.org/pdf/2309.14856">PTPerf: performance evaluation of Tor Pluggable Transports</a></li>
+  <li><a href="https://arxiv.org/pdf/1608.07343">Modified Relay Selection and Circuit Selection for Faster Tor</a></li>
+  <li><a href="https://arxiv.org/pdf/2302.02012">DeTorrent: An Adversarial Padding-only Traffic Analysis Defense</a></li>
+  <li><a href="https://eprint.iacr.org/2026/105">Privacy-Preserving LLM Inference in Practice: A Comparative Survey</a></li>
+</ul>
+
+<h4>Hardware</h4>
+<ul class="sources">
+  <li><a href="https://dendro-logic.com/engineering/nvidia-dgx-spark-concurrency-benchmark/">NVIDIA DGX Spark concurrency benchmark</a> — throughput under concurrency vs single-stream reviews.</li>
+  <li><a href="https://intuitionlabs.ai/articles/nvidia-dgx-spark-review">NVIDIA DGX Spark review and benchmarks</a></li>
+  <li><a href="https://www.betterclaw.io/blog/dgx-spark-memory-bandwidth-ai-agents">DGX Spark memory bandwidth analysis</a></li>
+</ul>
+
+<hr class="end">
+<p class="foot">Revision 2 · prototype design and implementation document. Figures cited from third-party
+benchmarks are unverified by this project and must be independently re-measured before publication.
+Sections 10 and 11 describe risks capable of ending the project and should be resolved before
+Phase&nbsp;3 begins.</p>
+
+</main>
+</div>
+</body>
+</html>
