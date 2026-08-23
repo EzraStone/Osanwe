@@ -28,6 +28,12 @@ jobs:
       - name: interface syntax
         run: node --check internal/ui/assets/app.js
 
+      - name: launcher and enrollment-file syntax
+        run: |
+          bash -n packaging/client/start-osanwe.sh
+          bash -n "packaging/client/Start Osanwe.command"
+          python3 -m json.tool packaging/client/osanwe.example.json >/dev/null
+
   phase0-tools:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -67,6 +73,15 @@ jobs:
 
       - name: build
         run: go build ./...
+
+      # The first beta client is downloaded, not built by its user. Keep the
+      # desktop targets compiling on every change even though only Linux runs
+      # the full daemon demo suite here.
+      - name: cross-build desktop client
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /tmp/bearer.exe ./cmd/bearer
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o /tmp/bearer-darwin-amd64 ./cmd/bearer
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o /tmp/bearer-darwin-arm64 ./cmd/bearer
 
       # The relay pumps bytes between goroutines; run tests under -race.
       - name: test
