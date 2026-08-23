@@ -10,14 +10,28 @@ import (
 // The page is compiled in, so a build that lost it must fail loudly rather
 // than serve an empty window.
 func TestThePageIsInTheBinary(t *testing.T) {
-	body, err := files.ReadFile("app.html")
+	page, err := files.ReadFile("app.html")
 	if err != nil {
 		t.Fatalf("app.html is not embedded: %v", err)
 	}
-	for _, want := range []string{"<title>Osanwë</title>", "/_osanwe/", "status", "/v1/messages"} {
-		if !strings.Contains(string(body), want) {
+	for _, want := range []string{"<title>Osanwë</title>", "assets/app.css", "assets/app.js"} {
+		if !strings.Contains(string(page), want) {
 			t.Fatalf("the embedded page is missing %q", want)
 		}
+	}
+
+	script, err := files.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("assets/app.js is not embedded: %v", err)
+	}
+	for _, want := range []string{"/_osanwe/", "status", "/v1/messages"} {
+		if !strings.Contains(string(script), want) {
+			t.Fatalf("the embedded script is missing %q", want)
+		}
+	}
+
+	if _, err := files.ReadFile("assets/app.css"); err != nil {
+		t.Fatalf("assets/app.css is not embedded: %v", err)
 	}
 }
 
