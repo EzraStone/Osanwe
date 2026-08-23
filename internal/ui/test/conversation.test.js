@@ -5,6 +5,7 @@ import {
   appendTurn,
   assertConversation,
   conversationTitle,
+  conversationTurnText,
   createConversation,
   exportConversation,
   toRequestMessages,
@@ -20,6 +21,17 @@ test("a conversation starts empty and versioned", () => {
     updatedAt: 10,
     turns: [],
   });
+});
+
+test("stopped turns remain visibly partial after restore", () => {
+  assert.equal(
+    conversationTurnText({ role: "assistant", content: "Partial words", status: "stopped" }),
+    "Partial words\n\nStopped — partial response. Stopping cannot recall text already sent to the provider or restore a spent token.",
+  );
+  assert.match(
+    conversationTurnText({ role: "assistant", content: "", status: "stopped" }),
+    /Stopped before response text arrived.*cannot recall.*spent token/,
+  );
 });
 
 test("completed turns become provider context in order", () => {

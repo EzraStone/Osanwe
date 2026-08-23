@@ -50,6 +50,20 @@ export function conversationTitle(conversation, fallback = "New conversation") {
   return oneLine.length > 54 ? `${oneLine.slice(0, 53)}…` : oneLine;
 }
 
+export function conversationTurnText(turn) {
+  if (!turn || typeof turn.content !== "string" || !STATUSES.has(turn.status)) {
+    throw new TypeError("conversation turn is invalid");
+  }
+  if (turn.status === "stopped") {
+    const consequence = "Stopping cannot recall text already sent to the provider or restore a spent token.";
+    return turn.content
+      ? `${turn.content}\n\nStopped — partial response. ${consequence}`
+      : `Stopped before response text arrived. ${consequence}`;
+  }
+  if (turn.status === "streaming") return turn.content || "Incomplete answer";
+  return turn.content;
+}
+
 export function exportConversation(conversation, exportedAt = new Date()) {
   assertConversation(conversation);
   if (!(exportedAt instanceof Date) || Number.isNaN(exportedAt.getTime())) {
