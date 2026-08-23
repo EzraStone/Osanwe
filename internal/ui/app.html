@@ -14,6 +14,7 @@
   <span class="wordmark">Osanwë</span>
   <div class="seg" role="tablist" aria-label="View">
     <button type="button" role="tab" id="chatTab" aria-selected="true" aria-controls="chatView" tabindex="0" data-view="chat">Chat</button>
+    <button type="button" role="tab" id="modelsTab" aria-selected="false" aria-controls="modelsView" tabindex="-1" data-view="models">Models</button>
     <button type="button" role="tab" id="connectTab" aria-selected="false" aria-controls="devView" tabindex="-1" data-view="dev">Connect</button>
   </div>
   <div style="display:flex;align-items:center;gap:.15rem">
@@ -65,6 +66,18 @@
         <span class="state" id="state" role="status" aria-live="polite">Sealed</span>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="view" id="modelsView" role="tabpanel" aria-labelledby="modelsTab" hidden>
+  <div class="models-page">
+    <header class="models-intro">
+      <p class="eyebrow">Live catalog</p>
+      <h1>Choose with the limits visible.</h1>
+      <p>Only models reported by the connected gateway appear here. Unknown provider policies stay unknown.</p>
+    </header>
+    <p class="catalog-state" id="catalogState" role="status">Loading the local catalog…</p>
+    <div class="model-grid" id="modelGrid" aria-live="polite"></div>
   </div>
 </div>
 

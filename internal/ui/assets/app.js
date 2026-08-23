@@ -9,7 +9,7 @@ var PREFIX="/_osanwe/";
 var $=function(id){return document.getElementById(id)};
 var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
     input=$("input"),send=$("send"),seal=$("seal"),state=$("state"),model=$("model"),
-    panel=$("panel"),veil=$("veil"),chatView=$("chatView"),devView=$("devView");
+    panel=$("panel"),veil=$("veil"),chatView=$("chatView"),modelsView=$("modelsView"),devView=$("devView");
 
 var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,
     conversation=createConversation({model:model.value});
@@ -314,8 +314,8 @@ document.querySelectorAll("[data-view]").forEach(function(btn){
       b.setAttribute("aria-selected",String(b===btn));
       b.tabIndex=b===btn?0:-1;
     });
-    chatView.hidden=want!=="chat";devView.hidden=want!=="dev";
-    if(want==="dev")load();else input.focus();
+    chatView.hidden=want!=="chat";modelsView.hidden=want!=="models";devView.hidden=want!=="dev";
+    if(want==="dev")load();else if(want==="chat")input.focus();
   });
 });
 
