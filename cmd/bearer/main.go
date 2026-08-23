@@ -79,6 +79,10 @@ func run() error {
 		}
 		return err
 	}
+	envSecret, envReceipt, err := consumeLauncherEnvironment()
+	if err != nil {
+		return err
+	}
 	if *showVersion {
 		fmt.Println(version.String("bearer"))
 		return nil
@@ -129,7 +133,7 @@ func run() error {
 		if *mintURL == "" || *mintKeyID == "" {
 			return errors.New("bearer: -buy-token needs -mint and -mint-key-id")
 		}
-		rcpt := os.Getenv("OSANWE_RECEIPT")
+		rcpt := envReceipt
 		if *receipt != "" {
 			rcpt = *receipt
 		}
@@ -162,7 +166,7 @@ func run() error {
 
 	// Environment first: a command line is visible in the process table to
 	// every user on the machine.
-	sec := os.Getenv("OSANWE_SECRET")
+	sec := envSecret
 	if *secret != "" {
 		sec = *secret
 	}
@@ -262,7 +266,7 @@ func run() error {
 				"Take the id from somewhere other than the mint: a mint that handed every buyer a key of their own " +
 				"would put each of them in an anonymity set of one while appearing to work perfectly")
 		}
-		rcpt := os.Getenv("OSANWE_RECEIPT")
+		rcpt := envReceipt
 		if *receipt != "" {
 			rcpt = *receipt
 		}
@@ -341,6 +345,21 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(ctx)
+}
+
+// consumeLauncherEnvironment copies the two launcher-only values into this
+// process and immediately removes them from its environment. The client still
+// holds the values it needs in memory, but helpers it starts later (including
+// the default-browser opener) cannot inherit them.
+func consumeLauncherEnvironment() (secret, receipt string, err error) {
+	secret = os.Getenv("OSANWE_SECRET")
+	receipt = os.Getenv("OSANWE_RECEIPT")
+	for _, name := range []string{"OSANWE_SECRET", "OSANWE_RECEIPT"} {
+		if unsetErr := os.Unsetenv(name); unsetErr != nil {
+			return "", "", fmt.Errorf("bearer: removing %s from the child environment: %w", name, unsetErr)
+		}
+	}
+	return secret, receipt, nil
 }
 
 func explicitlySetFlags(fs *flag.FlagSet) map[string]bool {

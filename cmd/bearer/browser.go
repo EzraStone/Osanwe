@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 )
 
 func openLocalBrowser(rawURL string) error {
@@ -14,10 +16,23 @@ func openLocalBrowser(rawURL string) error {
 		return err
 	}
 	cmd := exec.Command(name, args...)
+	cmd.Env = browserEnvironment(os.Environ())
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	return cmd.Process.Release()
+}
+
+func browserEnvironment(environ []string) []string {
+	clean := make([]string, 0, len(environ))
+	for _, entry := range environ {
+		name, _, ok := strings.Cut(entry, "=")
+		if ok && (strings.EqualFold(name, "OSANWE_SECRET") || strings.EqualFold(name, "OSANWE_RECEIPT")) {
+			continue
+		}
+		clean = append(clean, entry)
+	}
+	return clean
 }
 
 func browserCommand(goos, rawURL string) (string, []string, error) {

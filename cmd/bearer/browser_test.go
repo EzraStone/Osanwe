@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -19,6 +21,37 @@ func TestBrowserCommandOpensOnlyLoopback(t *testing.T) {
 	} {
 		if _, _, err := browserCommand("linux", raw); err == nil {
 			t.Fatalf("accepted browser URL %q", raw)
+		}
+	}
+}
+
+func TestBrowserEnvironmentNeverContainsLauncherSecrets(t *testing.T) {
+	input := []string{
+		"PATH=/usr/bin",
+		"OSANWE_SECRET=relay-secret",
+		"osanwe_receipt=one-shot-entitlement",
+		"DISPLAY=:0",
+	}
+	want := []string{"PATH=/usr/bin", "DISPLAY=:0"}
+	if got := browserEnvironment(input); !reflect.DeepEqual(got, want) {
+		t.Fatalf("browser environment = %q, want %q", got, want)
+	}
+}
+
+func TestLauncherEnvironmentIsConsumedBeforeHelpersStart(t *testing.T) {
+	t.Setenv("OSANWE_SECRET", "relay-secret")
+	t.Setenv("OSANWE_RECEIPT", "one-shot-entitlement")
+
+	secret, receipt, err := consumeLauncherEnvironment()
+	if err != nil {
+		t.Fatalf("consumeLauncherEnvironment: %v", err)
+	}
+	if secret != "relay-secret" || receipt != "one-shot-entitlement" {
+		t.Fatalf("consumed %q and %q", secret, receipt)
+	}
+	for _, name := range []string{"OSANWE_SECRET", "OSANWE_RECEIPT"} {
+		if _, ok := os.LookupEnv(name); ok {
+			t.Fatalf("%s remains available for a child process", name)
 		}
 	}
 }
