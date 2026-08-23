@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/EzraStone/osanwe/internal/mint"
 )
@@ -341,6 +342,31 @@ func TestAllRoutesCanCarryPrices(t *testing.T) {
 	}
 }
 
+func TestParseRoutesCarriesModelPolicyMetadata(t *testing.T) {
+	routes, err := ParseRoutes(strings.NewReader(
+		"stealth/ox-alpha openai https://openrouter.ai/api OPENROUTER_API_KEY "+
+			"retention=retained training=unknown provider_identity=undisclosed "+
+			"policy_source=https://openrouter.ai/stealth/ox-alpha policy_checked=2026-08-22 "+
+			"experimental=true expires=2026-08-29T00:00:00Z\n"),
+		func(string) string { return "private-key" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, ok := routes.Lookup("stealth/ox-alpha")
+	if !ok {
+		t.Fatal("annotated route is missing")
+	}
+	if route.Policy.Retention != ProviderRetentionRetained || route.Policy.Identity != ProviderIdentityUndisclosed {
+		t.Fatalf("policy = %+v", route.Policy)
+	}
+	if !route.Lifecycle.Experimental || route.Lifecycle.ExpiresAt.Format(time.RFC3339) != "2026-08-29T00:00:00Z" {
+		t.Fatalf("lifecycle = %+v", route.Lifecycle)
+	}
+	if got := routes.ActiveModels(time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)); len(got) != 0 {
+		t.Fatalf("active at expiry = %v, want none", got)
+	}
+}
+
 // A route file belongs in version control. A key in it is a key published, so
 // credentials come from the environment and a missing one is a startup error
 // rather than a runtime surprise.
@@ -363,7 +389,8 @@ func TestAMissingCredentialIsReportedAtStartup(t *testing.T) {
 func TestBadRouteTablesAreRefused(t *testing.T) {
 	get := func(string) string { return "k" }
 	cases := []struct{ name, text, want string }{
-		{"wrong field count", "claude anthropic https://x\n", "want 4 or 6"},
+		{"wrong field count", "claude anthropic https://x\n", "want at least 4"},
+		{"one price", "claude anthropic https://x K 1.00\n", "both input and output prices"},
 		{"bad input price", "claude anthropic https://x K free 1.00\n", "invalid input price"},
 		{"bad output price", "claude anthropic https://x K 1.00 free\n", "invalid output price"},
 		{"unknown style", "claude carrier-pigeon https://x K\n", "unknown style"},
@@ -371,6 +398,7 @@ func TestBadRouteTablesAreRefused(t *testing.T) {
 		{"upstream query", "claude anthropic https://x?admin=true K\n", "must not contain"},
 		{"duplicate model", "c anthropic https://x K\nc openai https://y K\n", "routed twice"},
 		{"empty table", "# nothing but a comment\n", "empty"},
+		{"unknown annotation", "claude anthropic https://x K claim=private\n", "unknown annotation"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

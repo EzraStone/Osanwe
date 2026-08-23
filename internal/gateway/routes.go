@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 )
 
 // A gateway can front several providers, choosing by the model asked for.
@@ -47,10 +48,12 @@ const MaxRoutedBody = 16 << 20
 
 // Route sends one model to one provider.
 type Route struct {
-	Model    string
-	Style    Style
-	Upstream string
-	Cost     CostRates
+	Model     string
+	Style     Style
+	Upstream  string
+	Cost      CostRates
+	Policy    ProviderPolicy
+	Lifecycle ModelLifecycle
 
 	// Credential is the key itself, read from the environment rather than
 	// stored in the route file: a routing table is the sort of thing that ends
@@ -81,6 +84,7 @@ type Routes struct {
 func NewRoutes(list []Route) (*Routes, error) {
 	rt := &Routes{byModel: make(map[string]Route, len(list))}
 	for _, r := range list {
+		r.Policy = r.Policy.normalized()
 		switch {
 		case strings.TrimSpace(r.Model) == "":
 			return nil, fmt.Errorf("gateway: a route has no model name")
@@ -90,6 +94,12 @@ func NewRoutes(list []Route) (*Routes, error) {
 		case r.Credential == "":
 			return nil, fmt.Errorf("gateway: route %q has no credential; set %s in the environment",
 				r.Model, r.CredentialEnv)
+		}
+		if err := r.Policy.validate(); err != nil {
+			return nil, fmt.Errorf("gateway: route %q has invalid provider policy: %w", r.Model, err)
+		}
+		if err := r.Lifecycle.validate(); err != nil {
+			return nil, fmt.Errorf("gateway: route %q has invalid lifecycle: %w", r.Model, err)
 		}
 		if err := r.Cost.validOptional(); err != nil {
 			return nil, fmt.Errorf("gateway: route %q has invalid prices: %w", r.Model, err)
@@ -132,6 +142,27 @@ func (rt *Routes) Models() []string {
 	return append([]string(nil), rt.order...)
 }
 
+// ActiveModels lists routes that have not reached a configured expiry.
+func (rt *Routes) ActiveModels(now time.Time) []string {
+	models := make([]string, 0, len(rt.order))
+	for _, model := range rt.order {
+		if rt.byModel[model].Lifecycle.active(now) {
+			models = append(models, model)
+		}
+	}
+	return models
+}
+
+// LookupActive finds a route only while its lifecycle permits use. The exact
+// expiry instant is inactive, so a temporary preview always fails closed.
+func (rt *Routes) LookupActive(model string, now time.Time) (Route, bool) {
+	r, ok := rt.byModel[model]
+	if !ok || !r.Lifecycle.active(now) {
+		return Route{}, false
+	}
+	return r, true
+}
+
 // AllPriced reports whether every route has both input and output pricing.
 func (rt *Routes) AllPriced() bool {
 	for _, route := range rt.byModel {
@@ -144,11 +175,13 @@ func (rt *Routes) AllPriced() bool {
 
 // ParseRoutes reads a route table.
 //
-// The format is one route per line, whitespace separated:
+// The format is one route per line, whitespace separated. Optional policy
+// annotations follow the credential or price pair as strict key=value fields:
 //
 //	# model          style      upstream                   credential env       optional input/output USD per 1M
 //	claude-sonnet-5  anthropic  https://api.anthropic.com  ANTHROPIC_API_KEY    3.00 15.00
 //	deepseek-chat    openai     https://api.deepseek.com   DEEPSEEK_API_KEY     0.27 1.10
+//	preview/model    openai     https://router.example     ROUTER_KEY            retention=retained policy_source=https://router.example/policy policy_checked=2026-08-22 experimental=true expires=2026-08-29T00:00:00Z
 //
 // The fourth field names an environment variable, never the key itself. A file
 // like this belongs in version control; a key in it does not.
@@ -166,12 +199,16 @@ func ParseRoutes(r io.Reader, lookupEnv func(string) string) (*Routes, error) {
 			continue
 		}
 		fields := strings.Fields(text)
-		if len(fields) != 4 && len(fields) != 6 {
-			return nil, fmt.Errorf("gateway: route file line %d has %d fields, want 4 or 6: model style upstream ENV_VAR [INPUT_USD_PER_MILLION OUTPUT_USD_PER_MILLION]",
+		if len(fields) < 4 {
+			return nil, fmt.Errorf("gateway: route file line %d has %d fields, want at least 4: model style upstream ENV_VAR [INPUT_USD_PER_MILLION OUTPUT_USD_PER_MILLION] [key=value ...]",
 				line, len(fields))
 		}
 		var cost CostRates
-		if len(fields) == 6 {
+		annotationStart := 4
+		if len(fields) > 4 && !strings.Contains(fields[4], "=") {
+			if len(fields) < 6 || strings.Contains(fields[5], "=") {
+				return nil, fmt.Errorf("gateway: route file line %d must provide both input and output prices before annotations", line)
+			}
 			input, err := ParseCurrencyMicros(fields[4])
 			if err != nil {
 				return nil, fmt.Errorf("gateway: route file line %d has invalid input price: %w", line, err)
@@ -181,6 +218,11 @@ func ParseRoutes(r io.Reader, lookupEnv func(string) string) (*Routes, error) {
 				return nil, fmt.Errorf("gateway: route file line %d has invalid output price: %w", line, err)
 			}
 			cost = CostRates{InputMicrosPerMillion: input, OutputMicrosPerMillion: output}
+			annotationStart = 6
+		}
+		policy, lifecycle, err := parseRouteAnnotations(fields[annotationStart:])
+		if err != nil {
+			return nil, fmt.Errorf("gateway: route file line %d has invalid metadata: %w", line, err)
 		}
 		env := fields[3]
 		value := lookupEnv(env)
@@ -195,6 +237,8 @@ func ParseRoutes(r io.Reader, lookupEnv func(string) string) (*Routes, error) {
 			Style:         Style(fields[1]),
 			Upstream:      fields[2],
 			Cost:          cost,
+			Policy:        policy,
+			Lifecycle:     lifecycle,
 			Credential:    value,
 			CredentialEnv: env,
 		})
