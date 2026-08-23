@@ -471,6 +471,14 @@ func stripBearerResponseHeaders(resp *http.Response) {
 	resp.Header.Del("Trailer")
 	resp.Trailer = nil
 	resp.TransferEncoding = nil
+	setPrivateResponseHeaders(resp.Header)
+}
+
+func setPrivateResponseHeaders(header http.Header) {
+	header.Set("Cache-Control", "no-store")
+	header.Set("Pragma", "no-cache")
+	header.Set("Referrer-Policy", "no-referrer")
+	header.Set("X-Content-Type-Options", "nosniff")
 }
 
 func redirectsAutomatically(status int) bool {
@@ -492,7 +500,7 @@ func replaceRedirectResponse(resp *http.Response, message string) {
 	resp.Status = fmt.Sprintf("%d %s", http.StatusBadGateway, http.StatusText(http.StatusBadGateway))
 	resp.Header = make(http.Header)
 	resp.Header.Set("Content-Type", "application/json")
-	resp.Header.Set("Cache-Control", "no-store")
+	setPrivateResponseHeaders(resp.Header)
 	resp.Header.Set("Content-Length", fmt.Sprint(len(body)))
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 	resp.ContentLength = int64(len(body))
@@ -513,6 +521,7 @@ func (s *Server) refusePaidSurface(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", http.MethodPost)
 	}
 	w.Header().Set("Content-Type", "application/json")
+	setPrivateResponseHeaders(w.Header())
 	w.WriteHeader(status)
 	fmt.Fprintf(w, `{"type":"error","error":{"type":%q,"message":%q}}`+"\n",
 		"osanwe_"+kind, message)
@@ -528,6 +537,7 @@ func (s *Server) handleError(w http.ResponseWriter, r *http.Request, err error) 
 
 	message, _ := explain(err)
 	w.Header().Set("Content-Type", "application/json")
+	setPrivateResponseHeaders(w.Header())
 	w.WriteHeader(http.StatusBadGateway)
 	// Both, deliberately: the sentence is for whoever is looking at a screen,
 	// and detail is the original for whoever is debugging a relay.

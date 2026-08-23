@@ -756,3 +756,28 @@ func TestHTTP2TokenPresentationIsAccountedAsSpent(t *testing.T) {
 		t.Fatalf("wallet counts = taken %d, put %d; an HTTP/2 request acknowledged as spent must stay spent", taken, put)
 	}
 }
+
+func TestProviderCannotMakeLocalInferenceCacheable(t *testing.T) {
+	up, pool := upstreamTLS(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Referrer-Policy", "unsafe-url")
+		fmt.Fprint(w, `{}`)
+	}))
+	d := &directDialer{replace: up.Listener.Addr().String()}
+	s := startBearer(t, Config{Dialer: d, Upstream: "https://provider.example"}, pool, up.Listener.Addr().String())
+
+	resp, err := http.Get("http://" + s.Addr().String() + "/v1/messages")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	defer resp.Body.Close()
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+	if got := resp.Header.Get("Referrer-Policy"); got != "no-referrer" {
+		t.Fatalf("Referrer-Policy = %q, want no-referrer", got)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+}

@@ -145,7 +145,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	// Never cached. A stale relay name shown as current would be a lie the
 	// interface tells confidently.
-	w.Header().Set("Cache-Control", "no-store")
+	setPrivateResponseHeaders(w.Header())
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(s.Status())
