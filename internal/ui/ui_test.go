@@ -48,6 +48,29 @@ func TestThePageContainsNoInlineCode(t *testing.T) {
 	}
 }
 
+func TestTheScriptHasNoHTMLOrCookieStorageSink(t *testing.T) {
+	script, err := files.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("assets/app.js is not embedded: %v", err)
+	}
+	text := string(script)
+	for _, forbidden := range []string{".innerHTML", ".outerHTML", "insertAdjacentHTML", "document.cookie"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("the token-spending interface contains the DOM/storage sink %q", forbidden)
+		}
+	}
+	for _, required := range []string{"osanwe-theme", "osanwe-model", "osanwe-retention"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("the documented localStorage setting %q is missing", required)
+		}
+	}
+	for _, privateKey := range []string{"osanwe-conversation", "osanwe-message", "osanwe-prompt"} {
+		if strings.Contains(text, "localStorage.setItem(\""+privateKey) {
+			t.Fatalf("conversation content key %q was put in localStorage", privateKey)
+		}
+	}
+}
+
 // The policy is what makes a tampered or injected script harmless: it cannot
 // reach any origin but this client, so a prompt cannot be sent anywhere else.
 func TestThePolicyPinsThePageToThisClient(t *testing.T) {
