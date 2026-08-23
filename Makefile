@@ -2,9 +2,10 @@ BIN     := bin
 PKG     := ./...
 GOFLAGS := -trimpath
 LDFLAGS := -s -w
+NODE    ?= node
 
 .PHONY: all build client operator ranger bearer mithlond eregion checkout council \
-        test race vet fmt lint cover clean
+        test ui-test race vet fmt lint cover clean
 
 all: build
 
@@ -38,8 +39,11 @@ checkout:
 council:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN)/council ./cmd/council
 
-test:
+test: ui-test
 	go test $(PKG)
+
+ui-test:
+	cd internal/ui && $(NODE) --test test/*.test.js
 
 # The relay is a concurrent byte pump; the race detector is not optional here.
 race:
