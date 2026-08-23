@@ -17,7 +17,7 @@
     <button type="button" role="tab" id="modelsTab" aria-selected="false" aria-controls="modelsView" tabindex="-1" data-view="models">Models</button>
     <button type="button" role="tab" id="connectTab" aria-selected="false" aria-controls="devView" tabindex="-1" data-view="dev">Connect</button>
   </div>
-  <div style="display:flex;align-items:center;gap:.15rem">
+  <div class="chrome-actions">
     <button type="button" class="ghost" id="themeBtn" title="Light, dark, or follow the system">Auto</button>
     <button type="button" class="ghost" id="settingsBtn">Settings</button>
     <button type="button" class="ghost" id="newBtn">New</button>
@@ -36,7 +36,7 @@
         <b>This window has no key, on purpose.</b>
         Osanwë is running on your own API key, which lives in your tools and never in this
         process — so there is nothing here to send a request with. Point a tool at the endpoint
-        under <b style="display:inline;font-family:var(--sans);font-size:14px">Connect</b>, or
+        under <b class="inline-label">Connect</b>, or
         restart with <code>-mint</code> to pay with tokens and use this window directly.
       </div>
     </div>

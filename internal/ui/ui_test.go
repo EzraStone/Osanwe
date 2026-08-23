@@ -35,6 +35,19 @@ func TestThePageIsInTheBinary(t *testing.T) {
 	}
 }
 
+func TestThePageContainsNoInlineCode(t *testing.T) {
+	page, err := files.ReadFile("app.html")
+	if err != nil {
+		t.Fatalf("app.html is not embedded: %v", err)
+	}
+	text := string(page)
+	for _, forbidden := range []string{"<style", " style=", "<script>"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("the embedded page still contains inline code marker %q", forbidden)
+		}
+	}
+}
+
 // The policy is what makes a tampered or injected script harmless: it cannot
 // reach any origin but this client, so a prompt cannot be sent anywhere else.
 func TestThePolicyPinsThePageToThisClient(t *testing.T) {
