@@ -495,6 +495,13 @@ function storageFailed(){
 	$("settingsStatus").textContent=message;
 }
 
+function deletionFailed(){
+  retentionMode="ephemeral";store=conversationStore("ephemeral");retentionLabel();
+  var message="Saved history could not be deleted. Osanwë stopped saving this page; close other Osanwë tabs and try the deletion again.";
+  $("storageWarning").textContent=message;$("storageWarning").hidden=false;
+  $("settingsStatus").textContent=message;
+}
+
 function persistConversation(target){
   if(retentionMode!=="device")return Promise.resolve(false);
   var destination=store;
@@ -552,27 +559,25 @@ $("deleteHistoryBtn").addEventListener("click",function(){
   if(!window.confirm("Delete every conversation saved by Osanwë in this browser? Exported files and provider copies cannot be deleted here."))return;
   runTransition(async function(){
     await stopActiveRequest();
-    var saved;
-	try{saved=conversationStore("device")}catch(e){storageFailed(e);throw e}
+    var saved=conversationStore("device");
     var clearing=lifecycle.clear(saved);
     retentionMode="ephemeral";store=conversationStore("ephemeral");
     try{localStorage.setItem("osanwe-retention","ephemeral")}catch(e){}
     await clearing;
     $("settingsStatus").textContent="All conversations saved by Osanwë in this browser were deleted.";retentionLabel();refreshHistory();
-  }).catch(storageFailed);
+  }).catch(deletionFailed);
 });
 $("deleteConversationBtn").addEventListener("click",function(){
   if(!window.confirm("Delete this conversation from this page and device-only history? This cannot delete provider copies or exported files."))return;
   var target=conversation;
   runTransition(async function(){
     await stopActiveRequest();
-    var saved;
-    try{saved=conversationStore("device")}catch(e){storageFailed(e);throw e}
+    var saved=conversationStore("device");
     await lifecycle.delete(saved,target.id);
     if(conversation.id===target.id){conversation=createConversation({model:model.value});renderConversation()}
     refreshHistory();
     $("settingsStatus").textContent="The current conversation was deleted from this page and Osanwë device-only history.";
-  }).catch(storageFailed);
+  }).catch(deletionFailed);
 });
 $("exportConversationBtn").addEventListener("click",function(){
   if(!conversation.turns.length){$("settingsStatus").textContent="There is no conversation to export.";return}
