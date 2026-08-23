@@ -15,8 +15,10 @@ or exported diagnostics.
 
 ## Relay
 
-A relay sees the connecting network address and the encrypted destination flow. It must not see
-prompt or answer text. A pinned key or threshold-signed directory proves which relay was reached.
+A relay sees the connecting network address and the encrypted destination flow. In the intended
+path, a correctly configured and pinned relay receives ciphertext rather than prompt or answer text.
+A pin or threshold-signed directory authenticates the configured relay key; it does not prove the
+operator's identity, independence, location, deployment correctness, or non-collusion.
 
 ## Gateway
 
@@ -26,9 +28,10 @@ execution is implemented, the gateway operator can read prompts and the interfac
 
 ## Model provider
 
-In bring-your-own-key mode, the provider sees the person's provider account but not their originating
-network address. In token mode, it sees the gateway's account instead. In both modes, prompt content
-and writing style can contain identifying information.
+In bring-your-own-key mode, a connection routed through a correctly configured remote relay presents
+the relay's egress address rather than directly carrying the person's originating network address;
+the provider still sees the person's provider account. In token mode, it sees the gateway's account
+instead. In both modes, prompt content, writing style, timing, or collusion can identify a person.
 
 Provider retention and training policies are outside Osanwë's technical control. A model label may
 state a policy only when it has a dated, attributable source; “unknown” is better than a guess.
@@ -41,9 +44,11 @@ buyer according to the chosen rail, but the gateway must not receive that paymen
 
 ## Claims we can make today
 
-- A correctly pinned relay cannot read the end-to-end encrypted request.
+- A correctly configured and pinned relay receives end-to-end ciphertext and has no protocol
+  decryption key for the request.
 - The gateway does not receive the user's source network address from the relay protocol.
-- Blind-signed tokens are not conventionally linkable to their issuance transcript.
+- Blind-signed tokens cannot be directly cryptographically matched to their blinded issuance
+  transcript; timing, metadata, small anonymity sets, and collusion remain.
 - The local process exposes no server-side conversation-history endpoint.
 
 ## Claims we cannot make today

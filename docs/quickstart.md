@@ -3,13 +3,16 @@
 The smallest bring-your-own-key deployment uses two binaries: `ranger` runs on
 a VPS somewhere else, and `bearer` runs on your machine.
 
-**What this gets you.** The provider stops learning your IP address and the
-location it implies, and no relay operator can read your prompts. **What it does
-not get you:** the provider still knows which account is asking, because you are
-using your own API key. The account-unlinked token path is pre-launch software;
-exercise it with `./demo/tokens.sh` locally, then read the blockers and closed-network
-instructions in the [deployment guide](deploying.md).
-[ADR 0001](decisions/0001-byok-first.md) records why BYOK shipped first.
+**What this is designed to get you.** When `bearer` reaches the provider through
+a correctly pinned remote relay, the provider connection carries the relay's
+egress address rather than directly carrying your originating address, and the
+relay receives provider TLS ciphertext rather than prompt text. **What it does
+not get you:** anonymity. The provider still knows which account is asking and
+sees the prompt; the relay sees your source address, timing, and volume; content,
+timing, or collusion can still identify you. The account-unlinked token path is
+pre-launch software; exercise it with `./demo/tokens.sh` locally, then read the
+blockers and closed-network instructions in the [deployment guide](deploying.md).
+[ADR 0001](decisions/0001-byok-first.md) records why BYOK was implemented first.
 
 ## Build
 
@@ -78,7 +81,8 @@ encrypted traffic rather than the credential or request content.
 
 ## Verifying it rather than trusting it
 
-The claim is that the relay cannot read your prompts. Check it:
+The narrow property to check is that a correctly configured relay receives no
+plaintext prompt fragment:
 
 ```bash
 # On the relay host, while a request is in flight:
