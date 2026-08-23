@@ -77,8 +77,8 @@ jobs:
       - name: client packages
         run: go test ./cmd/bearer ./internal/bearer ./internal/ui ./internal/version
 
-      - name: operator spent store fails closed
-        run: go test ./internal/mint -run '^TestWindowsSpentStoreFailsClosed$' -count=1
+      - name: unsupported operator state fails closed
+        run: go test ./internal/mint -run '^(TestWindowsSpentStoreFailsClosed|TestInviteModeFailsClosedOnUnsupportedPlatforms)$' -count=1
 
       - name: client executable
         run: go build -trimpath -o bearer.exe ./cmd/bearer
