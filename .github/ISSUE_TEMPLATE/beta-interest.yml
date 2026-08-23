@@ -1,11 +1,12 @@
 name: Technical beta interest
-description: Apply for one of the first ten non-sensitive testing seats.
+description: Apply publicly, using a signed-in GitHub account, for one of the first ten non-sensitive testing seats.
 title: "Beta interest: "
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping test Osanwë. This issue is public. Do not paste a prompt, response,
+        Thanks for helping test Osanwë. Submitting this form requires a signed-in GitHub account
+        and creates a public issue linked to your GitHub username. Do not paste a prompt, response,
         relay secret, entitlement, API key, personal address, or other sensitive information.
 
   - type: dropdown
@@ -69,7 +70,11 @@ body:
           required: true
         - label: I understand the gateway can currently read prompts and answers; attested execution is not built.
           required: true
+        - label: I understand the model provider receives prompts and answers under the gateway account, subject to its retention and training policies.
+          required: true
         - label: I will not test medical, legal, financial, employment, school, children's, or vulnerable-source data.
           required: true
         - label: I understand this is a free technical test, not a production service or availability promise.
+          required: true
+        - label: I understand submitting this application creates a public issue linked to my GitHub username.
           required: true
