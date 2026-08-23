@@ -127,6 +127,9 @@ func TestOnlyKnownAssetsAreServed(t *testing.T) {
 		{"/_osanwe/", "text/html; charset=utf-8"},
 		{"/_osanwe/assets/app.css", "text/css; charset=utf-8"},
 		{"/_osanwe/assets/app.js", "text/javascript; charset=utf-8"},
+		{"/_osanwe/assets/api.js", "text/javascript; charset=utf-8"},
+		{"/_osanwe/assets/conversation.js", "text/javascript; charset=utf-8"},
+		{"/_osanwe/assets/sse.js", "text/javascript; charset=utf-8"},
 	}
 	for _, tc := range tests {
 		rec := httptest.NewRecorder()
