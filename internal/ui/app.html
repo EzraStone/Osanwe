@@ -13,8 +13,8 @@
 <div class="chrome">
   <span class="wordmark">Osanwë</span>
   <div class="seg" role="tablist" aria-label="View">
-    <button type="button" role="tab" aria-selected="true" data-view="chat">Chat</button>
-    <button type="button" role="tab" aria-selected="false" data-view="dev">Connect</button>
+    <button type="button" role="tab" id="chatTab" aria-selected="true" aria-controls="chatView" tabindex="0" data-view="chat">Chat</button>
+    <button type="button" role="tab" id="connectTab" aria-selected="false" aria-controls="devView" tabindex="-1" data-view="dev">Connect</button>
   </div>
   <div style="display:flex;align-items:center;gap:.15rem">
     <button type="button" class="ghost" id="themeBtn" title="Light, dark, or follow the system">Auto</button>
@@ -22,7 +22,7 @@
   </div>
 </div>
 
-<div class="view" id="chatView">
+<div class="view" id="chatView" role="tabpanel" aria-labelledby="chatTab">
   <div class="thread is-empty" id="thread">
     <div class="rail" id="rail">
       <div class="opening" id="opening">
@@ -67,7 +67,7 @@
   </div>
 </div>
 
-<div class="view" id="devView" hidden>
+<div class="view" id="devView" role="tabpanel" aria-labelledby="connectTab" hidden>
   <div class="dev">
     <div class="dev-rail">
 
@@ -85,12 +85,12 @@
       <div class="block">
         <h3>Connect</h3>
         <div class="tabs" role="tablist" aria-label="Language">
-          <button type="button" role="tab" aria-selected="true" data-snip="shell">shell</button>
-          <button type="button" role="tab" aria-selected="false" data-snip="python">python</button>
-          <button type="button" role="tab" aria-selected="false" data-snip="node">node</button>
-          <button type="button" role="tab" aria-selected="false" data-snip="curl">curl</button>
+          <button type="button" role="tab" id="shellTab" aria-selected="true" aria-controls="snippet" tabindex="0" data-snip="shell">shell</button>
+          <button type="button" role="tab" id="pythonTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="python">python</button>
+          <button type="button" role="tab" id="nodeTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="node">node</button>
+          <button type="button" role="tab" id="curlTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="curl">curl</button>
         </div>
-        <pre class="code" id="snippet"></pre>
+        <pre class="code" id="snippet" role="tabpanel" aria-labelledby="shellTab" tabindex="0"></pre>
         <p class="aside" id="snipNote"></p>
       </div>
 

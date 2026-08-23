@@ -311,6 +311,7 @@ document.querySelectorAll("[data-view]").forEach(function(btn){
     var want=btn.dataset.view;
     document.querySelectorAll("[data-view]").forEach(function(b){
       b.setAttribute("aria-selected",String(b===btn));
+      b.tabIndex=b===btn?0:-1;
     });
     chatView.hidden=want!=="chat";devView.hidden=want!=="dev";
     if(want==="dev")load();else input.focus();
@@ -321,10 +322,26 @@ document.querySelectorAll("[data-snip]").forEach(function(btn){
   btn.addEventListener("click",function(){
     document.querySelectorAll("[data-snip]").forEach(function(b){
       b.setAttribute("aria-selected",String(b===btn));
+      b.tabIndex=b===btn?0:-1;
     });
+    $("snippet").setAttribute("aria-labelledby",btn.id);
     showSnippet(btn.dataset.snip);
   });
 });
+
+function wireTabKeys(list){
+  list.addEventListener("keydown",function(e){
+    var tabs=Array.from(list.querySelectorAll("[role='tab']"));
+    var current=tabs.indexOf(document.activeElement),next=current;
+    if(e.key==="Home")next=0;
+    else if(e.key==="End")next=tabs.length-1;
+    else if(e.key==="ArrowRight")next=(current+1)%tabs.length;
+    else if(e.key==="ArrowLeft")next=(current-1+tabs.length)%tabs.length;
+    else return;
+    e.preventDefault();tabs[next].focus();tabs[next].click();
+  });
+}
+document.querySelectorAll("[role='tablist']").forEach(wireTabKeys);
 
 $("copyEndpoint").addEventListener("click",function(){
   var btn=this,done=function(){
