@@ -76,6 +76,10 @@ Roughly two minutes, in the browser:
 | Ask a follow-up that depends on the first answer | The model receives the complete prior transcript |
 | Switch to **Code** | A separate coding conversation opens and its no-file/no-terminal boundary is visible |
 | Try **Cowork** | The disabled Soon tab cannot be selected |
+| Load a generated JavaScript block into the runner | Nothing executes until **Run & test** is chosen |
+| Run `test("sum", () => assert(2 + 2 === 4))` | Results reports one pass |
+| Run `while (true) {}` | The worker stops after 2.5 seconds and the rest of the app remains responsive |
+| Preview HTML containing a script and remote image | The preview renders safe markup and reports removed executable or remote-loading items |
 | Open **Settings → Models and connection** | Only the live catalog and current local connection appear |
 | Click the seal | Plain-language account of what happened, then the raw facts |
 | Kill the relay, then send | The seal turns red and says the relay is not answering |

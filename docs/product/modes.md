@@ -10,9 +10,14 @@ model choice, runtime privacy labels, and ephemeral or explicitly local retentio
 
 ## Code
 
-Code is an early text-only coding assistant. It gives the provider a code-focused system instruction
-and keeps its conversation separate from Chat. It can explain, generate, debug, and review text the
-person supplies. It cannot read local files, run commands, or apply patches, and the interface says so.
+Code is an early coding assistant. It gives the provider a code-focused system instruction and keeps
+its conversation separate from Chat. It can explain, generate, debug, and review text the person
+supplies. Generated JavaScript can run in a timed, network-blocked worker with a small test harness;
+generated HTML can open as a script-free preview. Execution is always an explicit action.
+
+Code still cannot read local files, invoke a terminal, install packages, run Python or shell code, or
+apply patches, and the interface says so. The exact execution boundary is documented in
+[Code runner boundary](code-runner.md).
 
 Repository access remains later work. Before that ships, the project must define file permission,
 command execution, secret redaction, patch review, and whether a model may receive an entire
