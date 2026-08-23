@@ -48,6 +48,7 @@ var assetFiles = []struct {
 	{"/assets/app.js", "assets/app.js", "text/javascript; charset=utf-8"},
 	{"/assets/api.js", "assets/api.js", "text/javascript; charset=utf-8"},
 	{"/assets/conversation.js", "assets/conversation.js", "text/javascript; charset=utf-8"},
+	{"/assets/models.js", "assets/models.js", "text/javascript; charset=utf-8"},
 	{"/assets/sse.js", "assets/sse.js", "text/javascript; charset=utf-8"},
 }
 
