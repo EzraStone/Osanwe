@@ -528,6 +528,7 @@ document.querySelectorAll("input[name='retention']").forEach(function(input){
   input.addEventListener("change",function(){setRetention(input.value).catch(function(){})});
 });
 $("deleteHistoryBtn").addEventListener("click",function(){
+  if(!window.confirm("Delete every conversation saved by Osanwë in this browser? Exported files and provider copies cannot be deleted here."))return;
   var saved;
   try{saved=conversationStore("device")}catch(e){storageFailed(e).catch(function(){});return}
   saved.clear().then(function(){
