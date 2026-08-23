@@ -471,7 +471,7 @@ function setRetention(mode){
     retentionMode="device";
     try{localStorage.setItem("osanwe-retention","device")}catch(e){}
     $("settingsStatus").textContent="This conversation is saved only in this browser profile.";
-    retentionLabel();
+    retentionLabel();refreshHistory();
   }).catch(storageFailed);
 }
 
