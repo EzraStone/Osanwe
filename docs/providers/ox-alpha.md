@@ -3,9 +3,9 @@
 **Status: internal evaluation only. Not enabled for the public or private beta.**
 
 Osanwë can technically route `stealth/ox-alpha` through OpenRouter's OpenAI-compatible API. That
-does not by itself make the route suitable for a privacy product. The provider is anonymous, its
-availability is temporary, and the currently published data-use statements are not clear enough
-to support a user-facing privacy claim.
+does not by itself make the route suitable for a privacy product. The provider's identity is
+undisclosed, its availability is temporary, and the currently published data-use statements are not
+clear enough to support a user-facing privacy claim.
 
 On 2026-08-22, the project asked OpenRouter for written clarification before exposing a pooled
 Ox Alpha credential to anyone. The request asks whether an anonymous, no-charge token gateway is
@@ -21,8 +21,8 @@ All of these must be satisfied:
 2. Retention, training, and deletion behavior are documented without contradictory claims.
 3. The operator records the model's provider identity, lifecycle, policy source, and last review
    date in the gateway catalog.
-4. The beta disclosure names OpenRouter and the anonymous Stealth provider and forbids sensitive,
-   health, financial, employment, legal, and children's data.
+4. The beta disclosure names OpenRouter, says the underlying Stealth provider identity is
+   undisclosed, and forbids sensitive, health, financial, employment, legal, and children's data.
 5. Per-invite issuance and a strict aggregate kill switch prevent one tester from consuming the
    whole preview allowance.
 6. A non-sensitive smoke test passes through an independently operated relay.
