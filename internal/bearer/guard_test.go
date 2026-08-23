@@ -265,6 +265,9 @@ func TestStatusReportsWhatTheInterfaceNeeds(t *testing.T) {
 	if st.Retained != "nothing" {
 		t.Fatalf("retained = %q", st.Retained)
 	}
+	if st.Build.Version == "" || st.Build.Commit == "" || st.Build.Date == "" {
+		t.Fatalf("build identity = %+v, want non-empty release fields", st.Build)
+	}
 	if st.Privacy.ProviderAccount != "user_account" || st.Privacy.GatewayContentAccess != "no_osanwe_gateway" {
 		t.Fatalf("BYOK privacy = %+v", st.Privacy)
 	}

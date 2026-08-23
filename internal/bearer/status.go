@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/EzraStone/osanwe/internal/ui"
+	"github.com/EzraStone/osanwe/internal/version"
 )
 
 // Prefix is reserved for bearer's own routes. Everything outside it is
@@ -46,8 +47,9 @@ type WalletStatus interface {
 // anywhere else. Secrets, tokens and pins are likewise absent -- a page that
 // could read them would be a page that could spend them.
 type Status struct {
-	Endpoint string `json:"endpoint"`
-	Upstream string `json:"upstream"`
+	Endpoint string    `json:"endpoint"`
+	Upstream string    `json:"upstream"`
+	Build    BuildInfo `json:"build"`
 
 	// Paying is "tokens" or "your own key".
 	Paying string `json:"paying"`
@@ -62,6 +64,15 @@ type Status struct {
 	// Retained says what this process is keeping. It is a constant, and it is
 	// here so the interface can state it rather than assert it.
 	Retained string `json:"retained"`
+}
+
+// BuildInfo gives a tester enough identity to file a reproducible report. It
+// deliberately excludes Go, operating-system, hostname, and runtime details
+// that would add fingerprinting surface without identifying the release.
+type BuildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
 }
 
 type RelayInfo struct {
@@ -122,6 +133,11 @@ func (s *Server) Status() Status {
 	st := Status{
 		Endpoint: s.cfg.Addr,
 		Upstream: s.cfg.Upstream,
+		Build: BuildInfo{
+			Version: version.Version,
+			Commit:  version.Commit,
+			Date:    version.Date,
+		},
 		Paying:   "your own key",
 		Retained: "nothing",
 		Privacy: PrivacyInfo{
