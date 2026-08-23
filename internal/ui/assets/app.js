@@ -11,7 +11,7 @@ var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
     input=$("input"),send=$("send"),seal=$("seal"),state=$("state"),model=$("model"),
     panel=$("panel"),veil=$("veil"),chatView=$("chatView"),devView=$("devView");
 
-var status=null,busy=false,broken=false,inFlight=null,
+var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,
     conversation=createConversation({model:model.value});
 
 // ---- status ---------------------------------------------------------
@@ -128,11 +128,30 @@ function fillPanel(){
 }
 
 function openPanel(o){
-  if(o)fillPanel();
-  panel.hidden=!o;veil.hidden=!o;
+  if(o){
+    fillPanel();dialogOpener=document.activeElement;
+    panel.hidden=false;veil.hidden=false;
+  }
   panel.classList.toggle("open",o);veil.classList.toggle("open",o);
   seal.setAttribute("aria-expanded",String(o));
-  if(o)$("closePanel").focus();else seal.focus();
+  document.querySelectorAll(".chrome,.view").forEach(function(node){node.inert=o});
+  if(o){
+    $("closePanel").focus();
+  }else{
+    panel.hidden=true;veil.hidden=true;
+    var target=dialogOpener&&dialogOpener.isConnected?dialogOpener:seal;
+    dialogOpener=null;target.focus();
+  }
+}
+
+function keepDialogFocus(e){
+  if(e.key!=="Tab"||!panel.classList.contains("open"))return;
+  var controls=Array.from(panel.querySelectorAll("button,[href],input,select,textarea,[tabindex]:not([tabindex='-1'])"))
+    .filter(function(node){return !node.disabled&&!node.hidden});
+  if(!controls.length){e.preventDefault();panel.focus();return}
+  var first=controls[0],last=controls[controls.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
 }
 
 // ---- chat -----------------------------------------------------------
@@ -274,7 +293,10 @@ send.addEventListener("click",submit);
 seal.addEventListener("click",function(){openPanel(!panel.classList.contains("open"))});
 $("closePanel").addEventListener("click",function(){openPanel(false)});
 veil.addEventListener("click",function(){openPanel(false)});
-document.addEventListener("keydown",function(e){if(e.key==="Escape")openPanel(false)});
+document.addEventListener("keydown",function(e){
+  if(e.key==="Escape"&&panel.classList.contains("open"))openPanel(false);
+  keepDialogFocus(e);
+});
 
 $("newBtn").addEventListener("click",function(){
   if(inFlight)inFlight.abort();
