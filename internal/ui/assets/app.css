@@ -259,9 +259,9 @@ pre.code .s{color:var(--gild)}
 .history-list button:last-child{border-bottom:0}
 .history-list button:hover{color:var(--gild)}
 .settings-status{min-height:1.4em; color:var(--muted); font-size:12px}
-.settings-actions{display:flex; justify-content:space-between; align-items:center; gap:1rem}
+.settings-actions{display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:.55rem}
 .settings-actions button{padding:.38rem .75rem; border:1px solid var(--line); border-radius:100px; background:none; color:var(--muted); cursor:pointer; font:12px var(--sans)}
-.settings-actions .danger-button{color:var(--alarm)}
+.settings-actions .danger-button{margin-right:auto; color:var(--alarm)}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important; transition-duration:.01ms !important}}
 @media (max-width:34rem){
   .chrome{align-items:flex-start; flex-wrap:wrap}

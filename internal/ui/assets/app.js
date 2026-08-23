@@ -1,5 +1,5 @@
 import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
-import { appendTurn, conversationTitle, createConversation, toRequestMessages } from "./conversation.js";
+import { appendTurn, conversationTitle, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
 import { humanize, modelFacts, normalizeCatalog } from "./models.js";
 import { anthropicTextDelta, SSEParser } from "./sse.js";
 import { conversationStore } from "./storage.js";
@@ -535,6 +535,14 @@ $("deleteHistoryBtn").addEventListener("click",function(){
     try{localStorage.setItem("osanwe-retention","ephemeral")}catch(e){}
     $("settingsStatus").textContent="All conversations saved by Osanwë in this browser were deleted.";retentionLabel();refreshHistory();
   }).catch(function(e){storageFailed(e).catch(function(){})});
+});
+$("exportConversationBtn").addEventListener("click",function(){
+  if(!conversation.turns.length){$("settingsStatus").textContent="There is no conversation to export.";return}
+  var documentBody=JSON.stringify(exportConversation(conversation),null,2)+"\n";
+  var blob=new Blob([documentBody],{type:"application/json"}),url=URL.createObjectURL(blob);
+  var link=document.createElement("a");link.href=url;link.download="osanwe-conversation-"+new Date().toISOString().slice(0,10)+".json";
+  document.body.appendChild(link);link.click();link.remove();setTimeout(function(){URL.revokeObjectURL(url)},0);
+  $("settingsStatus").textContent="Exported as plaintext JSON. Anyone who can read that file can read the conversation.";
 });
 
 // ---- appearance -----------------------------------------------------
