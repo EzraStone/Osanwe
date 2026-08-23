@@ -20,13 +20,17 @@ func TestThePageIsInTheBinary(t *testing.T) {
 		}
 	}
 
-	script, err := files.ReadFile("assets/app.js")
-	if err != nil {
-		t.Fatalf("assets/app.js is not embedded: %v", err)
+	var scripts strings.Builder
+	for _, name := range []string{"assets/app.js", "assets/api.js", "assets/snippets.js"} {
+		script, err := files.ReadFile(name)
+		if err != nil {
+			t.Fatalf("%s is not embedded: %v", name, err)
+		}
+		scripts.Write(script)
 	}
 	for _, want := range []string{"/_osanwe/", "status", "/v1/messages"} {
-		if !strings.Contains(string(script), want) {
-			t.Fatalf("the embedded script is missing %q", want)
+		if !strings.Contains(scripts.String(), want) {
+			t.Fatalf("the embedded application is missing %q", want)
 		}
 	}
 
