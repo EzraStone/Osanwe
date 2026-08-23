@@ -4,7 +4,7 @@ import { disclosureNarrative } from "./disclosure.js";
 import { ConversationLifecycle } from "./lifecycle.js";
 import { buildIdentityLabel, humanize, modelFacts, normalizeCatalog, relayVerificationLabel } from "./models.js";
 import { connectionSnippets } from "./snippets.js";
-import { readAnthropicTextStream } from "./sse.js";
+import { readProviderTextStream } from "./sse.js";
 import { conversationStore } from "./storage.js";
 
 (function(){
@@ -14,9 +14,11 @@ var PREFIX="/_osanwe/";
 var $=function(id){return document.getElementById(id)};
 var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
     input=$("input"),send=$("send"),stop=$("stop"),seal=$("seal"),state=$("state"),model=$("model"),
+    providerKeyInput=$("providerKey"),providerConsent=$("providerConsent"),
     panel=$("panel"),veil=$("veil"),chatView=$("chatView"),modelsView=$("modelsView"),devView=$("devView");
 
 var status=null,busy=false,stopping=false,broken=false,activeRequest=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
+    providerKey="",
     completedRequestHere=false,catalogRequest=0,transitionTail=Promise.resolve(),lifecycle=new ConversationLifecycle(),
     retentionMode="ephemeral",store=conversationStore("ephemeral"),
     conversation=createConversation({model:model.value});
@@ -42,21 +44,19 @@ function plural(n,word){return n+" "+word+(n===1?"":"s")}
 function render(){
   if(!status)return;
   var tokens=status.paying==="tokens";
-	var chatAvailable=tokens&&modelsReady&&catalogModels.some(function(item){return item.id===model.value});
+	var chatAvailable=(tokens||providerKey)&&modelsReady&&catalogModels.some(function(item){return item.id===model.value});
 
   $("endpointText").textContent="http://"+status.endpoint;
   $("copyEndpoint").dataset.copy="http://"+status.endpoint;
   $("upstreamText").textContent=status.upstream;
   showSnippet(currentSnip);
 
-  // Chat only works when the client can pay. On a bring-your-own-key setup
-  // there is no key in this process to send with, which is the point.
   byok.hidden=tokens;
   input.disabled=!chatAvailable;
-  input.placeholder=!tokens?"Not available on your own key":(!modelsReady?"Checking active models":"No active model available");
+	input.placeholder=!tokens&&!providerKey?"Add your provider key above":(!modelsReady?"Checking active models":"No active model available");
 	if(chatAvailable)input.placeholder="Ask anything";
   $("openingSub").textContent=!tokens
-	? "Osanwë is carrying your tools' traffic. This window is not one of them."
+	? (providerKey?localHistoryDescription()+" Your provider account remains visible to the provider.":"Add a session-only provider key below to use this local chat.")
 	: (chatAvailable?localHistoryDescription()+" Nothing leaves this device unsealed.":"The gateway currently reports no active model. No request can be sent.");
 
   $("walletBlock").hidden=!tokens||!status.wallet;
@@ -192,14 +192,15 @@ function turn(kind,label){
 
 function refresh(){
   var tokens=status&&status.paying==="tokens";
+	var hasCredential=tokens||Boolean(providerKey);
 	var activeModel=catalogModels.some(function(item){return item.id===model.value});
   send.hidden=busy;stop.hidden=!busy;
   stop.disabled=!busy||stopping;
-  send.disabled=busy||!tokens||!modelsReady||!activeModel||!input.value.trim();
+  send.disabled=busy||!hasCredential||!modelsReady||!activeModel||!input.value.trim();
   rail.setAttribute("aria-busy",String(busy));
   if(broken){state.textContent="Seal broken";state.classList.add("warn");return}
   state.classList.remove("warn");
-	state.textContent=busy?(stopping?"Stopping":"Answering"):(tokens?(modelsReady&&activeModel?"Sealed":(modelsReady?"No active models":"Checking models")):"Carrying your tools");
+	state.textContent=busy?(stopping?"Stopping":"Answering"):(hasCredential?(modelsReady&&activeModel?"Ready":(modelsReady?"No active models":"Checking models")):"Key needed");
 }
 
 function fail(body,message){
@@ -211,7 +212,8 @@ function fail(body,message){
 
 function submit(){
   var text=input.value.trim();
-  if(!text||busy||!status||status.paying!=="tokens"||!modelsReady||
+  var tokens=status&&status.paying==="tokens";
+  if(!text||busy||!status||(!tokens&&!providerKey)||!modelsReady||
 	!catalogModels.some(function(item){return item.id===model.value}))return;
 
   setEmpty(false);
@@ -234,7 +236,11 @@ function submit(){
   request.done=sendMessages({
     model:model.value,
     messages:toRequestMessages(requestConversation)
-  },{signal:request.controller.signal}).then(function(resp){
+  },{
+    signal:request.controller.signal,
+    apiStyle:status.api_style||"anthropic",
+    apiKey:tokens?"":providerKey
+  }).then(function(resp){
     return stream(resp,body,caret,reply,requestConversation);
   }).catch(function(e){
     if(e.name==="AbortError"){
@@ -258,7 +264,7 @@ function submit(){
 // Everything else on the wire -- message_start, usage records, ping -- carries
 // no words. Appending them would put JSON in the middle of a sentence.
 function stream(resp,body,caret,reply,requestConversation){
-  return readAnthropicTextStream(resp.body,function(text){
+  return readProviderTextStream(resp.body,function(text){
 	reply.content+=text;
 	caret.remove();
 	body.appendChild(document.createTextNode(text));
@@ -285,6 +291,36 @@ function showSnippet(name){
 }
 
 // ---- wiring ---------------------------------------------------------
+function connectProviderKey(){
+  if(!status||status.paying==="tokens")return;
+  var candidate=providerKeyInput.value.trim();
+  if(!providerConsent.checked){
+    $("providerKeyStatus").textContent="Confirm the non-sensitive test boundary before connecting.";
+    providerConsent.focus();return;
+  }
+  if(!candidate||/[\r\n\0\s]/.test(candidate)){
+    $("providerKeyStatus").textContent="Paste one API key without spaces or line breaks.";
+    providerKeyInput.focus();return;
+  }
+  providerKey=candidate;
+  providerKeyInput.value="";
+  providerKeyInput.disabled=true;providerConsent.disabled=true;
+  $("connectProviderKey").hidden=true;$("forgetProviderKey").hidden=false;
+  $("providerKeyStatus").textContent="Connected for this page only. Reload or choose Forget key to clear it.";
+  render();input.focus();
+}
+
+function forgetProviderKey(){
+  providerKey="";providerKeyInput.value="";providerKeyInput.disabled=false;providerConsent.disabled=false;
+  $("connectProviderKey").hidden=false;$("forgetProviderKey").hidden=true;
+  $("providerKeyStatus").textContent="The page released its reference to the provider key.";
+  render();providerKeyInput.focus();
+}
+
+$("connectProviderKey").addEventListener("click",connectProviderKey);
+$("forgetProviderKey").addEventListener("click",forgetProviderKey);
+providerKeyInput.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();connectProviderKey()}});
+window.addEventListener("pagehide",function(){providerKey="";providerKeyInput.value=""});
 input.addEventListener("input",function(){autosize();refresh()});
 input.addEventListener("keydown",function(e){
   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit()}
@@ -379,7 +415,11 @@ function loadModels(){
   return fetchModels()
     .then(function(cat){
       if(request!==catalogRequest)return;
-      catalogModels=normalizeCatalog(cat);
+	  catalogModels=normalizeCatalog(cat);
+	  if(status&&Array.isArray(status.models)&&status.models.length){
+		var allowed=new Set(status.models);
+		catalogModels=catalogModels.filter(function(item){return allowed.has(item.id)});
+	  }
 	  modelsReady=true;
       if(!catalogModels.length){
         $("catalogState").textContent="The connected endpoint did not report a model catalog.";

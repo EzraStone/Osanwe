@@ -150,6 +150,15 @@ body{
 .notice b{color:var(--ink); font-weight:600; display:block; margin-bottom:.3rem; font-family:var(--serif); font-size:15.5px}
 .notice b.inline-label{display:inline; margin:0; font-family:var(--sans); font-size:14px}
 .notice code{font-family:var(--mono); font-size:12.5px; color:var(--gild)}
+.notice p{margin:.45rem 0}
+.byok-consent{display:flex; align-items:flex-start; gap:.55rem; margin:.8rem 0; color:var(--ink); font-size:13px}
+.byok-consent input{margin-top:.25rem}
+.byok-key-row{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.5rem; align-items:end; margin-top:.75rem}
+.byok-key-row label{grid-column:1 / -1; color:var(--faint); font-size:11px; letter-spacing:.06em; text-transform:uppercase}
+.byok-key-row input{min-width:0; padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:var(--raised); color:var(--ink); font:13px var(--mono)}
+.byok-key-row button{padding:.55rem .75rem; border:1px solid var(--gild-dim); border-radius:7px; background:var(--gild-soft); color:var(--gild); cursor:pointer; font:600 12px var(--sans)}
+.byok-key-status{min-height:1.4em; color:var(--faint); font-size:12px}
+@media(max-width:36rem){.byok-key-row{grid-template-columns:1fr}.byok-key-row button{width:100%}}
 
 /* models */
 .models-page{flex:1 1 auto; overflow-y:auto; width:100%; padding:2.2rem 1.1rem 3rem}

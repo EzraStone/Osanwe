@@ -33,11 +33,23 @@
         <p id="openingSub">Nothing here is kept, and nothing leaves this device unsealed.</p>
       </div>
       <div class="notice" id="byokNotice" hidden>
-        <b>This window does not store or ask for your provider key.</b>
-        In bring-your-own-key mode, your tool sends its key to the local Osanwë client. The client
-        handles and forwards it transiently for that request; it is not intentionally saved or
-        logged. Point a compatible tool at the endpoint under <b class="inline-label">Connect</b>, or
-        restart with <code>-mint</code> to pay with tokens and use this window directly.
+        <b>Use your own provider key in this local window.</b>
+        <p>The key is held only in this page's memory and sent through the local client for provider
+        requests. It is not intentionally saved in browser storage, configuration, logs, or the
+        public website. Reloading or closing the page forgets it.</p>
+        <p>Your provider still sees your account, prompts, answers, and timing. Check the selected
+        model's retention, training, identity, and lifecycle disclosures before sending anything.</p>
+        <label class="byok-consent"><input type="checkbox" id="providerConsent">
+          I will use only synthetic or deliberately non-sensitive prompts in this technical test.
+        </label>
+        <div class="byok-key-row">
+          <label for="providerKey">Provider API key</label>
+          <input type="password" id="providerKey" autocomplete="new-password" spellcheck="false"
+                 aria-describedby="providerKeyStatus">
+          <button type="button" id="connectProviderKey">Use for this session</button>
+          <button type="button" id="forgetProviderKey" hidden>Forget key</button>
+        </div>
+        <p class="byok-key-status" id="providerKeyStatus" role="status" aria-live="polite"></p>
       </div>
     </div>
   </div>
