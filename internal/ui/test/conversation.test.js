@@ -6,6 +6,7 @@ import {
   assertConversation,
   conversationTitle,
   createConversation,
+  exportConversation,
   toRequestMessages,
 } from "../assets/conversation.js";
 
@@ -53,4 +54,16 @@ test("invalid persisted records fail closed", () => {
   );
   const conversation = createConversation({ id: "conversation-4", now: 1 });
   assert.throws(() => appendTurn(conversation, "system", "hidden"), /role/);
+});
+
+test("exports are versioned plaintext conversation data only", () => {
+  const conversation = createConversation({ id: "conversation-5", model: "model-a", now: 1 });
+  appendTurn(conversation, "user", "my words", { now: 2 });
+  const exported = exportConversation(conversation, new Date("2026-08-22T12:00:00Z"));
+  assert.equal(exported.format, "osanwe-conversation");
+  assert.equal(exported.version, 1);
+  assert.equal(exported.exported_at, "2026-08-22T12:00:00.000Z");
+  assert.equal(exported.conversation.turns[0].content, "my words");
+  assert.deepEqual(Object.keys(exported).sort(), ["conversation", "exported_at", "format", "version"]);
+  assert.doesNotMatch(JSON.stringify(exported), /token|receipt|api.?key|credential/i);
 });

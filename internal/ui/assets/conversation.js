@@ -50,6 +50,19 @@ export function conversationTitle(conversation, fallback = "New conversation") {
   return oneLine.length > 54 ? `${oneLine.slice(0, 53)}…` : oneLine;
 }
 
+export function exportConversation(conversation, exportedAt = new Date()) {
+  assertConversation(conversation);
+  if (!(exportedAt instanceof Date) || Number.isNaN(exportedAt.getTime())) {
+    throw new TypeError("export time is invalid");
+  }
+  return {
+    format: "osanwe-conversation",
+    version: 1,
+    exported_at: exportedAt.toISOString(),
+    conversation: JSON.parse(JSON.stringify(conversation)),
+  };
+}
+
 export function assertConversation(value) {
   if (!value || typeof value !== "object" || value.schema !== 1) {
     throw new TypeError("conversation schema is unsupported");
