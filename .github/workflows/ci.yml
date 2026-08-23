@@ -28,6 +28,9 @@ jobs:
       - name: interface syntax
         run: node --check internal/ui/assets/app.js
 
+      - name: static beta website
+        run: python3 -m unittest discover -s tools -p 'test_site.py' -v
+
       - name: launcher and enrollment-file syntax
         run: |
           bash -n packaging/client/start-osanwe.sh
