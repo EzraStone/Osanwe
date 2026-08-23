@@ -1,5 +1,6 @@
 import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
 import { appendTurn, createConversation, toRequestMessages } from "./conversation.js";
+import { modelFacts, normalizeCatalog } from "./models.js";
 import { anthropicTextDelta, SSEParser } from "./sse.js";
 
 (function(){
@@ -11,7 +12,7 @@ var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
     input=$("input"),send=$("send"),seal=$("seal"),state=$("state"),model=$("model"),
     panel=$("panel"),veil=$("veil"),chatView=$("chatView"),modelsView=$("modelsView"),devView=$("devView");
 
-var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,
+var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,catalogModels=[],
     conversation=createConversation({model:model.value});
 
 // ---- status ---------------------------------------------------------
@@ -78,6 +79,8 @@ function render(){
   $("connAside").textContent=status.directory
     ? "The relay stays put until it stops answering. Rotating for its own sake spreads the same knowledge across more parties rather than dividing it."
     : "This relay was pinned by hand, so there is no directory behind it and nothing to fail over to.";
+
+  if(catalogModels.length)renderModelCards();
 
   refresh();
 }
@@ -365,21 +368,65 @@ $("copyEndpoint").addEventListener("click",function(){
 function loadModels(){
   return fetchModels()
     .then(function(cat){
-      if(!cat||!cat.data||!cat.data.length)return;   // no routing: keep the default
+      catalogModels=normalizeCatalog(cat);
+      if(!catalogModels.length){
+        $("catalogState").textContent="The connected endpoint did not report a model catalog.";
+        return;
+      }
       var current=model.value;
       model.textContent="";
-      cat.data.forEach(function(m){
+      catalogModels.forEach(function(m){
         var o=document.createElement("option");
         o.value=m.id;o.textContent=m.id;
         model.appendChild(o);
       });
       // Keep the selection if it survived, otherwise take the first.
-      if(cat.data.some(function(m){return m.id===current}))model.value=current;
+      if(catalogModels.some(function(m){return m.id===current}))model.value=current;
+      conversation.model=model.value;
+      renderModelCards();
     })
-    .catch(function(){ /* single-provider gateway; the default stands */ });
+    .catch(function(){
+      $("catalogState").textContent="The local model catalog is unavailable.";
+    });
 }
 
-model.addEventListener("change",function(){conversation.model=model.value});
+function renderModelCards(){
+  var grid=$("modelGrid");grid.textContent="";
+  $("catalogState").textContent=catalogModels.length
+    ? plural(catalogModels.length,"model")+" available through this gateway."
+    : "No models are currently reported.";
+  catalogModels.forEach(function(item){
+    var card=document.createElement("article");card.className="model-card";
+    var selected=item.id===model.value;
+    card.classList.toggle("is-selected",selected);
+    var title=document.createElement("h2");title.textContent=item.id;card.appendChild(title);
+
+    var caps=document.createElement("div");caps.className="capabilities";
+    [["Text",item.capabilities.text],["Streaming",item.capabilities.streaming],
+      ["Tools",item.capabilities.tools],["Images",item.capabilities.images]].forEach(function(entry){
+      var badge=document.createElement("span");badge.className="capability"+(entry[1]?" yes":"");
+      badge.textContent=entry[1]?entry[0]:"No "+entry[0].toLowerCase();caps.appendChild(badge);
+    });
+    card.appendChild(caps);
+
+    var facts=document.createElement("dl");facts.className="model-facts";
+    modelFacts(item,status,"ephemeral").forEach(function(pair){
+      var row=document.createElement("div"),term=document.createElement("dt"),value=document.createElement("dd");
+      term.textContent=pair[0];value.textContent=pair[1];row.appendChild(term);row.appendChild(value);facts.appendChild(row);
+    });
+    card.appendChild(facts);
+
+    var choose=document.createElement("button");choose.type="button";choose.className="choose-model";
+    choose.setAttribute("aria-pressed",String(selected));
+    choose.textContent=selected?"Using in Chat":"Use in Chat";
+    choose.addEventListener("click",function(){
+      model.value=item.id;conversation.model=item.id;renderModelCards();
+    });
+    card.appendChild(choose);grid.appendChild(card);
+  });
+}
+
+model.addEventListener("change",function(){conversation.model=model.value;renderModelCards()});
 
 // ---- appearance -----------------------------------------------------
 // Three states rather than two, because "follow the system" is a real
