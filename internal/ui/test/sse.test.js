@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { anthropicTextDelta, readAnthropicTextStream, SSEParser } from "../assets/sse.js";
+import { anthropicTextDelta, providerTextDelta, readAnthropicTextStream, SSEParser } from "../assets/sse.js";
 
 test("SSE parsing survives arbitrary chunk boundaries", () => {
   const parser = new SSEParser();
@@ -41,6 +41,18 @@ test("provider error events become local errors", () => {
     () => anthropicTextDelta('{"type":"error","error":{"message":"capacity"}}'),
     /capacity/,
   );
+});
+
+test("OpenAI-compatible text deltas and finish reasons are normalized", () => {
+  assert.deepEqual(
+    providerTextDelta('{"choices":[{"delta":{"content":"hello"},"finish_reason":null}]}'),
+    { done: false, text: "hello" },
+  );
+  assert.deepEqual(
+    providerTextDelta('{"choices":[{"delta":{},"finish_reason":"stop"}]}'),
+    { done: true, text: "" },
+  );
+  assert.throws(() => providerTextDelta('{"error":{"message":"bad key"}}'), /bad key/);
 });
 
 function responseBody(parts, { cancelError = null } = {}) {

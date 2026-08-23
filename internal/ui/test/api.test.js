@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildMessageBody, loadModels, loadStatus, responseError, sendMessages } from "../assets/api.js";
+import { buildMessageBody, buildOpenAIMessageBody, loadModels, loadStatus, responseError, sendMessages } from "../assets/api.js";
 
 test("message bodies preserve complete multi-turn context", () => {
   assert.deepEqual(
@@ -32,6 +32,18 @@ test("invalid message bodies fail before spending a request", () => {
   assert.throws(
     () => buildMessageBody({ model: "m", messages: [{ role: "system", content: "x" }] }),
     /roles/,
+  );
+});
+
+test("OpenAI-compatible bodies keep the same bounded chat fields", () => {
+  assert.deepEqual(
+    buildOpenAIMessageBody({ model: "stealth/ox-alpha", messages: [{ role: "user", content: "hello" }] }),
+    {
+      model: "stealth/ox-alpha",
+      max_tokens: 2048,
+      stream: true,
+      messages: [{ role: "user", content: "hello" }],
+    },
   );
 });
 
@@ -71,6 +83,37 @@ test("sendMessages passes the caller's exact abort signal to fetch", async () =>
 	} },
   );
   assert.equal(seenSignal, controller.signal);
+});
+
+test("OpenAI-compatible BYOK uses the exact chat endpoint and bearer credential", async () => {
+  let seen;
+  await sendMessages(
+    { model: "stealth/ox-alpha", messages: [{ role: "user", content: "hello" }] },
+    {
+      apiStyle: "openai",
+      apiKey: "sk-or-test",
+      fetchImpl: async (url, options) => {
+        seen = { url, options };
+        return { ok: true };
+      },
+    },
+  );
+  assert.equal(seen.url, "/v1/chat/completions");
+  assert.equal(seen.options.headers.authorization, "Bearer sk-or-test");
+  assert.equal(seen.options.headers["x-api-key"], undefined);
+  assert.equal(JSON.parse(seen.options.body).model, "stealth/ox-alpha");
+});
+
+test("provider keys with header control characters fail before fetch", async () => {
+  let called = false;
+  await assert.rejects(
+    sendMessages(
+      { model: "m", messages: [{ role: "user", content: "hello" }] },
+      { apiStyle: "openai", apiKey: "bad\nkey", fetchImpl: async () => { called = true; } },
+    ),
+    /malformed/,
+  );
+  assert.equal(called, false);
 });
 
 test("structured and plain API errors remain readable", async () => {

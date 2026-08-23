@@ -27,12 +27,48 @@ export function buildMessageBody({ model, messages, maxTokens = 2048, stream = t
   return { model, max_tokens: maxTokens, stream: Boolean(stream), messages: normalized };
 }
 
-export async function sendMessages(input, { signal, fetchImpl = globalThis.fetch } = {}) {
-  const response = await fetchImpl("/v1/messages", {
+export function buildOpenAIMessageBody(input) {
+  const body = buildMessageBody(input);
+  return {
+    model: body.model,
+    max_tokens: body.max_tokens,
+    stream: body.stream,
+    messages: body.messages,
+  };
+}
+
+function providerRequest(apiStyle, apiKey) {
+  if (apiStyle !== "anthropic" && apiStyle !== "openai") {
+    throw new TypeError("the configured provider API style is not supported");
+  }
+  const headers = { "content-type": "application/json" };
+  if (apiKey !== undefined && apiKey !== null && apiKey !== "") {
+    if (typeof apiKey !== "string" || apiKey !== apiKey.trim() || /[\r\n\0]/.test(apiKey)) {
+      throw new TypeError("the provider key is malformed");
+    }
+    if (apiStyle === "openai") headers.authorization = `Bearer ${apiKey}`;
+    else headers["x-api-key"] = apiKey;
+  }
+  if (apiStyle === "anthropic") headers["anthropic-version"] = "2023-06-01";
+  return {
+    endpoint: apiStyle === "openai" ? "/v1/chat/completions" : "/v1/messages",
+    headers,
+  };
+}
+
+export async function sendMessages(input, {
+  signal,
+  fetchImpl = globalThis.fetch,
+  apiStyle = "anthropic",
+  apiKey = "",
+} = {}) {
+  const request = providerRequest(apiStyle, apiKey);
+  const body = apiStyle === "openai" ? buildOpenAIMessageBody(input) : buildMessageBody(input);
+  const response = await fetchImpl(request.endpoint, {
     method: "POST",
     signal,
-    headers: { "content-type": "application/json", "anthropic-version": "2023-06-01" },
-    body: JSON.stringify(buildMessageBody(input)),
+    headers: request.headers,
+    body: JSON.stringify(body),
   });
   if (!response.ok) throw await responseError(response, `request failed with status ${response.status}`);
   return response;

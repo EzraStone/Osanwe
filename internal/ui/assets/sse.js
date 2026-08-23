@@ -38,7 +38,7 @@ function eventData(block) {
   return values.length ? values.join("\n") : null;
 }
 
-export function anthropicTextDelta(payload) {
+export function providerTextDelta(payload) {
   if (payload === "[DONE]") return { done: true, text: "" };
   let event;
   try {
@@ -46,8 +46,16 @@ export function anthropicTextDelta(payload) {
   } catch {
     return { done: false, text: "" };
   }
-  if (event.type === "error" && event.error) {
+  if (event.error) {
     throw new Error(event.error.message || "the provider returned an error");
+  }
+  if (Array.isArray(event.choices) && event.choices.length) {
+    const choice = event.choices[0] || {};
+    const delta = choice.delta || {};
+    return {
+      done: typeof choice.finish_reason === "string" && choice.finish_reason !== "",
+      text: typeof delta.content === "string" ? delta.content : "",
+    };
   }
   const delta = event.type === "content_block_delta" ? event.delta || {} : {};
   return {
@@ -56,10 +64,14 @@ export function anthropicTextDelta(payload) {
   };
 }
 
+// Backwards-compatible name for callers that still describe the local API as
+// Anthropic-shaped. The normalizer itself now accepts both supported streams.
+export const anthropicTextDelta = providerTextDelta;
+
 // readAnthropicTextStream resolves only after the provider emits an explicit
 // terminal event. A clean TCP EOF is not proof that a partial answer is
 // complete, so an interrupted stream remains excluded from future context.
-export async function readAnthropicTextStream(body, onText = () => {}) {
+export async function readProviderTextStream(body, onText = () => {}) {
   if (!body || typeof body.getReader !== "function") throw new TypeError("a readable response body is required");
   if (typeof onText !== "function") throw new TypeError("onText must be a function");
 
@@ -72,7 +84,7 @@ export async function readAnthropicTextStream(body, onText = () => {}) {
   const consume = (payloads) => {
     for (const payload of payloads) {
       if (sawTerminal) break;
-      const delta = anthropicTextDelta(payload);
+      const delta = providerTextDelta(payload);
       if (delta.text) onText(delta.text);
       if (delta.done) sawTerminal = true;
     }
@@ -101,3 +113,5 @@ export async function readAnthropicTextStream(body, onText = () => {}) {
     try { reader.releaseLock(); } catch {}
   }
 }
+
+export const readAnthropicTextStream = readProviderTextStream;
