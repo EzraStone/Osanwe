@@ -1,3 +1,7 @@
+import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
+import { appendTurn, createConversation, toRequestMessages } from "./conversation.js";
+import { anthropicTextDelta, SSEParser } from "./sse.js";
+
 (function(){
 "use strict";
 var PREFIX="/_osanwe/";
@@ -7,12 +11,12 @@ var thread=$("thread"),rail=$("rail"),opening=$("opening"),byok=$("byokNotice"),
     input=$("input"),send=$("send"),seal=$("seal"),state=$("state"),model=$("model"),
     panel=$("panel"),veil=$("veil"),chatView=$("chatView"),devView=$("devView");
 
-var status=null,busy=false,broken=false,inFlight=null;
+var status=null,busy=false,broken=false,inFlight=null,
+    conversation=createConversation({model:model.value});
 
 // ---- status ---------------------------------------------------------
 function load(){
-  return fetch(PREFIX+"status",{headers:{"accept":"application/json"}})
-    .then(function(r){if(!r.ok)throw new Error("status "+r.status);return r.json()})
+  return fetchStatus()
     .then(function(s){status=s;render();return s})
     .catch(function(e){
       // The client is what serves this page, so failing to reach it means it
@@ -161,39 +165,32 @@ function submit(){
   if(!text||busy||!status||status.paying!=="tokens")return;
 
   setEmpty(false);
+  appendTurn(conversation,"user",text);
   turn("you","You").textContent=text;
   input.value="";autosize();scroll();
 
   broken=false;seal.classList.remove("broken","pressing");
   void seal.offsetWidth;seal.classList.add("pressing");
 
+  var reply=appendTurn(conversation,"assistant","",{status:"streaming"});
   var body=turn("reply","Osanwë");
   var caret=document.createElement("span");caret.className="caret";
   body.appendChild(caret);
   busy=true;refresh();
 
   inFlight=new AbortController();
-  fetch("/v1/messages",{
-    method:"POST",
-    signal:inFlight.signal,
-    headers:{"content-type":"application/json","anthropic-version":"2023-06-01"},
-    body:JSON.stringify({
-      model:model.value,
-      max_tokens:2048,
-      stream:true,
-      messages:[{role:"user",content:text}]
-    })
-  }).then(function(resp){
-    if(!resp.ok){
-      return resp.text().then(function(t){
-        var msg=t;
-        try{var j=JSON.parse(t); if(j.error&&j.error.message)msg=j.error.message}catch(e){}
-        throw new Error(msg||("the request failed with status "+resp.status));
-      });
-    }
-    return stream(resp,body,caret);
+  sendMessages({
+    model:model.value,
+    messages:toRequestMessages(conversation)
+  },{signal:inFlight.signal}).then(function(resp){
+    return stream(resp,body,caret,reply);
   }).catch(function(e){
-    if(e.name==="AbortError"){caret.remove();busy=false;refresh();return}
+    if(e.name==="AbortError"){
+      reply.status="stopped";caret.remove();
+      if(!reply.content)body.textContent="Stopped";
+      busy=false;refresh();return;
+    }
+    reply.status="error";
     caret.remove();
     fail(body,e.message||String(e));
   }).then(function(){
@@ -208,30 +205,28 @@ function submit(){
 //
 // Everything else on the wire -- message_start, usage records, ping -- carries
 // no words. Appending them would put JSON in the middle of a sentence.
-function stream(resp,body,caret){
-  var reader=resp.body.getReader(),dec=new TextDecoder(),buf="";
+function stream(resp,body,caret,reply){
+  var reader=resp.body.getReader(),dec=new TextDecoder(),parser=new SSEParser();
+  function consume(payloads){
+    payloads.forEach(function(payload){
+      var delta=anthropicTextDelta(payload);
+      if(!delta.text)return;
+      reply.content+=delta.text;
+      caret.remove();
+      body.appendChild(document.createTextNode(delta.text));
+      body.appendChild(caret);
+      scroll();
+    });
+  }
   function pump(){
     return reader.read().then(function(r){
-      if(r.done){caret.remove();return}
-      buf+=dec.decode(r.value,{stream:true});
-      var parts=buf.split("\n\n");
-      buf=parts.pop();
-      parts.forEach(function(block){
-        block.split("\n").forEach(function(line){
-          if(line.indexOf("data:")!==0)return;
-          var payload=line.slice(5).trim();
-          if(!payload||payload==="[DONE]")return;
-          var ev;try{ev=JSON.parse(payload)}catch(e){return}
-          if(ev.type==="error"&&ev.error){throw new Error(ev.error.message||"the provider returned an error")}
-          if(ev.type!=="content_block_delta")return;
-          var d=ev.delta||{};
-          if(d.type!=="text_delta"||!d.text)return;
-          caret.remove();
-          body.appendChild(document.createTextNode(d.text));
-          body.appendChild(caret);
-          scroll();
-        });
-      });
+      if(r.done){
+        consume(parser.push(dec.decode()));
+        consume(parser.finish());
+        reply.status="complete";
+        caret.remove();return;
+      }
+      consume(parser.push(dec.decode(r.value,{stream:true})));
       return pump();
     });
   }
@@ -281,6 +276,7 @@ document.addEventListener("keydown",function(e){if(e.key==="Escape")openPanel(fa
 
 $("newBtn").addEventListener("click",function(){
   if(inFlight)inFlight.abort();
+  conversation=createConversation({model:model.value});
   rail.querySelectorAll(".turn").forEach(function(n){n.remove()});
   broken=false;seal.classList.remove("broken");
   setEmpty(true);input.focus();refresh();
@@ -325,8 +321,7 @@ $("copyEndpoint").addEventListener("click",function(){
 //
 // The catalog is free and needs no token, so asking costs nothing.
 function loadModels(){
-  return fetch("/v1/models",{headers:{"accept":"application/json"}})
-    .then(function(r){ return r.ok ? r.json() : null })
+  return fetchModels()
     .then(function(cat){
       if(!cat||!cat.data||!cat.data.length)return;   // no routing: keep the default
       var current=model.value;
@@ -341,6 +336,8 @@ function loadModels(){
     })
     .catch(function(){ /* single-provider gateway; the default stands */ });
 }
+
+model.addEventListener("change",function(){conversation.model=model.value});
 
 // ---- appearance -----------------------------------------------------
 // Three states rather than two, because "follow the system" is a real
