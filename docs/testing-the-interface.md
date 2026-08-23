@@ -52,10 +52,11 @@ ranger -allow api.anthropic.com &
 bearer -relay 127.0.0.1:8443 -pin sha256/...
 ```
 
-Then open the printed URL. **Chat will be unavailable, on purpose.** There is no
-key in the client to send with — your key lives in your tools, which is the
-whole bring-your-own-key promise — so the window says so and points you at the
-endpoint instead of inventing somewhere to paste a key.
+Then open the printed URL. **Chat will be unavailable, on purpose.** The local
+page neither asks for nor stores a provider key. A compatible tool sends its key
+to the loopback client, which handles and forwards it transiently for each
+request without intentionally persisting or logging it. The window says so and
+points you at the endpoint instead of inventing another key-entry surface.
 
 Connect works normally, and is the useful half here: it shows the endpoint, the
 relay in use, and whether the client observed a successful pinned connection or
