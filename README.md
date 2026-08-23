@@ -32,9 +32,10 @@ The Models view reads the connected gateway's live catalog and shows enforced te
 request limits, and factual privacy labels. Provider retention and training remain **unknown** unless
 the gateway has sourced metadata; the interface does not turn unknown policy into a privacy score.
 
-The private-beta payment adapter is deliberately crypto-only. A non-empty receipt buys one token
-and is presented at most once. Card, Monero, cash, and voucher adapters remain product work, and no
-real-money launch should precede an external review of interrupted and concurrent issuance.
+The first ten-person beta is free and does not use a payment path. The BTCPay adapter is disabled
+pre-launch code for a possible later paid beta; it is designed so one settled invoice authorizes one
+one-shot token. Card, Monero, cash, and voucher adapters remain product work, and no real-money beta
+should precede an external review of interrupted and concurrent issuance.
 
 See the [v0.1 scope](docs/product/v0.1-scope.md), [privacy boundaries](docs/product/privacy-boundaries.md),
 and [payment notes](docs/payments.md) for what is and is not promised.

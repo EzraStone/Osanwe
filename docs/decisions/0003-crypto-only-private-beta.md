@@ -1,6 +1,6 @@
-# ADR 0003 — Keep the private beta crypto-only
+# ADR 0003 — Keep the ten-person beta free; make a later paid beta crypto-only first
 
-- **Status:** Accepted for a private beta
+- **Status:** Accepted for the free ten-person beta and any first paid beta
 - **Decides:** which payment rails are intentionally supported first
 - **Supersedes:** nothing
 - **Revisit when:** a legal entity and card-processor posture are chosen
@@ -17,12 +17,14 @@ less than confidence that a settled invoice cannot issue twice.
 
 ## Decision
 
-The first private beta is deliberately crypto-only through BTCPay. It will not advertise card, cash,
-Monero, or vouchers as available.
+The first ten-person technical beta is free and does not invoke checkout, BTCPay, receipts, or paid
+issuance. The implemented BTCPay adapter stays disabled pre-launch. If a later paid private beta
+passes the gates below, its first rail will be Bitcoin and Lightning through BTCPay; it will not
+advertise card, cash, Monero, or vouchers as available.
 
-BTCPay is one entitlement adapter, not the payment architecture. The mint accepts a narrowly defined,
-one-use entitlement and blindly signs a token request. Future adapters must end at that boundary
-without adding payer identity to issuance or inference requests.
+BTCPay is a pre-launch entitlement adapter, not the payment architecture. In the implemented flow,
+the mint accepts a narrowly defined, one-use entitlement and blindly signs a token request. Future
+adapters must end at that boundary without adding payer identity to issuance or inference requests.
 
 No real-money beta opens until:
 
