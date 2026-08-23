@@ -1,6 +1,31 @@
 # Running the client on a new machine
 
-From nothing to a working window. Ubuntu or WSL; macOS notes at the end.
+Invited testers should use a release archive. The source-build path remains below for operators and
+developers.
+
+## Invited beta: no development tools or typed commands
+
+Public downloads will remain unpublished until the beta gates in [`beta.md`](beta.md) are met. Once
+invited:
+
+1. Download the archive for your platform from the project's GitHub release and compare its SHA-256
+   digest with `SHA256SUMS` on the release.
+2. Place the non-secret `osanwe.json` supplied by the beta operator beside the launcher. If that file
+   names `gateway.crt`, place the supplied public certificate there too.
+3. On Windows, double-click **Start Osanwe.cmd**. On macOS, double-click **Start Osanwe.command**.
+   Linux testers can open **start-osanwe.sh** from a file manager.
+4. Paste the relay secret and beta entitlement only when the local launcher asks. They are inherited
+   by the client process, not saved to `osanwe.json` or put on its command line.
+5. The launcher opens the chat at `http://127.0.0.1:8080/_osanwe/`. The public project website never
+   receives the secret, entitlement, prompt, response, or local history.
+
+The initial archives are not code-signed or notarized, so Windows SmartScreen and macOS Gatekeeper
+may warn. Do not bypass a warning unless the archive digest matches the release and the invite came
+through the expected channel. Native signing is a later paid decision, not a property of the first
+technical build.
+
+The rest of this page is the source-build route: from nothing to a working window on Ubuntu or WSL,
+with macOS notes at the end.
 
 ## What you need from whoever runs the gateway
 
