@@ -284,10 +284,11 @@ through five distinct channels, and they are not equally hard.</p>
 destinations. That is the origin of Tor's worst operational problem: exit operators see traffic,
 attract abuse complaints, and get raided.</p>
 
-<p>Osanwë's destination set is small and known, and every member speaks TLS. If relays act as
-plain <code>CONNECT</code> tunnels, the client's TLS session terminates at
-<code>api.anthropic.com</code> and <b>no node in the network ever observes a prompt</b>. The exit
-node problem disappears.</p>
+<p>Osanwë's destination set is small and known, and every member speaks TLS. If relays act as plain
+<code>CONNECT</code> tunnels, the client's TLS session terminates at the configured provider. The
+local client and provider handle plaintext, while a correctly configured relay carries ciphertext
+and has no protocol decryption key. This narrows rather than eliminates exit-operator content risk;
+relay metadata and deployment failures remain.</p>
 
 <p>But this is exactly where the argument bites back: an end-to-end TLS session must present a
 credential the provider accepts, and that credential is the identity (channel 2). Resolving that
@@ -702,8 +703,8 @@ coherent postures:</p>
   <thead><tr><th>Posture</th><th>What it means</th><th>Anonymity delivered</th><th>Durability</th></tr></thead>
   <tbody>
     <tr>
-      <td><b>Bring-your-own-key</b><br><em>ships first</em></td>
-      <td>User supplies their own key. Network hides IP and location only. End-to-end TLS; no node sees plaintext</td>
+      <td><b>Bring-your-own-key</b><br><em>implemented first</em></td>
+      <td>User supplies their own key. The local client and provider handle plaintext; a correctly pinned relay carries provider TLS ciphertext, and the provider connection originates at the relay</td>
       <td>Partial — addresses channel 1 under a separately operated relay</td>
       <td class="good-c"><b>First deployable posture after provider and beta gates</b></td>
     </tr>
@@ -867,10 +868,11 @@ aggregate throughput under concurrency.</p>
 </div>
 
 <div class="phase">
-  <h3><span class="p">PHASE 2</span> <code>bearer</code> + <code>ranger</code>, BYOK <span class="d">weeks · v1 product</span></h3>
-  <p>Client and relay. The user's own API key, end-to-end TLS to the provider, no node able to see
-  plaintext. Signed node descriptors and a minimal <code>council</code> directory modelled on Tor's
-  consensus. ToS-clean, shippable, genuinely useful.</p>
+  <h3><span class="p">PHASE 2</span> <code>bearer</code> + <code>ranger</code>, BYOK <span class="d">weeks · target v1</span></h3>
+  <p>Client and relay. The user's own API key; the local client and provider handle plaintext while a
+  correctly pinned relay carries provider TLS ciphertext. Signed node descriptors and a minimal
+  <code>council</code> directory modelled on Tor's consensus. Deployment remains subject to
+  provider-specific approval, counsel review, the beta gates, and independent-relay evidence.</p>
   <p class="exit"><b>Exit criterion:</b> a third party runs a <code>ranger</code> the team does not
   control, and a packet capture at that relay demonstrably contains no plaintext prompt.</p>
 </div>
