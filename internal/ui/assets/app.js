@@ -232,10 +232,9 @@ function submit(){
       persistConversation();
       busy=false;refresh();return;
     }
-    reply.status="error";
-    persistConversation();
+    reply.status="error";reply.content=e.message||String(e);
     caret.remove();
-    fail(body,e.message||String(e));
+    fail(body,reply.content);persistConversation();
   }).then(function(){
     busy=false;inFlight=null;refresh();
     // Spending a token changes the wallet, so the numbers behind Connect are
