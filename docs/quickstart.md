@@ -70,10 +70,11 @@ Then point your tooling at it:
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8080
 ```
 
-That is the whole integration. Your SDK, editor plugin, scripts and agent
-framework keep working — the API key still travels in the request, inside TLS,
-straight to the provider. `bearer` never sees it in the clear and never stores
-it.
+Compatible SDKs and tools can use that endpoint. Your tool sends its API key to
+the loopback client over local HTTP; `bearer` necessarily handles it in
+plaintext, then forwards it inside the provider TLS connection carried through
+the relay. Osanwë does not intentionally persist or log the key. The relay sees
+encrypted traffic rather than the credential or request content.
 
 ## Verifying it rather than trusting it
 

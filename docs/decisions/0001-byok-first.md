@@ -9,9 +9,11 @@
 
 ## Context
 
-Osanwë's full anonymity claim — *the provider can serve your request but cannot tie it to a name,
-card, or IP* — requires that the request not carry the user's own API key. That means pooled
-account access at `mithlond`, where one provider account serves many users.
+Osanwë's original provider-account/network-separation target — *the protocol does not directly give
+the provider a user's account, payment identity, or source IP* — requires that the request not carry
+the user's own API key. It does not address self-identifying content, writing style, timing, or
+operator collusion. The account portion requires pooled access at `mithlond`, where one sanctioned
+provider account serves many users.
 
 Pooling keys that way is very likely a violation of provider terms: account sharing,
 misrepresentation of the account holder, and circumvention of rate-limiting and abuse controls. The
@@ -22,28 +24,30 @@ to remove it is not a network anyone should build a company on.
 
 Three postures were considered:
 
-| Posture | Anonymity delivered | Durability |
+| Posture | Direct provider account/IP separation | Durability |
 |---|---|---|
-| Bring-your-own-key | Partial — defeats IP linkage only | Fully compliant |
-| Cooperative (sanctioned mode) | Full, and legitimate | Slowest, most durable |
-| Adversarial (pooled keys, expect bans) | Full, until the key dies | Fragile by construction |
+| Bring-your-own-key | IP path only; provider still knows the account | Fully compliant |
+| Cooperative (sanctioned mode) | Both, if operational separation holds; content and timing remain | Slowest, most durable |
+| Adversarial (pooled keys, expect bans) | Both until the key dies; content and timing remain | Fragile by construction |
 
 ## Decision
 
 **Ship bring-your-own-key as v1 (Phase 2). Open the cooperative conversation with providers in
 parallel. Treat the adversarial path as a research branch that never becomes the roadmap.**
 
-Under BYOK the user supplies their own API key. The client holds an end-to-end TLS session to the
-provider through a `CONNECT` tunnel, so no relay ever sees plaintext. The provider still knows which
-account is asking, but no longer knows from where, and no intermediary learns anything at all.
+Under BYOK the user supplies their own API key to the loopback client. The client handles plaintext
+locally and holds the TLS session to the provider through a `CONNECT` tunnel, so the relay receives
+encrypted content. The provider still knows which account is asking. With a separately operated
+relay and no collusion, the intended split keeps the provider from directly receiving the user's
+source address; timing and request content can still identify them.
 
 ## Rationale
 
 - **It is honest and compliant.** No terms are violated, nothing is misrepresented, and no component
   of the system depends on a counterparty's forbearance.
-- **The partial win is a real win.** Defeating IP and location linkage is meaningful on its own —
-  it is most of what a VPN sells, with a materially better trust model, and without the
-  exit-node problem that afflicts Tor.
+- **The partial win is a real win.** Reducing direct IP and location linkage is meaningful on its
+  own when the relay is separately operated, while still leaving timing, content, and collusion as
+  explicit risks.
 - **It unblocks everything else.** Phase 2 builds the relay network, the operator community, the
   directory, the client, and the latency dataset. All of that is a prerequisite for Phase 3
   regardless of which posture eventually wins.
@@ -59,9 +63,10 @@ account is asking, but no longer knows from where, and no intermediary learns an
 **Accepted:**
 
 - v1 does not deliver the headline anonymity claim. Marketing must describe what BYOK actually
-  provides — IP and location unlinkability, and confidentiality from every intermediary — without
-  implying the provider cannot identify the account. Overclaiming here would be the single most
-  damaging thing the project could do to its credibility.
+  targets — separation of the provider account from the source IP through an independently operated
+  encrypted relay — without implying that timing, content, or collusion cannot identify someone.
+  The provider still identifies the account. Overclaiming here would be the single most damaging
+  thing the project could do to its credibility.
 - The `eregion` mint and token machinery are deferred to Phase 3, so the cryptographic work is not
   validated early. Mitigated by prototyping issuance against a mock gateway during Phase 2.
 - If no provider ever offers a sanctioned mode, the full claim may never ship compliantly. That is
