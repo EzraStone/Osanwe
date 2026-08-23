@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"time"
 )
 
-const modelCatalogSchemaVersion = 1
+const modelCatalogSchemaVersion = 2
 
 type modelCatalog struct {
 	Object        string            `json:"object"`
@@ -20,6 +21,7 @@ type modelDescriptor struct {
 	Capabilities modelCapabilities `json:"capabilities"`
 	Limits       modelLimits       `json:"limits"`
 	Osanwe       modelPrivacy      `json:"osanwe"`
+	Lifecycle    modelLifecycle    `json:"lifecycle"`
 }
 
 type modelCapabilities struct {
@@ -45,17 +47,40 @@ type modelPrivacy struct {
 	AddressSeparation    string `json:"address_separation"`
 	ProviderRetention    string `json:"provider_retention"`
 	ProviderTraining     string `json:"provider_training"`
+	ProviderIdentity     string `json:"provider_identity"`
+	PolicySource         string `json:"policy_source,omitempty"`
+	PolicyCheckedAt      string `json:"policy_checked_at,omitempty"`
+}
+
+type modelLifecycle struct {
+	Experimental bool   `json:"experimental"`
+	ExpiresAt    string `json:"expires_at,omitempty"`
 }
 
 // handleModels lists what this gateway carries, in the shape a provider does.
 func (s *Server) handleModels(w http.ResponseWriter) {
-	models := s.modelNames()
+	now := s.now()
+	models := s.modelNamesAt(now)
 	out := modelCatalog{
 		Object:        "list",
 		SchemaVersion: modelCatalogSchemaVersion,
 		Data:          make([]modelDescriptor, 0, len(models)),
 	}
 	for _, model := range models {
+		policy := ProviderPolicy{}.normalized()
+		lifecycle := ModelLifecycle{}
+		if s.cfg.Routes != nil {
+			route, _ := s.cfg.Routes.LookupActive(model, now)
+			policy, lifecycle = route.Policy.normalized(), route.Lifecycle
+		}
+		wireLifecycle := modelLifecycle{Experimental: lifecycle.Experimental}
+		if !lifecycle.ExpiresAt.IsZero() {
+			wireLifecycle.ExpiresAt = lifecycle.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+		}
+		checkedAt := ""
+		if !policy.CheckedAt.IsZero() {
+			checkedAt = policy.CheckedAt.UTC().Format("2006-01-02")
+		}
 		// The upstream address and its credential are deliberately absent: a
 		// client has no use for either, and either would be worth stealing.
 		// Which vendor serves a model is not a secret and could not be kept
@@ -76,9 +101,13 @@ func (s *Server) handleModels(w http.ResponseWriter) {
 				GatewayContentAccess: "plaintext_until_attested_execution",
 				ConversationHistory:  "not_stored_by_osanwe_services",
 				AddressSeparation:    "requires_independent_relay",
-				ProviderRetention:    "unknown",
-				ProviderTraining:     "unknown",
+				ProviderRetention:    string(policy.Retention),
+				ProviderTraining:     string(policy.Training),
+				ProviderIdentity:     string(policy.Identity),
+				PolicySource:         policy.SourceURL,
+				PolicyCheckedAt:      checkedAt,
 			},
+			Lifecycle: wireLifecycle,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -87,8 +116,12 @@ func (s *Server) handleModels(w http.ResponseWriter) {
 }
 
 func (s *Server) modelNames() []string {
+	return s.modelNamesAt(s.now())
+}
+
+func (s *Server) modelNamesAt(now time.Time) []string {
 	if s.cfg.Routes != nil {
-		return s.cfg.Routes.ActiveModels(s.now())
+		return s.cfg.Routes.ActiveModels(now)
 	}
 	models := append([]string(nil), s.cfg.Models...)
 	slices.Sort(models)
