@@ -267,10 +267,12 @@ func TestTheCatalogNeedsNoToken(t *testing.T) {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 
-	var out struct {
-		Data []map[string]string `json:"data"`
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read catalog: %v", err)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	var out modelCatalog
+	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("catalog is not JSON: %v", err)
 	}
 	if len(out.Data) != 2 {
@@ -280,7 +282,6 @@ func TestTheCatalogNeedsNoToken(t *testing.T) {
 	// Model names give the vendor away by themselves -- "claude-sonnet-5" is
 	// not a secret -- so the property worth asserting is narrower and real:
 	// no address a client could reach directly, and no credential.
-	raw, _ := json.Marshal(out)
 	for _, leak := range []string{"127.0.0.1", "https://", "http://", "sk-", "api_key", "credential"} {
 		if strings.Contains(strings.ToLower(string(raw)), leak) {
 			t.Fatalf("the catalog leaks %q: %s", leak, raw)
