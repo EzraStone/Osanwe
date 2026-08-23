@@ -18,6 +18,9 @@ var status=null,busy=false,broken=false,inFlight=null,dialogOpener=null,catalogM
     conversation=createConversation({model:model.value});
 try{preferredModel=localStorage.getItem("osanwe-model")||""}catch(e){}
 try{if(localStorage.getItem("osanwe-retention")==="device")retentionMode="device"}catch(e){}
+if(retentionMode==="device"){
+  try{store=conversationStore("device")}catch(e){retentionMode="ephemeral";store=conversationStore("ephemeral")}
+}
 
 // ---- status ---------------------------------------------------------
 function load(){
@@ -202,6 +205,7 @@ function submit(){
 
   setEmpty(false);
   appendTurn(conversation,"user",text);
+  persistConversation();
   turn("you","You").textContent=text;
   input.value="";autosize();scroll();
 
@@ -224,9 +228,11 @@ function submit(){
     if(e.name==="AbortError"){
       reply.status="stopped";caret.remove();
       if(!reply.content)body.textContent="Stopped";
+      persistConversation();
       busy=false;refresh();return;
     }
     reply.status="error";
+    persistConversation();
     caret.remove();
     fail(body,e.message||String(e));
   }).then(function(){
@@ -260,6 +266,7 @@ function stream(resp,body,caret,reply){
         consume(parser.push(dec.decode()));
         consume(parser.finish());
         reply.status="complete";
+        persistConversation();
         caret.remove();return;
       }
       consume(parser.push(dec.decode(r.value,{stream:true})));
@@ -431,7 +438,7 @@ function renderModelCards(){
     choose.setAttribute("aria-pressed",String(selected));
     choose.textContent=selected?"Using in Chat":"Use in Chat";
     choose.addEventListener("click",function(){
-      model.value=item.id;conversation.model=item.id;rememberModel(item.id);renderModelCards();
+      model.value=item.id;conversation.model=item.id;rememberModel(item.id);persistConversation();renderModelCards();
     });
     card.appendChild(choose);grid.appendChild(card);
   });
@@ -443,7 +450,7 @@ function rememberModel(id){
 }
 
 model.addEventListener("change",function(){
-  conversation.model=model.value;rememberModel(model.value);renderModelCards();
+  conversation.model=model.value;rememberModel(model.value);persistConversation();renderModelCards();
 });
 
 function retentionLabel(){
@@ -472,6 +479,11 @@ function storageFailed(error){
   retentionMode="ephemeral";store=conversationStore("ephemeral");retentionLabel();
   $("settingsStatus").textContent="Device-only history is unavailable. This conversation remains ephemeral.";
   return Promise.reject(error);
+}
+
+function persistConversation(){
+  if(retentionMode!=="device")return;
+  store.put(conversation).catch(function(error){storageFailed(error).catch(function(){})});
 }
 
 function openSettings(){
@@ -528,6 +540,7 @@ $("deleteHistoryBtn").addEventListener("click",function(){
 })();
 
 showSnippet("shell");
+retentionLabel();
 load().then(loadModels);
 // The client is local, so polling it is nearly free, and a relay that failed
 // over should not sit behind a stale label until the page is reloaded.
