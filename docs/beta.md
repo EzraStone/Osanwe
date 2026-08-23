@@ -13,7 +13,8 @@ Recruit for roles, not audience size:
 
 1. An independent relay operator who is not part of the Osanwë gateway operation.
 2. An application-security engineer who will try to break origin, token, and secret boundaries.
-3. A privacy or applied-cryptography reviewer who understands unlinkability claims.
+3. A privacy or applied-cryptography reviewer who can assess the proposed unlinkability properties
+   and their limits.
 4. A heavy AI coding-tool user who can exercise streaming and long-running agent work.
 5. A nontechnical Windows user who will expose installation and onboarding friction.
 6. A macOS user who will test Gatekeeper, launch, browser opening, and removal.
@@ -29,7 +30,8 @@ children's data. Do not use journalists or vulnerable-source workflows as an ear
 
 The beta begins only when:
 
-- one relay is operated independently and its key distribution path is documented;
+- one relay has an operator separate from the gateway operator and its key distribution path is
+  documented; this enables an experimental test of the intended separation, not a privacy guarantee;
 - the chosen provider has approved the exact integration and its current data-use facts are shown
   in the model catalog;
 - the client has checksummed downloads and launches its local interface without requiring a build
@@ -40,7 +42,9 @@ The beta begins only when:
   truthfully in the interface;
 - aggregate limits and per-invite issuance are enabled, and the operator has rehearsed disabling
   the route;
-- the beta agreement says it is free, experimental, text-only, and unsuitable for sensitive data;
+- the beta agreement says it is free, experimental, text-only, and unsuitable for sensitive data,
+  and requires testers to acknowledge that the configured model provider receives prompts and
+  answers under the gateway account;
 - Phase 0 has three-region evidence or the product is explicitly positioned for async and agentic
   work rather than interactive chat.
 
@@ -51,18 +55,21 @@ can permanently cost trust.
 ## Website and local app boundary
 
 The public website should explain the project, publish downloads and checksums, show current
-limitations, and collect beta interest. It should not host the chat. The chat remains on
-`127.0.0.1` so the website cannot read prompts, API keys, tokens, or local history. A downloaded
-launcher should start the local client and open that loopback page for the user.
+limitations, and collect beta interest. The current interest link requires GitHub sign-in and
+creates a public issue tied to the applicant's GitHub username; that identity disclosure must appear
+beside the call to action. The website should not host the chat. The chat remains on `127.0.0.1`, and
+the static website has no prompt field or application path that receives prompts, API keys, tokens,
+or local history. A downloaded launcher should start the local client and open that loopback page.
 
-Until signed downloads and an approved provider route exist, the website must say **Join the
-technical beta**, not **Start chatting**.
+Until checksummed archives, documented unsigned OS-warning paths, and an approved provider route
+exist, the website must say **Join the technical beta**, not **Start chatting**.
 
 ## What each tester does
 
 Each seat gets a short, role-specific checklist plus the same core run:
 
-1. Install from a signed or checksummed archive.
+1. Install from a checksummed archive and follow the documented warning path if that beta build is
+   unsigned or not notarized.
 2. Confirm the relay and model disclosures before sending anything.
 3. Run five supplied synthetic prompts, including one long stream and one cancellation.
 4. Disconnect the relay during a request and record the failure shown.
@@ -71,6 +78,7 @@ Each seat gets a short, role-specific checklist plus the same core run:
 
 Feedback should contain version, operating system, timings, and error categories. It should never
 contain a tester's prompt or response unless they knowingly used the supplied synthetic fixture.
-Use the [technical beta report form](https://github.com/EzraStone/Osanwe/issues/new?template=beta-report.yml)
-for ordinary results. Suspected vulnerabilities go through the repository's private Security tab,
-not a public issue.
+The [technical beta report form](https://github.com/EzraStone/Osanwe/issues/new?template=beta-report.yml)
+requires GitHub sign-in and creates a public, username-linked issue; use it only for redacted
+ordinary results. Suspected vulnerabilities go through the repository's private Security tab, not
+a public issue.

@@ -3,7 +3,7 @@
 Invited testers should use a release archive. The source-build path remains below for operators and
 developers.
 
-## Invited beta: no development tools or typed commands
+## Invited beta: no development toolchain
 
 Public downloads will remain unpublished until the beta gates in [`beta.md`](beta.md) are met. Once
 invited:
@@ -13,11 +13,16 @@ invited:
 2. Place the non-secret `osanwe.json` supplied by the beta operator beside the launcher. If that file
    names `gateway.crt`, place the supplied public certificate there too.
 3. On Windows, double-click **Start Osanwe.cmd**. On macOS, double-click **Start Osanwe.command**.
-   Linux testers can open **start-osanwe.sh** from a file manager.
+   On Linux, open a terminal in the extracted folder and run `./start-osanwe.sh`; secret entry
+   requires an interactive terminal and the launcher exits clearly if one is unavailable.
 4. Paste the relay secret and beta entitlement only when the local launcher asks. They are inherited
-   by the client process, not saved to `osanwe.json` or put on its command line.
-5. The launcher opens the chat at `http://127.0.0.1:8080/_osanwe/`. The public project website never
-   receives the secret, entitlement, prompt, response, or local history.
+   by the client process, removed before it starts browser helpers, not saved to `osanwe.json`, and
+   not put on its command line.
+5. Before sending a test prompt, acknowledge that the configured model provider receives both the
+   prompt and answer under the gateway account, subject to that provider's retention and training
+   policy. Use only supplied synthetic or deliberately non-sensitive text.
+6. The launcher opens the chat at `http://127.0.0.1:8080/_osanwe/`. The static public project website
+   has no application path that receives the secret, entitlement, prompt, response, or local history.
 
 The initial archives are not code-signed or notarized, so Windows SmartScreen and macOS Gatekeeper
 may warn. Do not bypass a warning unless the archive digest matches the release and the invite came
@@ -37,11 +42,11 @@ Three things, and none of them are secret:
 | **The gateway's certificate** | a `-----BEGIN CERTIFICATE-----` block | So the client can verify what it is talking to |
 | **How to reach the gateway** | a URL, or SSH access while it is private | |
 
-The key id has to arrive by some route other than the mint itself. That is the
-entire point of holding it separately: a mint handing every buyer a key of its
-own would put each of them in an anonymity set of one while appearing to work
-perfectly, and comparing against a value you got elsewhere is what makes the
-anonymity set real. The client refuses to start if the two disagree.
+The key id has to arrive by some route other than the mint itself. Holding it
+separately is designed to prevent a mint from quietly handing every buyer a
+different key and trivially partitioning their tokens. A shared key id does not
+by itself prove unlinkability: timing, issuance patterns, endpoint metadata,
+and operator collusion remain. The client refuses to start if the ids disagree.
 
 The certificate is public — a certificate always is. The private half stays on
 the server.
@@ -145,9 +150,11 @@ rather than yours**. That is the property a single machine cannot provide, and
 it is why any of this is worth the trouble.
 
 The relay is still on your own machine, beside the client, so **the gateway
-sees your address**. Only a relay run by somebody else fixes that. Until one
-exists, one party can see both ends, and the design's central assumption does
-not hold. See [`who-runs-what.md`](who-runs-what.md).
+sees your address**. A separately operated relay is required to test the
+design's intended address/content split, but it does not by itself defeat
+timing analysis or relay–gateway collusion. Until a separate operator exists,
+one party can see both ends and the design's central assumption does not hold.
+See [`who-runs-what.md`](who-runs-what.md).
 
 Check both with:
 
@@ -170,4 +177,5 @@ None of the above is needed:
 
 Everything on one machine with a stand-in provider — no key, no server, no
 tunnel. Add `docs/routes.groq.conf` and a `GROQ_API_KEY` for real answers from
-a free provider. It gives up the address property and keeps every other one.
+a provider. That local arrangement exercises the protocol path but provides no
+operator or network separation and is not evidence of a privacy property.
