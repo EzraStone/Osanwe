@@ -1,15 +1,17 @@
 # Osanwë
 
-**A privacy relay for AI inference, and an experimental account-unlinked token gateway.**
+**An encrypted relay for AI inference, and an experimental blind-signed token gateway.**
 
 [Project website](https://ezrastone.github.io/Osanwe/) · [Technical beta charter](docs/beta.md) ·
 [Current Phase 0 evidence](docs/phase0-results.md)
 
-The runnable bring-your-own-key path hides a user's IP address and location from the model
-provider, and keeps prompts unreadable to the relay. The provider still sees the user's own API
-account. The account-unlinked path replaces that account credential with a blind-signed token, but
-it is pre-launch software: there is no public network, the gateway operator can read prompts until
-attested execution is implemented, and the production controls are still being completed.
+The runnable bring-your-own-key path is designed to keep prompts unreadable to a pinned relay and,
+when that relay has a separate operator, to avoid directly giving the provider the user's source IP.
+The provider still sees the user's own API account, prompt content and timing; no independently
+operated public relay is enrolled today. The token path replaces that account credential with a
+blind-signed token intended to prevent direct issuance-to-redemption matching, but it is pre-launch
+software: there is no public network, timing and collusion remain, the gateway operator can read
+prompts until attested execution is implemented, and production controls are still incomplete.
 
 Start with the [quickstart](docs/quickstart.md), read [who runs what](docs/who-runs-what.md), and do
 not expose the token gateway before following the warnings in the [deployment guide](docs/deploying.md).
