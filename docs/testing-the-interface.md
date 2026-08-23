@@ -52,15 +52,17 @@ ranger -allow api.anthropic.com &
 bearer -relay 127.0.0.1:8443 -pin sha256/...
 ```
 
-Then open the printed URL. **Chat will be unavailable, on purpose.** The local
-page neither asks for nor stores a provider key. A compatible tool sends its key
-to the loopback client, which handles and forwards it transiently for each
-request without intentionally persisting or logging it. The window says so and
-points you at the endpoint instead of inventing another key-entry surface.
+Then open the printed URL. Open **Settings → Provider access**, acknowledge the
+non-sensitive test boundary, and paste the provider key. The page retains the
+key only in JavaScript memory for that page session, clears the input after
+connecting, and releases its reference on reload, close, or **Forget key**. It
+is not intentionally written to browser storage, config, logs, or the public
+website.
 
-Connect works normally, and is the useful half here: it shows the endpoint, the
-relay in use, and whether the client observed a successful pinned connection or
-only has a manually configured pin whose live handshake is not reported.
+The same Settings dialog contains model and connection details: the loopback
+endpoint, relay in use, and whether the client observed a successful pinned
+connection or only has a manually configured pin whose live handshake is not
+reported.
 
 ---
 
@@ -72,12 +74,13 @@ Roughly two minutes, in the browser:
 |---|---|
 | Type a question and send | Words arrive one at a time, not in a lump at the end |
 | Ask a follow-up that depends on the first answer | The model receives the complete prior transcript |
-| Open **Models** | Only the live gateway catalog appears, with text limits and unknown policies visible |
-| Open **Connect** | Tokens on hand drops by one per message sent |
+| Switch to **Code** | A separate coding conversation opens and its no-file/no-terminal boundary is visible |
+| Try **Cowork** | The disabled Soon tab cannot be selected |
+| Open **Settings → Models and connection** | Only the live catalog and current local connection appear |
 | Click the seal | Plain-language account of what happened, then the raw facts |
 | Kill the relay, then send | The seal turns red and says the relay is not answering |
 | Restart the relay, send again | It recovers on its own, with no restart of the client |
-| Switch your OS between light and dark | Both are designed; neither is an inversion of the other |
+| Use the sun/moon button | It switches directly between the explicit light and dark themes |
 | Enable **Save on this device**, reload, then restore it | The conversation returns from this browser only |
 | Export a conversation | A versioned plaintext JSON file downloads without tokens, receipts, or credentials |
 | Delete current and delete all history | The page and IndexedDB records clear after confirmation |

@@ -18,7 +18,7 @@ launcher window open while using Osanwë. Closing it stops the local client.
 
 ## Before sending a prompt
 
-- Confirm the Connect view names the relay you were given.
+- Open **Settings → Models and connection** and confirm it names the relay you were given.
 - A manually configured pin is shown as configured; only a directory-selected relay with an
   observed connection is shown as matched.
 - Read the model's provider retention, training, identity, source date, and lifecycle labels.

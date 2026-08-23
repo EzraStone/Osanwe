@@ -36,5 +36,5 @@ Privacy controls are not meaningful if a person cannot perceive or operate them.
 ## Verification
 
 Automated markup and interaction tests are necessary but insufficient. Before a private beta, test
-Chat, Models, Connect, local retention, export, and deletion using keyboard-only navigation and at
+Chat, Code, disabled Cowork, Settings, local retention, export, and deletion using keyboard-only navigation and at
 least one current screen reader on each supported desktop platform.
