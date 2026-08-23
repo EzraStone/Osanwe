@@ -1,6 +1,6 @@
 :root{
   --ground:#fbfaf7; --raised:#ffffff; --sunk:#f4f1ea;
-  --ink:#1c1a17; --muted:#6b6459; --faint:#938b7e;
+  --ink:#1c1a17; --muted:#6b6459; --faint:#6f675d;
   --line:#e3ded4; --gild:#7a5c2e; --gild-soft:#f0e7d6; --gild-dim:#a98f63;
   --alarm:#a33f31;
   --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
@@ -14,25 +14,25 @@
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
     --ground:#14130f; --raised:#1b1a16; --sunk:#100f0c;
-    --ink:#e8e3d8; --muted:#a49b8b; --faint:#7d7566;
+    --ink:#e8e3d8; --muted:#a49b8b; --faint:#aaa18f;
     --line:#302d26; --gild:#d3ab6a; --gild-soft:#2a2419; --gild-dim:#8a6f42;
-    --alarm:#c9584a;
+    --alarm:#df776b;
   }
 }
 :root[data-theme="dark"]{
   --ground:#14130f; --raised:#1b1a16; --sunk:#100f0c;
-  --ink:#e8e3d8; --muted:#a49b8b; --faint:#7d7566;
+  --ink:#e8e3d8; --muted:#a49b8b; --faint:#aaa18f;
   --line:#302d26; --gild:#d3ab6a; --gild-soft:#2a2419; --gild-dim:#8a6f42;
-  --alarm:#c9584a;
+  --alarm:#df776b;
 }
 :root[data-theme="light"]{
   --ground:#fbfaf7; --raised:#ffffff; --sunk:#f4f1ea;
-  --ink:#1c1a17; --muted:#6b6459; --faint:#938b7e;
+  --ink:#1c1a17; --muted:#6b6459; --faint:#6f675d;
   --line:#e3ded4; --gild:#7a5c2e; --gild-soft:#f0e7d6; --gild-dim:#a98f63;
   --alarm:#a33f31;
 }
 *{box-sizing:border-box}
-html,body{height:100%}
+html,body{height:100%; max-width:100%; overflow-x:hidden}
 body{
   margin:0; background:var(--ground); color:var(--ink);
   font-family:var(--sans); font-size:15px; line-height:1.55;
@@ -185,7 +185,7 @@ body{
   display:flex; align-items:center; gap:.6rem; background:var(--sunk);
   border:1px solid var(--line); border-radius:9px; padding:.7rem .55rem .7rem .95rem;
 }
-.endpoint code{font-family:var(--mono); font-size:14px; color:var(--gild); flex:1 1 auto; overflow-x:auto; white-space:nowrap}
+.endpoint code{font-family:var(--mono); font-size:14px; color:var(--gild); flex:1 1 auto; min-width:0; overflow-x:auto; white-space:nowrap}
 .copy{
   flex:0 0 auto; font-family:var(--sans); font-size:11.5px; color:var(--muted);
   background:var(--raised); border:1px solid var(--line); border-radius:6px;
