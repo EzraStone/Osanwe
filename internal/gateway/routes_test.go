@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -231,6 +232,83 @@ func TestAnUnknownModelIsRefusedAndTheTokenReturned(t *testing.T) {
 	}
 	if len(h.seen("anthropic"))+len(h.seen("openai")) != 0 {
 		t.Fatal("an unroutable request still reached a provider")
+	}
+}
+
+type countingBudget struct{ reserves atomic.Int64 }
+
+func (b *countingBudget) Reserve(context.Context, BudgetRequest) (BudgetReservation, error) {
+	b.reserves.Add(1)
+	return unlimitedReservation{}, nil
+}
+
+func TestAnExpiredRouteIsHiddenAndRefusedBeforeSpend(t *testing.T) {
+	expires := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
+	var providerHits atomic.Int64
+	provider := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		providerHits.Add(1)
+		fmt.Fprint(w, `{"type":"message","content":[]}`)
+	}))
+	defer provider.Close()
+
+	roots := x509.NewCertPool()
+	roots.AddCert(provider.Certificate())
+	routes, err := NewRoutes([]Route{{
+		Model: "preview", Style: StyleAnthropic, Upstream: provider.URL,
+		Credential: "secret", CredentialEnv: "KEY",
+		Lifecycle: ModelLifecycle{Experimental: true, ExpiresAt: expires},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := mint.New(mintKey(t), mint.OpenAuthorizer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spent := mint.NewSpentSet()
+	budget := &countingBudget{}
+	gw, err := New(Config{
+		Addr: "127.0.0.1:0", Routes: routes,
+		MintKeys: map[string]*rsa.PublicKey{m.KeyID(): m.PublicKey()},
+		Spent:    spent, Budget: budget, UpstreamRootCAs: roots, Logger: quiet(),
+		Now: func() time.Time { return expires },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	front := httptest.NewServer(gw.Handler())
+	defer front.Close()
+
+	catalog, err := front.Client().Get(front.URL + "/v1/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listed modelCatalog
+	if err := json.NewDecoder(catalog.Body).Decode(&listed); err != nil {
+		t.Fatal(err)
+	}
+	catalog.Body.Close()
+	if len(listed.Data) != 0 {
+		t.Fatalf("expired catalog = %+v, want empty", listed.Data)
+	}
+
+	bl, _ := mint.Blind(m.PublicKey())
+	sig, _ := m.Issue(context.Background(), nil, bl.Blinded)
+	tok, _ := bl.Unblind(sig)
+	req, _ := http.NewRequest(http.MethodPost, front.URL+"/v1/messages",
+		strings.NewReader(`{"model":"preview","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(TokenHeader, tok.Encode())
+	resp, err := front.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound || resp.Header.Get(TokenOutcomeHeader) != TokenOutcomeRejected {
+		t.Fatalf("status/outcome = %d/%q", resp.StatusCode, resp.Header.Get(TokenOutcomeHeader))
+	}
+	if spent.Len() != 0 || budget.reserves.Load() != 0 || providerHits.Load() != 0 {
+		t.Fatalf("expired route touched spent=%d budget=%d provider=%d", spent.Len(), budget.reserves.Load(), providerHits.Load())
 	}
 }
 

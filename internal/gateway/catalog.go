@@ -88,7 +88,7 @@ func (s *Server) handleModels(w http.ResponseWriter) {
 
 func (s *Server) modelNames() []string {
 	if s.cfg.Routes != nil {
-		return s.cfg.Routes.Models()
+		return s.cfg.Routes.ActiveModels(s.now())
 	}
 	models := append([]string(nil), s.cfg.Models...)
 	slices.Sort(models)

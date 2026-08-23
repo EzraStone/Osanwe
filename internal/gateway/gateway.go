@@ -190,6 +190,10 @@ type Config struct {
 
 	ResponseHeaderTimeout time.Duration
 	Logger                *slog.Logger
+
+	// Now controls route lifecycle checks. Production leaves it nil and uses
+	// the system clock; tests inject an exact expiry boundary.
+	Now func() time.Time
 }
 
 // Metrics are cumulative counters. There is deliberately no per-request
@@ -219,6 +223,7 @@ type Server struct {
 	http     *http.Server
 	proxy    *httputil.ReverseProxy
 	listener net.Listener
+	now      func() time.Time
 }
 
 // routeKey carries the chosen provider from the handler to the rewrite hook,
@@ -304,6 +309,9 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
 
 	// With a route table the upstream is chosen per request, so a blank one is
 	// correct rather than missing.
@@ -352,7 +360,7 @@ func New(cfg Config) (*Server, error) {
 		}
 	}
 
-	s := &Server{cfg: cfg, log: cfg.Logger, upstream: up, models: models}
+	s := &Server{cfg: cfg, log: cfg.Logger, upstream: up, models: models, now: cfg.Now}
 	s.proxy = &httputil.ReverseProxy{
 		Rewrite:   s.rewrite,
 		Transport: s.transport(),
@@ -695,12 +703,23 @@ func (s *Server) prepareRequest(r *http.Request) (chosen, *body, *policyError) {
 			fmt.Sprintf("The request asks for %d output tokens; this gateway permits at most %d per paid request.",
 				maxTokens, s.cfg.MaxOutputTokens))
 	}
-	if _, ok := s.models[model]; !ok {
+	var activeRoute Route
+	var modelActive bool
+	if s.cfg.Routes != nil {
+		activeRoute, modelActive = s.cfg.Routes.LookupActive(model, s.now())
+	} else {
+		_, modelActive = s.models[model]
+	}
+	if !modelActive {
 		models := s.modelNames()
+		available := strings.Join(models, ", ")
+		if available == "" {
+			available = "no active models"
+		}
 		return chosen{}, nil, &policyError{
 			status: http.StatusNotFound, kind: "no_route", noRoute: true,
-			message: fmt.Sprintf("This gateway does not carry %q. It carries: %s",
-				model, strings.Join(models, ", ")),
+			message: fmt.Sprintf("This gateway does not currently carry %q. Available: %s",
+				model, available),
 		}
 	}
 	buf, err = json.Marshal(fields)
@@ -710,7 +729,7 @@ func (s *Server) prepareRequest(r *http.Request) (chosen, *body, *policyError) {
 
 	pick := chosen{path: "/v1/messages", model: model, maxOutputTokens: maxTokens, cost: s.cfg.Cost}
 	if s.cfg.Routes != nil {
-		pick.route, _ = s.cfg.Routes.Lookup(model)
+		pick.route = activeRoute
 		pick.cost = pick.route.Cost
 		// Clients speak the Messages API. A provider that speaks OpenAI's
 		// receives the one supported translation, never a caller-selected path.
