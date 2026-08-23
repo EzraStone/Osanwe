@@ -32,6 +32,7 @@ import (
 	"github.com/EzraStone/osanwe/internal/directory"
 	"github.com/EzraStone/osanwe/internal/policy"
 	"github.com/EzraStone/osanwe/internal/ranger"
+	"github.com/EzraStone/osanwe/internal/version"
 )
 
 // certValidity is long because rotating a self-signed identity means telling
@@ -82,6 +83,7 @@ func run() error {
 	genSecret := fs.Bool("gen-secret", false, "print a fresh random secret and exit")
 	showIdentity := fs.Bool("identity", false, "print this relay's directory identity and exit")
 	showPin := fs.Bool("pin", false, "print the relay's pin and exit")
+	showVersion := fs.Bool("version", false, "print version and exit")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "ranger — an Osanwë relay node.\n\n")
@@ -93,6 +95,10 @@ func run() error {
 			return nil
 		}
 		return err
+	}
+	if *showVersion {
+		fmt.Println(version.String("ranger"))
+		return nil
 	}
 
 	if *genSecret {

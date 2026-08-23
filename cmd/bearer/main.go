@@ -31,6 +31,7 @@ import (
 	"github.com/EzraStone/osanwe/internal/mint"
 	"github.com/EzraStone/osanwe/internal/pool"
 	"github.com/EzraStone/osanwe/internal/tunnel"
+	"github.com/EzraStone/osanwe/internal/version"
 )
 
 func main() {
@@ -62,6 +63,7 @@ func run() error {
 	receipt := fs.String("receipt", "", "proof of payment to present to the mint (or set OSANWE_RECEIPT)")
 	noUI := fs.Bool("no-ui", false, "do not serve the local interface")
 	openUI := fs.Bool("open-ui", false, "open the local interface in the default browser after startup")
+	showVersion := fs.Bool("version", false, "print version and exit")
 	buyToken := fs.Bool("buy-token", false, "buy one token, print it and exit. Needs -mint and -mint-key-id, and nothing else")
 	verbose := fs.Bool("v", false, "verbose logging")
 
@@ -76,6 +78,10 @@ func run() error {
 			return nil
 		}
 		return err
+	}
+	if *showVersion {
+		fmt.Println(version.String("bearer"))
+		return nil
 	}
 	if *configPath != "" {
 		cfg, err := loadClientFileConfig(*configPath)
