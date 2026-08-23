@@ -14,6 +14,11 @@ gateway have not been validated there. Run `mithlond`, `palantir`, and public
 relay infrastructure on Linux or WSL rather than treating a successful Windows
 client build as operator support.
 
+The ten-person free-beta authorization design is documented in
+[`beta-invites.md`](beta-invites.md). Its server and offline-generator half exists, but the client
+book wallet and the required rollback and expiry drills do not. Do not treat the mint flags in that
+document as a launch checklist.
+
 ---
 
 ## Before anything: understand the spending boundary
