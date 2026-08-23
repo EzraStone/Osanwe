@@ -5,9 +5,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        This issue is public. Never include a prompt, response, relay secret, entitlement, API key,
-        certificate private key, personal address, or log containing one. Report suspected security
-        vulnerabilities privately through the repository's Security tab instead.
+        GitHub sign-in is required. This form creates a public issue linked to your GitHub username.
+        Never include a prompt, response, relay secret, entitlement, API key, certificate private
+        key, personal address, or log containing one. Report suspected security vulnerabilities
+        privately through the repository's Security tab instead.
 
   - type: input
     id: build
@@ -84,4 +85,8 @@ body:
         - label: I used only the supplied synthetic or deliberately non-sensitive test material.
           required: true
         - label: I removed secrets, entitlements, prompts, responses, private addresses, and identifying logs from this report.
+          required: true
+        - label: I understand the configured model provider received the test prompt and answer under the gateway account.
+          required: true
+        - label: I understand this report is public and linked to my GitHub username.
           required: true

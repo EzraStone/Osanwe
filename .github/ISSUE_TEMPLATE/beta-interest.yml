@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping test Osanwë. Submitting this form requires a signed-in GitHub account
-        and creates a public issue linked to your GitHub username. Do not paste a prompt, response,
+        Thanks for helping test Osanwë. GitHub sign-in is required. Submitting this form creates a
+        public issue linked to your GitHub username. Do not paste a prompt, response,
         relay secret, entitlement, API key, personal address, or other sensitive information.
 
   - type: dropdown
