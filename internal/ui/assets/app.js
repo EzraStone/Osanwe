@@ -73,7 +73,7 @@ function render(){
     rows.push(["Relays known",String(status.directory.relays_known)]);
   }
   rows.push(["Paying with",status.paying]);
-  rows.push(["Retained",status.retained]);
+  rows.push(["Daemon history",status.retained]);
 
   var list=$("connList");list.textContent="";
   rows.forEach(function(r){
