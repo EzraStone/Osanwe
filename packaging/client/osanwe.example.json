@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "relay": "relay.example:8443",
+  "pin": "sha256/replace-with-the-relay-pin",
+  "upstream": "https://gateway.example",
+  "upstream_ca": "gateway.crt",
+  "mint": "https://mint.example",
+  "mint_key_id": "mint-replace-with-independently-verified-id"
+}
