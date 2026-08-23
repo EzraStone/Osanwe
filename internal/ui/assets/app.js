@@ -129,7 +129,9 @@ function fillPanel(){
 
 function openPanel(o){
   if(o)fillPanel();
+  panel.hidden=!o;veil.hidden=!o;
   panel.classList.toggle("open",o);veil.classList.toggle("open",o);
+  seal.setAttribute("aria-expanded",String(o));
   if(o)$("closePanel").focus();else seal.focus();
 }
 

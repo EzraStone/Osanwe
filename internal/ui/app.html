@@ -43,7 +43,8 @@
     <div class="composer-inner">
       <div class="composer">
         <textarea id="input" rows="1" placeholder="Ask anything" aria-label="Your message"></textarea>
-        <button type="button" class="seal" id="seal" aria-label="How this is protected" title="How this is protected">
+        <button type="button" class="seal" id="seal" aria-label="How this is protected"
+                aria-expanded="false" aria-controls="panel" title="How this is protected">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle class="ring" cx="12" cy="12" r="9"></circle>
             <path class="mark" d="M12 7.4v9.2M8.6 9.6a4.6 4.6 0 0 0 0 4.8M15.4 9.6a4.6 4.6 0 0 1 0 4.8"></path>
@@ -126,8 +127,8 @@
   </div>
 </div>
 
-<div class="veil" id="veil"></div>
-<div class="panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="panelTitle">
+<div class="veil" id="veil" hidden></div>
+<div class="panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="panelTitle" hidden>
   <div class="panel-inner">
     <h3 id="panelTitle">What happened to your words</h3>
     <p class="sub">Shown because you asked. It is never shown on its own.</p>
