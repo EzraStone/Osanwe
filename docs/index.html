@@ -16,9 +16,9 @@
 <title>Osanwë — Experimental privacy infrastructure</title>
 <style>
   :root{
-    --night:#10202a; --paper:#f8f3e8; --paper-2:#eee4d2; --ink:#182127; --muted:#5f6a6f;
-    --line:#d5cbb8; --gold:#b48b43; --gold-2:#f0d99c; --sea:#2d5968; --safe:#2d624d;
-    --warn:#8a502f; --white:#fffdf7;
+    --night:#0d2234; --paper:#f2ecdf; --paper-2:#e7dece; --ink:#183247; --muted:#5f6b70;
+    --line:#d2c6b5; --gold:#ad8540; --gold-2:#f0d390; --sea:#315a6c; --safe:#35634e;
+    --warn:#874632; --clay:#a64c3e; --white:#fffdf6;
     --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
     --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
@@ -30,32 +30,51 @@
   a:focus-visible{outline:3px solid var(--white);outline-offset:2px;box-shadow:0 0 0 6px #00566b}
   .skip{position:fixed;left:1rem;top:-5rem;z-index:20;background:var(--white);padding:.6rem .9rem;border-radius:.4rem}
   .skip:focus{top:1rem}
-  .shell{width:min(1120px,calc(100% - 2rem));margin-inline:auto}
-  .topbar{position:absolute;z-index:3;left:0;right:0;top:0;color:var(--white)}
-  .nav{height:74px;display:flex;align-items:center;justify-content:space-between;gap:1rem}
-  .brand{font:600 1.25rem var(--serif);letter-spacing:.025em;text-decoration:none}
+  .shell{width:min(1180px,calc(100% - 2rem));margin-inline:auto}
+  .topbar{position:absolute;z-index:3;left:0;right:0;top:1rem;color:var(--ink)}
+  .nav{min-height:62px;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.45rem .55rem .45rem 1rem;border:1px solid #ffffffaa;border-radius:999px;background:#fffef9cc;box-shadow:0 18px 50px #0e294212;backdrop-filter:blur(18px)}
+  .brand{display:inline-flex;align-items:center;gap:.55rem;font:600 1.22rem var(--serif);letter-spacing:.015em;text-decoration:none}
+  .brand-mark{width:1.65rem;height:1.65rem;border-radius:.48rem}
   .navlinks{display:flex;align-items:center;gap:1.1rem;font-size:.86rem}
-  .navlinks a{text-decoration:none;color:#e8e4dc}
+  .navlinks a{text-decoration:none;color:var(--ink)}
   .navlinks a:hover{text-decoration:underline;text-underline-offset:.25em}
-  .navlinks .pill{border:1px solid #ffffff66;border-radius:999px;padding:.45rem .8rem}
-  .hero{position:relative;isolation:isolate;min-height:760px;display:grid;align-items:end;overflow:hidden;background:var(--night)}
-  .hero::after{content:"";position:absolute;z-index:-1;inset:0;background:linear-gradient(180deg,#10202acc 0%,#10202a33 35%,#10202ae8 92%)}
-  .hero-art{position:absolute;z-index:-2;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
-  .hero-content{padding:9rem 0 5.3rem;color:var(--white)}
-  .status{display:inline-flex;align-items:center;gap:.5rem;margin:0 0 1.15rem;padding:.38rem .68rem;border:1px solid #f0d99c88;border-radius:999px;background:#10202aaa;color:var(--gold-2);font:650 .72rem var(--sans);letter-spacing:.1em;text-transform:uppercase}
-  .status::before{content:"";width:.48rem;height:.48rem;border-radius:50%;background:var(--gold-2);box-shadow:0 0 0 .2rem #f0d99c22}
-  h1{max-width:880px;margin:0;font:500 clamp(3.2rem,9vw,7.5rem)/.88 var(--serif);letter-spacing:-.055em;text-wrap:balance}
-  .hero-lede{max-width:660px;margin:1.6rem 0 0;color:#ece8de;font-size:clamp(1rem,2.2vw,1.3rem);line-height:1.55;text-wrap:pretty}
+  .navlinks .pill{border:1px solid var(--ink);border-radius:999px;padding:.55rem .9rem;background:var(--ink);color:var(--white)}
+  .hero{position:relative;isolation:isolate;min-height:850px;display:flex;flex-direction:column;overflow:hidden;background:var(--paper)}
+  .hero::before{content:"";position:absolute;z-index:-2;width:52rem;height:52rem;right:-19rem;top:-15rem;border:1px solid #b58c4340;border-radius:50%;box-shadow:0 0 0 5rem #b58c4308,0 0 0 10rem #b58c4305}
+  .hero-inner{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(24rem,.95fr);gap:clamp(2rem,6vw,6rem);align-items:center;padding-top:7.8rem;padding-bottom:3rem}
+  .hero-copy{position:relative;z-index:1;padding:3.2rem 0}
+  .status{display:inline-flex;align-items:center;gap:.5rem;margin:0 0 1.2rem;padding:.4rem .7rem;border:1px solid #c8563247;border-radius:999px;background:#fffef982;color:var(--clay);font:700 .7rem var(--sans);letter-spacing:.11em;text-transform:uppercase}
+  .status::before{content:"";width:.46rem;height:.46rem;border-radius:50%;background:var(--clay);box-shadow:0 0 0 .2rem #c8563218}
+  h1{max-width:760px;margin:0;font:500 clamp(3.8rem,7.2vw,6.7rem)/.9 var(--serif);letter-spacing:-.058em;text-wrap:balance}
+  .hero-lede{max-width:660px;margin:1.55rem 0 0;color:var(--muted);font-size:clamp(1rem,1.8vw,1.22rem);line-height:1.58;text-wrap:pretty}
   .actions{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.8rem}
   .button{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:.68rem 1rem;border:1px solid transparent;border-radius:999px;text-decoration:none;font-weight:700;font-size:.9rem}
-  .button.primary{background:var(--gold-2);color:#17242d}
-  .button.secondary{border-color:#ffffff66;color:var(--white);background:#10202a88}
+  .button.primary{background:var(--ink);color:var(--white)}
+  .button.secondary{border-color:#9ba4a8;color:var(--ink);background:#fffef96b}
   .button:hover{transform:translateY(-1px)}
-  .hero-note{max-width:650px;margin:1rem 0 0;color:#d6d2c8;font-size:.78rem}
+  .hero-note{max-width:650px;margin:1rem 0 0;color:#68747b;font-size:.78rem}
+  .hero-visual{position:relative;min-height:650px;display:grid;align-items:end}
+  .harbor-window{position:absolute;inset:0 1.5rem 0 0;overflow:hidden;border:1px solid #ffffff9c;border-radius:18rem 18rem 1.8rem 1.8rem;background:var(--night);box-shadow:0 35px 90px #0e29422e}
+  .hero-art{width:100%;height:100%;object-fit:cover;object-position:56% center;filter:saturate(.85) contrast(1.05)}
+  .harbor-window::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#0b1d2b0d 35%,#0b1d2baa 100%)}
+  .thought-card{position:relative;z-index:1;margin:0 0 1.4rem -2.5rem;padding:1rem 1rem 1rem 1.2rem;border:1px solid #ffffff99;border-radius:1.15rem;background:#fffef9ed;box-shadow:0 20px 55px #0b1d2b3b;backdrop-filter:blur(16px)}
+  .thought-card small{display:block;margin-bottom:.2rem;color:var(--clay);font:700 .67rem var(--sans);letter-spacing:.11em;text-transform:uppercase}
+  .thought-line{display:flex;align-items:center;justify-content:space-between;gap:1rem;color:var(--ink);font:500 1.04rem var(--serif)}
+  .thought-arrow{display:grid;width:2.15rem;height:2.15rem;flex:0 0 auto;place-items:center;border-radius:50%;background:var(--ink);color:var(--white);font-family:var(--sans)}
+  .trust-rail{display:flex;flex-wrap:wrap;gap:.55rem;padding-bottom:2rem}
+  .trust-rail span{padding:.42rem .68rem;border:1px solid var(--line);border-radius:999px;background:#fffef98c;color:var(--muted);font-size:.72rem}
   main section{padding:5.6rem 0}
   .eyebrow{margin:0 0 .55rem;color:var(--sea);font:750 .72rem var(--sans);letter-spacing:.13em;text-transform:uppercase}
   h2{max-width:820px;margin:0;font:500 clamp(2.25rem,5.8vw,4.7rem)/1 var(--serif);letter-spacing:-.04em;text-wrap:balance}
   .section-lede{max-width:690px;margin:1.15rem 0 0;color:var(--muted);font-size:1.08rem}
+  .principles{background:var(--white);border-top:1px solid #ffffff;border-bottom:1px solid var(--line)}
+  .principles-head{display:grid;grid-template-columns:1.05fr .95fr;gap:3rem;align-items:end}
+  .principles-head .section-lede{margin:0 0 .35rem}
+  .principle-grid{display:grid;grid-template-columns:repeat(4,1fr);margin-top:3rem;border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .principle{min-height:240px;padding:1.35rem;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:#f2ecdf73}
+  .principle b{display:block;margin-bottom:4.4rem;color:var(--clay);font:.72rem var(--mono)}
+  .principle h3{margin:0 0 .55rem;font:600 1.2rem var(--serif)}
+  .principle p{margin:0;color:var(--muted);font-size:.88rem}
   .truth{background:var(--white);border-bottom:1px solid var(--line)}
   .truth-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2.2rem}
   .truth-card{padding:1.45rem;border:1px solid var(--line);border-radius:18px;background:var(--paper)}
@@ -106,12 +125,12 @@
   footer nav{display:flex;flex-wrap:wrap;gap:1rem;font-size:.8rem}
   footer a{color:var(--gold-2)}
   @media(max-width:780px){
-    .navlinks a:not(.pill){display:none}.hero{min-height:700px}.hero-content{padding-bottom:3.6rem}
-    .truth-grid,.boundary,.candidate,.download-card{grid-template-columns:1fr}.path{grid-template-columns:1fr 1fr}
+    .navlinks a:not(.pill){display:none}.hero{min-height:auto}.hero-inner{grid-template-columns:1fr;padding-top:7rem}.hero-copy{padding-bottom:0}.hero-visual{min-height:560px}.thought-card{margin-left:1rem}.harbor-window{right:0}
+    .truth-grid,.boundary,.candidate,.download-card,.principles-head{grid-template-columns:1fr}.path,.principle-grid{grid-template-columns:1fr 1fr}
     .facts div{grid-template-columns:1fr;gap:.3rem}
     .path li:not(:last-child)::after{display:none}.roles{grid-template-columns:1fr}.footer-grid{display:grid}
   }
-  @media(max-width:470px){.path{grid-template-columns:1fr}.hero{min-height:650px}h1{font-size:3.15rem}.shell{width:min(100% - 1.3rem,1120px)}}
+  @media(max-width:470px){.path,.principle-grid{grid-template-columns:1fr}h1{font-size:3.45rem}.shell{width:min(100% - 1.3rem,1180px)}.nav{padding-left:.65rem}.brand-mark{width:1.45rem;height:1.45rem}.hero-visual{min-height:460px}.thought-card{margin-left:.55rem}.trust-rail{padding-bottom:1.2rem}}
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button:hover{transform:none}}
 </style>
 </head>
@@ -120,8 +139,9 @@
 
 <header class="topbar">
   <div class="nav shell">
-    <a class="brand" href="./" aria-label="Osanwë home">Osanwë</a>
+    <a class="brand" href="./" aria-label="Osanwë home"><img class="brand-mark" src="favicon.svg" alt="">Osanwë</a>
     <nav class="navlinks" aria-label="Primary">
+      <a href="#principles">Why Osanwë</a>
       <a href="#truth">Current state</a>
       <a href="design.html">Design</a>
       <a href="https://github.com/EzraStone/Osanwe" rel="noreferrer">Source</a>
@@ -132,20 +152,48 @@
 
 <main id="main">
   <section class="hero" aria-labelledby="hero-title">
-    <img class="hero-art" src="hero.png" alt="" aria-hidden="true">
-    <div class="hero-content shell">
-      <p class="status">Preparing a ten-person technical beta</p>
-      <h1 id="hero-title">Designed to split what each operator sees.</h1>
-      <p class="hero-lede">Osanwë is designed to separate who is asking from what is being asked:
-      a local app, an encrypted relay intended to have a separate operator, and blind-signed request
-      tokens designed not to be conventionally linkable between issuance and redemption.</p>
-      <div class="actions">
-        <a class="button primary" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml" rel="noreferrer">Apply for one of ten seats</a>
-        <a class="button secondary" href="#truth">See what is actually ready</a>
+    <div class="hero-inner shell">
+      <div class="hero-copy">
+        <p class="status">Free ten-person technical beta · pre-launch</p>
+        <h1 id="hero-title">You are a person, not a profile.</h1>
+        <p class="hero-lede">Osanwë is experimental, accountless infrastructure for AI—designed to
+        separate who is asking from what is being asked. Its Catholic inspiration begins with human
+        dignity and moral limits, and welcomes people of every faith or none.</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml" rel="noreferrer">Join the first ten</a>
+          <a class="button secondary" href="#truth">See the honest status</a>
+        </div>
+        <p class="hero-note">Applying requires GitHub sign-in and creates a public issue linked to your
+        GitHub username. The beta is free, invited, text-only, and limited to non-sensitive prompts.
+        This is not yet a public gateway, a production privacy promise, or a real-money service.</p>
       </div>
-      <p class="hero-note">Applying requires GitHub sign-in and creates a public issue linked to your
-      GitHub username. The beta is free, invited, text-only, and limited to non-sensitive prompts.
-      This is not yet a public gateway, a production privacy promise, or a real-money service.</p>
+      <div class="hero-visual" aria-hidden="true">
+        <div class="harbor-window"><img class="hero-art" src="hero.png" alt=""></div>
+        <div class="thought-card">
+          <small>A thought in transit</small>
+          <div class="thought-line"><span>A private question should not become a permanent identity.</span><span class="thought-arrow">↗</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="trust-rail shell" aria-label="Osanwë principles">
+      <span>No conventional account</span><span>Ephemeral by default</span><span>Provider policy shown</span><span>Safety systems stay intact</span>
+    </div>
+  </section>
+
+  <section class="principles" id="principles" aria-labelledby="principles-title">
+    <div class="shell">
+      <div class="principles-head">
+        <div><p class="eyebrow">Catholic in inspiration · open to everyone</p><h2 id="principles-title">Technology should serve the human person.</h2></div>
+        <p class="section-lede">Osanwë begins with human dignity and freedom. That conviction sets
+        both its privacy ambition and its moral limits; it is an invitation to people of every faith
+        or none, never a claim of institutional endorsement.</p>
+      </div>
+      <div class="principle-grid">
+        <article class="principle"><b>I</b><h3>Dignity before data</h3><p>A question should not require becoming an account, a profile, or an advertising subject.</p></article>
+        <article class="principle"><b>II</b><h3>Truth before reassurance</h3><p>Every participant still learns something. Osanwë names those boundaries instead of hiding them behind a score.</p></article>
+        <article class="principle"><b>III</b><h3>Freedom with responsibility</h3><p>Privacy does not mean bypassing model safety. Human freedom and moral limits belong together.</p></article>
+        <article class="principle"><b>IV</b><h3>Stewardship over extraction</h3><p>Reliability and careful security work come before growth, fundraising, or feature breadth.</p></article>
+      </div>
     </div>
   </section>
 
