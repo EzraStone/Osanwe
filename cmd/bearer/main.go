@@ -18,6 +18,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -65,6 +66,7 @@ func run() error {
 	receipt := fs.String("receipt", "", "proof of payment to present to the mint (or set OSANWE_RECEIPT)")
 	noUI := fs.Bool("no-ui", false, "do not serve the local interface")
 	openUI := fs.Bool("open-ui", false, "open the local interface in the default browser after startup")
+	exitOnStdinClose := fs.Bool("exit-on-stdin-close", false, "shut down when the launcher's private stdin pipe closes")
 	showVersion := fs.Bool("version", false, "print version and exit")
 	buyToken := fs.Bool("buy-token", false, "buy one token, print it and exit. Needs -mint and -mint-key-id, and nothing else")
 	verbose := fs.Bool("v", false, "verbose logging")
@@ -335,6 +337,10 @@ func run() error {
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve() }()
+	var launcherClosed <-chan struct{}
+	if *exitOnStdinClose {
+		launcherClosed = stdinCloseSignal(os.Stdin)
+	}
 	if *openUI {
 		localURL := "http://" + srv.Addr().String() + bearer.Prefix
 		if err := openLocalBrowser(localURL); err != nil {
@@ -350,11 +356,27 @@ func run() error {
 		return err
 	case sig := <-sigCh:
 		log.Info("shutting down", "signal", sig.String())
+	case <-launcherClosed:
+		log.Info("shutting down", "reason", "launcher closed")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(ctx)
+}
+
+// stdinCloseSignal lets a desktop launcher own the client without putting a
+// secret on the command line or leaving a terminal window open. The launcher
+// gives bearer a private stdin pipe and keeps its write side open for exactly
+// as long as the app window is alive. EOF therefore means the launcher closed
+// or crashed, and the normal server shutdown path can run.
+func stdinCloseSignal(r io.Reader) <-chan struct{} {
+	closed := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(io.Discard, r)
+		close(closed)
+	}()
+	return closed
 }
 
 // consumeLauncherEnvironment copies the two launcher-only values into this

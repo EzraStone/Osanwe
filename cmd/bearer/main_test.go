@@ -1,10 +1,12 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTokenModeCLIRequiresExplicitGatewayUpstream(t *testing.T) {
@@ -43,5 +45,29 @@ func TestConfigIsAppliedBeforeConnectionValidation(t *testing.T) {
 	err := run()
 	if err == nil || !strings.Contains(err.Error(), "no secret set") {
 		t.Fatalf("run error = %v, want validation to reach the runtime-only secret", err)
+	}
+}
+
+func TestStdinCloseSignalWaitsForLauncherEOF(t *testing.T) {
+	reader, writer := io.Pipe()
+	closed := stdinCloseSignal(reader)
+	t.Cleanup(func() {
+		_ = reader.Close()
+		_ = writer.Close()
+	})
+
+	select {
+	case <-closed:
+		t.Fatal("stdin close signal fired while the launcher still held the pipe")
+	default:
+	}
+
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("stdin close signal did not fire after launcher EOF")
 	}
 }
