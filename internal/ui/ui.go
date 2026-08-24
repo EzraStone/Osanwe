@@ -34,23 +34,31 @@ const contentSecurityPolicy = "default-src 'none'; " +
 	"base-uri 'none'; " +
 	"frame-ancestors 'none'"
 
-// The runner is always embedded without allow-same-origin. Its only executable
-// input is JavaScript placed in a disposable, timed worker; it cannot connect
-// to the client or any remote origin. This narrower document policy permits
-// that worker without weakening the credential-bearing parent page.
+// The runner is always embedded without allow-same-origin. Standalone
+// JavaScript runs in a disposable blob worker, while generated HTML runs in a
+// second opaque-origin data frame. Both are recreated per run and neither may
+// connect to the client or an outside origin. This narrower document policy
+// permits those two containers without weakening the credential-bearing page.
 const runnerContentSecurityPolicy = "default-src 'none'; " +
-	"style-src 'self' 'unsafe-inline'; " +
+	"style-src 'unsafe-inline'; " +
 	"script-src 'unsafe-inline' 'unsafe-eval'; " +
 	"worker-src blob:; " +
 	"img-src data: blob:; " +
 	"connect-src 'none'; " +
+	"webrtc 'block'; " +
 	"font-src 'none'; " +
 	"media-src 'none'; " +
 	"object-src 'none'; " +
-	"frame-src 'none'; " +
+	"frame-src data:; " +
 	"form-action 'none'; " +
 	"base-uri 'none'; " +
 	"frame-ancestors 'self'"
+
+// The Connection Allowlist blocks every outside endpoint, including channels
+// such as DNS prefetch and WebRTC that CSP does not cover consistently. CSP
+// still blocks the response origin itself. Local data/about documents inherit
+// both policies, which lets the runner create its disposable preview frame.
+const runnerConnectionAllowlist = "(response-origin);webrtc=block"
 
 type asset struct {
 	body        []byte
@@ -73,7 +81,6 @@ var assetFiles = []struct {
 	{"/assets/disclosure.js", "assets/disclosure.js", "text/javascript; charset=utf-8", ""},
 	{"/assets/lifecycle.js", "assets/lifecycle.js", "text/javascript; charset=utf-8", ""},
 	{"/assets/models.js", "assets/models.js", "text/javascript; charset=utf-8", ""},
-	{"/assets/runner.css", "assets/runner.css", "text/css; charset=utf-8", ""},
 	{"/assets/runner.html", "assets/runner.html", "text/html; charset=utf-8", runnerContentSecurityPolicy},
 	{"/assets/snippets.js", "assets/snippets.js", "text/javascript; charset=utf-8", ""},
 	{"/assets/sse.js", "assets/sse.js", "text/javascript; charset=utf-8", ""},
@@ -115,6 +122,9 @@ func Handler(prefix string) http.Handler {
 			csp = contentSecurityPolicy
 		}
 		w.Header().Set("Content-Security-Policy", csp)
+		if rest == "/assets/runner.html" {
+			w.Header().Set("Connection-Allowlist", runnerConnectionAllowlist)
+		}
 		// The page reflects live local state, and a cached copy showing a relay
 		// that is no longer in use would be a confident lie.
 		w.Header().Set("Cache-Control", "no-store")

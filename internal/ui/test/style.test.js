@@ -33,3 +33,15 @@ test("faint and alarm text meet normal-text contrast in both explicit themes", (
     }
   }
 });
+
+test("fixed runner chrome keeps status and boundary copy readable", () => {
+  const colors = palette(".code-runner");
+  for (const background of [colors["runner-chrome"], colors["runner-raised"]]) {
+    assert.ok(contrast(colors["runner-muted"], background) >= 4.5, "runner status contrast failed");
+    assert.ok(contrast(colors["runner-warn"], background) >= 4.5, "runner warning contrast failed");
+    assert.ok(contrast(colors["runner-subtle"], background) >= 4.5, "runner boundary contrast failed");
+    assert.ok(contrast(colors["runner-accent"], background) >= 3, "runner focus contrast failed");
+  }
+  assert.match(css, /\.code-runner :where\(button,input,textarea,select\):focus-visible\{outline-color:var\(--runner-accent\)\}/);
+  assert.match(css, /\.runner-resizer:focus-visible::after\{background:var\(--gild\)\}/);
+});

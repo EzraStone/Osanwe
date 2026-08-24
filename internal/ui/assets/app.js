@@ -1,5 +1,5 @@
 import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
-import { parseCodeFences } from "./code.js";
+import { buildPreviewBundle, parseCodeFences } from "./code.js";
 import { appendTurn, conversationTitle, conversationTurnText, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
 import { disclosureNarrative } from "./disclosure.js";
 import { ConversationLifecycle } from "./lifecycle.js";
@@ -19,8 +19,8 @@ var thread=$("thread"),rail=$("rail"),opening=$("opening"),
     panel=$("panel"),veil=$("veil"),providerSettings=$("providerSettings"),runnerFrame=$("runnerPreview");
 
 var status=null,busy=false,stopping=false,broken=false,activeRequest=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
-    providerKey="",activeMode="chat",runnerOpen=false,runnerChannel="",runnerLines=[],runnerBusy=false,
-    pendingRunnerRun=null,runnerStartupTimer=null,
+    providerKey="",activeMode="chat",runnerOpen=false,runnerChannel="",runnerLines=[],runnerBusy=false,runnerHadError=false,
+    pendingRunnerRun=null,runnerStartupTimer=null,runnerLastSnapshot=null,runnerActiveSnapshot=null,runnerReturnFocus=null,runnerModal=false,
     completedRequestHere=false,catalogRequest=0,transitionTail=Promise.resolve(),lifecycle=new ConversationLifecycle(),
     retentionMode="ephemeral",store=conversationStore("ephemeral"),
     conversation=createConversation({model:model.value});
@@ -29,7 +29,7 @@ var modeCopy={
   chat:{kicker:"Private chat",title:"What are you thinking about?",placeholder:"Ask anything",assistant:"Osanwë",system:""},
   code:{
     kicker:"Code assistant",title:"What should we build?",placeholder:"Describe a coding task",assistant:"Osanwë Code",
-    system:"You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. You cannot access the user's local files, run commands, or apply changes, so state that limitation whenever it matters. Prefer concise, directly usable code or patches. When JavaScript or HTML can demonstrate the answer, use a fenced code block. JavaScript may include tests with test(name, fn) and assert(condition, message) for the local sandbox."
+    system:"You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. You cannot access the user's local files, run commands, or apply changes, so state that limitation whenever it matters. Prefer concise, directly usable code or patches. When a self-contained web preview can demonstrate the answer, return fenced HTML, CSS, and JavaScript. JavaScript may include tests with test(name, fn) and assert(condition, message) for the local sandbox. The preview has no network, persistent storage, terminal, or ambient file access. A person may deliberately choose a file inside the preview, so never request sensitive files."
   }
 };
 document.body.dataset.mode=activeMode;
@@ -65,7 +65,14 @@ function render(){
   providerSettings.hidden=tokens;
   $("openProviderSettings").hidden=tokens||Boolean(providerKey);
   $("codeContext").hidden=activeMode!=="code";
-  $("codeRunner").hidden=activeMode!=="code"||!runnerOpen;
+  var runnerVisible=activeMode==="code"&&runnerOpen;
+  $("codeRunner").hidden=!runnerVisible;
+  $("runnerResizer").hidden=!runnerVisible;
+  $("openCodeRunner").hidden=runnerVisible;
+  $("codePreviewToggle").hidden=activeMode!=="code"||runnerVisible;
+  document.body.classList.toggle("runner-open",runnerVisible);
+  syncRunnerModality();
+  $("rerunCode").disabled=runnerBusy||!runnerLastSnapshot;
   input.disabled=!chatAvailable;
 	input.placeholder=!tokens&&!providerKey?"Connect a provider in Settings":(!modelsReady?"Checking active models":"No active model available");
 	if(chatAvailable)input.placeholder=modeCopy[activeMode].placeholder;
@@ -216,7 +223,9 @@ function turn(kind,label){
 
 function renderAssistantContent(body,text,withRunner){
   body.textContent="";
-  parseCodeFences(text).forEach(function(part){
+  var parts=parseCodeFences(text),previewBundle=buildPreviewBundle(parts);
+  var previewRoot=parts.find(function(part){return part.kind==="code"&&part.runnerLanguage==="html"});
+  parts.forEach(function(part){
     if(part.kind==="text"){
       var span=document.createElement("span");span.className="assistant-text";span.textContent=part.content;body.appendChild(span);return;
     }
@@ -224,8 +233,11 @@ function renderAssistantContent(body,text,withRunner){
     var head=document.createElement("div");head.className="generated-code-head";
     var label=document.createElement("span");label.textContent=part.language||"code";head.appendChild(label);
     if(withRunner&&part.runnerLanguage){
-      var loadButton=document.createElement("button");loadButton.type="button";loadButton.textContent="Load into runner";
-      loadButton.addEventListener("click",function(){loadRunnerCode(part.runnerLanguage,part.content)});
+      var useBundle=previewBundle&&(part===previewRoot||part.runnerLanguage==="javascript");
+      var runnable=useBundle?previewBundle:{language:part.runnerLanguage,code:part.content};
+      var loadButton=document.createElement("button");loadButton.type="button";
+      loadButton.textContent=runnable.language==="html"?"Run preview":"Run code";
+      loadButton.addEventListener("click",function(){loadRunnerCode(runnable.language,runnable.code,true,loadButton)});
       head.appendChild(loadButton);
     }
     var pre=document.createElement("pre"),code=document.createElement("code");
@@ -338,34 +350,76 @@ function showSnippet(name){
 
 // ---- local code runner ----------------------------------------------
 function showRunnerView(name){
-  var preview=name==="preview";
-  $("runnerPreview").hidden=!preview;$("runnerResults").hidden=preview;
+  if(name!=="editor"&&name!=="results")name="editor";
+  $("runnerEditorPanel").hidden=name!=="editor";$("runnerResults").hidden=name!=="results";
   document.querySelectorAll("[data-runner-view]").forEach(function(button){
     var selected=button.dataset.runnerView===name;
     button.setAttribute("aria-selected",String(selected));button.tabIndex=selected?0:-1;
   });
 }
 
+function setRunnerExecutionBusy(value){
+  runnerBusy=value;
+  $("runCode").disabled=value;
+  $("runnerEditor").readOnly=value;
+  $("runnerLanguage").disabled=value;
+  $("clearRunner").disabled=value;
+  $("codeRunner").setAttribute("aria-busy",String(value));
+}
+
+function visibleFocusTarget(node){
+  return Boolean(node&&node.isConnected&&!node.disabled&&!node.closest("[inert]")&&node.getClientRects().length);
+}
+
+function syncRunnerModality(){
+  var visible=activeMode==="code"&&runnerOpen;
+  var runner=$("codeRunner"),maximized=runner.classList.contains("is-maximized");
+  var drawer=window.matchMedia("(max-width:70rem)").matches;
+  var modal=visible&&(maximized||drawer);
+  if(modal){runner.setAttribute("role","dialog");runner.setAttribute("aria-modal","true")}
+  else{runner.removeAttribute("role");runner.removeAttribute("aria-modal")}
+  $("codeContext").inert=modal;
+  document.querySelector(".conversation-surface").inert=modal;
+  $("runnerResizer").inert=modal;
+  document.querySelector(".chrome").inert=modal;
+  if(modal&&!runner.contains(document.activeElement))$("closeCodeRunner").focus();
+  runnerModal=modal;
+}
+
 function resetRunnerFrame(reason){
-  runnerChannel="";runnerBusy=false;pendingRunnerRun=null;$("runCode").disabled=false;
+  runnerChannel="";runnerHadError=false;runnerActiveSnapshot=null;pendingRunnerRun=null;setRunnerExecutionBusy(false);
   if(runnerStartupTimer)window.clearTimeout(runnerStartupTimer);runnerStartupTimer=null;
   runnerFrame.onload=null;
   runnerFrame.src=PREFIX+"assets/runner.html?idle="+encodeURIComponent(String(Date.now()));
   if(reason)$("runnerStatus").textContent=reason;
+  $("rerunCode").disabled=!runnerLastSnapshot;
 }
 
-function setRunnerOpen(open){
+function setRunnerOpen(open,opener){
+  if(open&&opener)runnerReturnFocus=opener;
   runnerOpen=open;
-  if(!open)resetRunnerFrame("Runner stopped. Loaded code remains in the editor.");
+  if(!open){
+    resetRunnerFrame("Preview stopped. Loaded code remains in the editor.");
+    $("codeRunner").classList.remove("is-maximized");
+    $("expandCodeRunner").textContent="↗";
+    $("expandCodeRunner").setAttribute("aria-label","Maximize live preview");
+  }
   render();
   if(open)$("runnerEditor").focus();
+  else{
+    var returnTarget=runnerReturnFocus;runnerReturnFocus=null;
+    if(!visibleFocusTarget(returnTarget))returnTarget=$("codePreviewToggle");
+    if(!visibleFocusTarget(returnTarget))returnTarget=$("codeTab");
+    if(visibleFocusTarget(returnTarget))returnTarget.focus();
+  }
 }
 
-function loadRunnerCode(language,code){
+function loadRunnerCode(language,code,runNow,opener){
   $("runnerLanguage").value=language;$("runnerEditor").value=code;
   runnerLines=[];$("runnerResults").textContent="No output yet.";
-  $("runnerStatus").classList.remove("warn");$("runnerStatus").textContent="Loaded. Review the code, then choose Run & test.";
-  runnerOpen=true;render();$("runnerEditor").focus();
+  $("runnerStatus").classList.remove("warn");$("runnerStatus").textContent="Loaded. Nothing runs until you choose Run in preview.";
+  runnerOpen=true;runnerReturnFocus=opener||document.activeElement;render();
+  if(runNow){$("closeCodeRunner").focus();runEditorCode()}else $("runnerEditor").focus();
 }
 
 function addRunnerLine(kind,text){
@@ -375,57 +429,135 @@ function addRunnerLine(kind,text){
   $("runnerResults").textContent=runnerLines.join("\n")||"No output yet.";
 }
 
-function runEditorCode(){
-  var code=$("runnerEditor").value,language=$("runnerLanguage").value;
+function showRunnerNetworkState(available){
+  var badge=$("runnerNetworkState");
+  if(available===true){
+    badge.textContent="Network off";badge.title="Generated code cannot make network requests";return;
+  }
+  if(available===false){
+    badge.textContent="HTML locked";badge.title="Interactive HTML requires Chromium 152 or newer";return;
+  }
+  badge.textContent="Checking";badge.title="Checking the browser's preview boundary";
+}
+
+function requestRunnerCapabilities(){
+  if(runnerFrame.contentWindow)runnerFrame.contentWindow.postMessage({type:"osanwe-runner-capabilities"},"*");
+}
+
+function startRunnerRun(language,code){
   if(!code.trim()){
     $("runnerStatus").textContent="Add code before running.";$("runnerStatus").classList.add("warn");$("runnerEditor").focus();return;
   }
-  runnerChannel=crypto.randomUUID();runnerLines=[];runnerBusy=true;
+  runnerLastSnapshot={language:language,code:code};runnerActiveSnapshot=runnerLastSnapshot;
+  runnerChannel=crypto.randomUUID();runnerLines=[];runnerHadError=false;setRunnerExecutionBusy(true);
   $("runnerResults").textContent="Waiting for output…";$("runnerStatus").textContent="Running in the isolated sandbox…";
-  $("runnerStatus").classList.remove("warn");$("runCode").disabled=true;
-  showRunnerView(language==="html"?"preview":"results");
+  $("runnerStatus").classList.remove("warn");$("rerunCode").disabled=true;
+  if(language==="javascript"){showRunnerView("results");$("resultsTab").focus()}
+  else $("closeCodeRunner").focus();
+  $("previewAddress").textContent=language==="html"?"osanwe://local-preview/index.html":"osanwe://local-preview/console";
   pendingRunnerRun={type:"osanwe-run",channel:runnerChannel,language:language,code:code};
   var expectedChannel=runnerChannel;
   runnerStartupTimer=window.setTimeout(function(){
     if(!pendingRunnerRun||pendingRunnerRun.channel!==expectedChannel)return;
-    pendingRunnerRun=null;runnerBusy=false;$("runCode").disabled=false;
+    pendingRunnerRun=null;runnerActiveSnapshot=null;setRunnerExecutionBusy(false);$("rerunCode").disabled=false;
     $("runnerStatus").textContent="The sandbox did not start. Try running again.";$("runnerStatus").classList.add("warn");
   },1500);
   runnerFrame.src=PREFIX+"assets/runner.html?run="+encodeURIComponent(expectedChannel);
+}
+
+function runEditorCode(){
+  startRunnerRun($("runnerLanguage").value,$("runnerEditor").value);
+}
+
+function rerunLastSnapshot(){
+  if(!runnerLastSnapshot){
+    $("runnerStatus").textContent="Nothing has run yet. Choose Run in preview first.";$("runnerStatus").classList.add("warn");return;
+  }
+  startRunnerRun(runnerLastSnapshot.language,runnerLastSnapshot.code);
 }
 
 window.addEventListener("message",function(event){
   var message=event.data;
   if(event.source!==runnerFrame.contentWindow||!message)return;
   if(message.type==="osanwe-runner-ready"){
-    if(!pendingRunnerRun)return;
+    if(typeof message.networkIsolation==="boolean")showRunnerNetworkState(message.networkIsolation);
+    if(!pendingRunnerRun||message.channel!==pendingRunnerRun.channel)return;
     if(runnerStartupTimer)window.clearTimeout(runnerStartupTimer);runnerStartupTimer=null;
     runnerFrame.contentWindow.postMessage(pendingRunnerRun,"*");pendingRunnerRun=null;return;
+  }
+  if(message.type==="osanwe-runner-control"&&message.channel===runnerChannel&&message.action==="escape"){
+    handleRunnerEscape();return;
   }
   if(message.type!=="osanwe-runner"||message.channel!==runnerChannel)return;
   if(["log","info","warn","error","test","preview","complete"].indexOf(message.kind)<0)return;
   addRunnerLine(message.kind,message.text||"");
-  if(message.kind==="error")$("runnerStatus").classList.add("warn");
+  if(message.kind==="error"){
+    runnerHadError=true;$("runnerStatus").textContent=message.text||"The run failed.";$("runnerStatus").classList.add("warn");
+  }
   if(message.kind==="preview")$("runnerStatus").textContent=message.text||"Preview ready.";
   if(message.kind==="complete"){
-    runnerBusy=false;$("runCode").disabled=false;
+    var completedLanguage=runnerActiveSnapshot?runnerActiveSnapshot.language:"";
+    runnerActiveSnapshot=null;setRunnerExecutionBusy(false);$("rerunCode").disabled=false;
     var failed=Number.isSafeInteger(message.failed)?message.failed:0;
     var tests=Number.isSafeInteger(message.testCount)?message.testCount:0;
     if(message.timedOut){$("runnerStatus").textContent="Stopped at the 2.5 second limit.";$("runnerStatus").classList.add("warn")}
+    else if(runnerHadError){$("runnerStatus").textContent="Run completed with errors.";$("runnerStatus").classList.add("warn")}
     else if(failed){$("runnerStatus").textContent=message.text||"One or more tests failed.";$("runnerStatus").classList.add("warn")}
     else if(tests){$("runnerStatus").textContent=message.text||"All declared tests passed."}
-    else if($("runnerLanguage").value==="javascript"){$("runnerStatus").textContent="Run completed. No tests were declared."}
+    else if(completedLanguage==="javascript"){$("runnerStatus").textContent="Run completed. No tests were declared."}
   }
 });
+runnerFrame.addEventListener("load",requestRunnerCapabilities);
+window.setTimeout(requestRunnerCapabilities,0);
 
-$("openCodeRunner").addEventListener("click",function(){setRunnerOpen(true)});
+$("openCodeRunner").addEventListener("click",function(){setRunnerOpen(true,this)});
+$("codePreviewToggle").addEventListener("click",function(){setRunnerOpen(true,this)});
 $("closeCodeRunner").addEventListener("click",function(){setRunnerOpen(false)});
 $("runCode").addEventListener("click",runEditorCode);
+$("rerunCode").addEventListener("click",rerunLastSnapshot);
+$("expandCodeRunner").addEventListener("click",function(){
+  var maximized=$("codeRunner").classList.toggle("is-maximized");
+  this.textContent=maximized?"↙":"↗";
+  this.setAttribute("aria-label",maximized?"Restore live preview":"Maximize live preview");
+  this.title=this.getAttribute("aria-label");
+  syncRunnerModality();
+});
 $("clearRunner").addEventListener("click",function(){
-  $("runnerEditor").value="";runnerLines=[];$("runnerResults").textContent="No output yet.";$("runnerStatus").classList.remove("warn");
+  $("runnerEditor").value="";runnerLines=[];runnerLastSnapshot=null;$("runnerResults").textContent="No output yet.";$("runnerStatus").classList.remove("warn");
   resetRunnerFrame("Cleared. Nothing has run.");$("runnerEditor").focus();
 });
+$("runnerEditor").addEventListener("input",function(){
+  if(!runnerBusy&&runnerLastSnapshot&&(this.value!==runnerLastSnapshot.code||$("runnerLanguage").value!==runnerLastSnapshot.language)){
+    $("runnerStatus").textContent="Code changed. Run it to update the display; Reload keeps the last snapshot.";
+  }
+});
+$("runnerLanguage").addEventListener("change",function(){
+  if(!runnerBusy&&runnerLastSnapshot)$("runnerStatus").textContent="Language changed. Run it to update the display; Reload keeps the last snapshot.";
+});
 document.querySelectorAll("[data-runner-view]").forEach(function(button){button.addEventListener("click",function(){showRunnerView(button.dataset.runnerView)})});
+
+function setRunnerWidth(value){
+  var percent=Math.max(35,Math.min(72,Math.round(value)));
+  $("codeRunner").style.setProperty("--runner-width",percent+"%");
+  $("runnerResizer").setAttribute("aria-valuenow",String(percent));
+  $("runnerResizer").setAttribute("aria-valuetext","Preview width "+percent+" percent");
+}
+$("runnerResizer").addEventListener("pointerdown",function(event){
+  var handle=this;handle.setPointerCapture(event.pointerId);handle.classList.add("is-dragging");
+  var move=function(next){setRunnerWidth((window.innerWidth-next.clientX)/window.innerWidth*100)};
+  var done=function(){handle.classList.remove("is-dragging");handle.removeEventListener("pointermove",move);handle.removeEventListener("pointerup",done);handle.removeEventListener("pointercancel",done)};
+  handle.addEventListener("pointermove",move);handle.addEventListener("pointerup",done);handle.addEventListener("pointercancel",done);
+});
+$("runnerResizer").addEventListener("keydown",function(event){
+  var current=Number(this.getAttribute("aria-valuenow"))||54;
+  if(event.key==="ArrowLeft")current+=2;
+  else if(event.key==="ArrowRight")current-=2;
+  else if(event.key==="Home")current=35;
+  else if(event.key==="End")current=72;
+  else return;
+  event.preventDefault();setRunnerWidth(current);
+});
+window.addEventListener("resize",syncRunnerModality);
 
 // ---- wiring ---------------------------------------------------------
 function connectProviderKey(){
@@ -471,9 +603,26 @@ stop.addEventListener("click",function(){
 seal.addEventListener("click",function(){openPanel(!panel.classList.contains("open"))});
 $("closePanel").addEventListener("click",function(){openPanel(false)});
 veil.addEventListener("click",function(){openPanel(false)});
+function handleRunnerEscape(){
+  if(activeMode!=="code"||!runnerOpen)return false;
+  if($("codeRunner").classList.contains("is-maximized")){$("expandCodeRunner").click();return true}
+  if(window.matchMedia("(max-width:70rem)").matches){setRunnerOpen(false);return true}
+  return false;
+}
 document.addEventListener("keydown",function(e){
-  if(e.key==="Escape"&&panel.classList.contains("open"))openPanel(false);
+  if(e.key==="Escape"&&panel.classList.contains("open")){openPanel(false);return}
+  if(e.key==="Escape"&&!$("settingsDialog").open&&handleRunnerEscape()){e.preventDefault();return}
   keepDialogFocus(e);
+});
+
+$("codeRunner").addEventListener("keydown",function(e){
+  if(!runnerModal||e.key!=="Tab")return;
+  var candidates=Array.from(this.querySelectorAll("button:not(:disabled),select:not(:disabled),textarea:not(:disabled),iframe,[tabindex]:not([tabindex='-1'])"))
+    .filter(visibleFocusTarget);
+  if(!candidates.length)return;
+  var first=candidates[0],last=candidates[candidates.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
 });
 
 $("newBtn").addEventListener("click",function(){
@@ -495,7 +644,8 @@ document.querySelectorAll("[data-mode]").forEach(function(btn){
       await stopActiveRequest();await lifecycle.idle();
       modeConversations[activeMode]=conversation;
       activeMode=want;conversation=modeConversations[want];conversation.model=model.value;
-      if(activeMode!=="code"&&runnerOpen){runnerOpen=false;resetRunnerFrame("Runner stopped. Loaded code remains in the editor.")}
+      if(activeMode==="code")runnerOpen=window.matchMedia("(min-width:70.01rem)").matches;
+      else if(runnerOpen){runnerOpen=false;resetRunnerFrame("Preview stopped. Loaded code remains in the editor.")}
       document.body.dataset.mode=activeMode;
       document.querySelectorAll("[data-mode]").forEach(function(b){
         b.setAttribute("aria-selected",String(b===btn));

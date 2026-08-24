@@ -67,7 +67,7 @@ func TestPrimaryModesAndProviderSettingsAreHonest(t *testing.T) {
 		`id="providerSettings"`,
 		`cannot read files, run commands, or apply changes`,
 		`id="codeRunner"`,
-		`id="runCode">Run &amp; test`,
+		`id="runCode">Run in preview`,
 		`sandbox="allow-scripts"`,
 	} {
 		if !strings.Contains(text, required) {
@@ -150,7 +150,7 @@ func TestThePolicyPinsThePageToThisClient(t *testing.T) {
 	}
 }
 
-func TestRunnerPolicyPermitsOnlyTheDisposableWorker(t *testing.T) {
+func TestRunnerPolicyPermitsOnlyDisposableSandboxes(t *testing.T) {
 	rec := httptest.NewRecorder()
 	Handler("/_osanwe/").ServeHTTP(rec, httptest.NewRequest("GET", "/_osanwe/assets/runner.html", nil))
 	if rec.Code != http.StatusOK {
@@ -158,15 +158,89 @@ func TestRunnerPolicyPermitsOnlyTheDisposableWorker(t *testing.T) {
 	}
 	csp := rec.Header().Get("Content-Security-Policy")
 	for _, want := range []string{
-		"default-src 'none'", "worker-src blob:", "connect-src 'none'", "font-src 'none'",
-		"media-src 'none'", "object-src 'none'", "frame-src 'none'", "form-action 'none'", "frame-ancestors 'self'",
+		"default-src 'none'", "style-src 'unsafe-inline'", "worker-src blob:", "frame-src data:", "connect-src 'none'", "webrtc 'block'", "font-src 'none'",
+		"media-src 'none'", "object-src 'none'", "form-action 'none'", "frame-ancestors 'self'",
 	} {
 		if !strings.Contains(csp, want) {
 			t.Fatalf("runner policy %q is missing %q", csp, want)
 		}
 	}
-	if strings.Contains(csp, "connect-src *") || strings.Contains(csp, "connect-src 'self'") {
+	if strings.Contains(csp, "connect-src *") || strings.Contains(csp, "connect-src 'self'") ||
+		strings.Contains(csp, "frame-src 'self'") || strings.Contains(csp, "https:") {
 		t.Fatalf("runner policy %q can reach another endpoint", csp)
+	}
+	if got := rec.Header().Get("Connection-Allowlist"); got != "(response-origin);webrtc=block" {
+		t.Fatalf("runner Connection-Allowlist = %q, want local-only network policy", got)
+	}
+}
+
+func TestRunnerSeparatesGeneratedCodeFromTheTrustedBroker(t *testing.T) {
+	runner, err := files.ReadFile("assets/runner.html")
+	if err != nil {
+		t.Fatalf("assets/runner.html is not embedded: %v", err)
+	}
+	text := string(runner)
+	for _, want := range []string{
+		`<main id="previewRoot">`,
+		`new Worker(workerURL)`,
+		`publishWorkerOutput(message.kind`,
+		`window.setTimeout(() => {`,
+		`}, 2500);`,
+		`document.createElement("iframe")`,
+		`frame.setAttribute("sandbox", "allow-scripts")`,
+		`new TextEncoder().encode(text)`,
+		`frame.src = documentDataURL(serialized)`,
+		`"connect-src 'none'"`,
+		`"webrtc 'block'"`,
+		`"frame-src 'none'"`,
+		`"worker-src 'none'"`,
+		`parsed.head.prepend(policy, referrer, bootstrap)`,
+		`event.source !== parentWindow`,
+		`channel: startupChannel`,
+		`pin("webkitRTCPeerConnection", unavailable)`,
+		`const networkIsolationReady = supportedNetworkBrowser()`,
+		`Number(match[1]) >= 152`,
+		`type: "osanwe-preview-output"`,
+		`window.addEventListener("unhandledrejection"`,
+		`previewReceiver(message)`,
+		`const hostWindow = window.parent`,
+		`errorCount = Math.min(errorCount + 1`,
+		`An additional HTML error occurred after the 200-line output limit.`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("runner broker is missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{
+		`<main id="previewRoot" aria-live`,
+		`allow-same-origin`,
+		`querySelectorAll("script`,
+		`name.startsWith("on")`,
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("runner broker contains unsafe or non-interactive marker %q", forbidden)
+		}
+	}
+}
+
+func TestRunnerParentBindsReadyMessagesAndBusyStateToTheActiveRun(t *testing.T) {
+	app, err := files.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("assets/app.js is not embedded: %v", err)
+	}
+	text := string(app)
+	for _, want := range []string{
+		`event.source!==runnerFrame.contentWindow`,
+		`message.channel!==pendingRunnerRun.channel`,
+		`showRunnerNetworkState(message.networkIsolation)`,
+		`runnerActiveSnapshot`,
+		`$("runnerEditor").readOnly=value`,
+		`$("runnerLanguage").disabled=value`,
+		`Run completed with errors.`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("runner parent is missing %q", want)
+		}
 	}
 }
 
@@ -228,7 +302,6 @@ func TestOnlyKnownAssetsAreServed(t *testing.T) {
 		{"/_osanwe/assets/disclosure.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/lifecycle.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/models.js", "text/javascript; charset=utf-8"},
-		{"/_osanwe/assets/runner.css", "text/css; charset=utf-8"},
 		{"/_osanwe/assets/runner.html", "text/html; charset=utf-8"},
 		{"/_osanwe/assets/snippets.js", "text/javascript; charset=utf-8"},
 		{"/_osanwe/assets/sse.js", "text/javascript; charset=utf-8"},
