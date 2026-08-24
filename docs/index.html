@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Osanwë is experimental infrastructure designed to separate network identity from AI inference content. Join the first ten-person technical beta.">
+<meta name="description" content="Osanwë is experimental, accountless AI infrastructure shaped by human dignity, truthful privacy boundaries, and moral limits. Join the first ten-person technical beta.">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#17242d">
-<meta property="og:title" content="Osanwë — experimental privacy infrastructure, honestly bounded">
-<meta property="og:description" content="A local app, an encrypted relay, and blind-signed request tokens designed to prevent direct issuance-to-redemption matching. Technical beta preparation—not a public service yet.">
+<meta property="og:title" content="Osanwë — You are a person, not a profile">
+<meta property="og:description" content="Experimental, accountless AI infrastructure shaped by human dignity and honest privacy boundaries. Technical beta preparation—not a public service yet.">
 <meta property="og:image" content="https://ezrastone.github.io/Osanwe/hero-og.png">
 <meta property="og:url" content="https://ezrastone.github.io/Osanwe/">
 <meta property="og:type" content="website">
 <link rel="canonical" href="https://ezrastone.github.io/Osanwe/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<title>Osanwë — Experimental privacy infrastructure</title>
+<title>Osanwë — You are a person, not a profile</title>
 <style>
   :root{
     --night:#0d2234; --paper:#f2ecdf; --paper-2:#e7dece; --ink:#183247; --muted:#5f6b70;
@@ -52,7 +52,7 @@
   .button.primary{background:var(--ink);color:var(--white)}
   .button.secondary{border-color:#9ba4a8;color:var(--ink);background:#fffef96b}
   .button:hover{transform:translateY(-1px)}
-  .hero-note{max-width:650px;margin:1rem 0 0;color:#68747b;font-size:.78rem}
+  .hero-note{max-width:650px;margin:1rem 0 0;color:var(--muted);font-size:.78rem}
   .hero-visual{position:relative;min-height:650px;display:grid;align-items:end}
   .harbor-window{position:absolute;inset:0 1.5rem 0 0;overflow:hidden;border:1px solid #ffffff9c;border-radius:18rem 18rem 1.8rem 1.8rem;background:var(--night);box-shadow:0 35px 90px #0e29422e}
   .hero-art{width:100%;height:100%;object-fit:cover;object-position:56% center;filter:saturate(.85) contrast(1.05)}
@@ -64,6 +64,7 @@
   .trust-rail{display:flex;flex-wrap:wrap;gap:.55rem;padding-bottom:2rem}
   .trust-rail span{padding:.42rem .68rem;border:1px solid var(--line);border-radius:999px;background:#fffef98c;color:var(--muted);font-size:.72rem}
   main section{padding:5.6rem 0}
+  main .hero{padding:0}
   .eyebrow{margin:0 0 .55rem;color:var(--sea);font:750 .72rem var(--sans);letter-spacing:.13em;text-transform:uppercase}
   h2{max-width:820px;margin:0;font:500 clamp(2.25rem,5.8vw,4.7rem)/1 var(--serif);letter-spacing:-.04em;text-wrap:balance}
   .section-lede{max-width:690px;margin:1.15rem 0 0;color:var(--muted);font-size:1.08rem}
@@ -79,8 +80,9 @@
   .product::before{content:"";position:absolute;width:34rem;height:34rem;left:-18rem;top:9rem;border:1px solid #ad854025;border-radius:50%;box-shadow:0 0 0 4rem #ad854009,0 0 0 8rem #ad854006}
   .product-head{position:relative;display:grid;grid-template-columns:1fr .82fr;gap:4rem;align-items:end}
   .product-head .section-lede{margin:0 0 .4rem}
-  .interface-note{display:flex;align-items:center;gap:.55rem;margin:1.2rem 0 0;color:var(--muted);font-size:.78rem}
-  .interface-note::before{content:"";width:.45rem;height:.45rem;border-radius:50%;background:var(--safe);box-shadow:0 0 0 .2rem #35634e19}
+  .interface-note{display:flex;align-items:flex-start;gap:.55rem;margin:1.2rem 0 0;color:var(--muted);font-size:.78rem}
+  .interface-note::before{content:"";width:.45rem;height:.45rem;flex:0 0 auto;margin-top:.38rem;border-radius:50%;background:var(--safe);box-shadow:0 0 0 .2rem #35634e19}
+  .interface-note a{color:var(--sea);font-weight:700}
   .interface{position:relative;display:grid;grid-template-columns:11.5rem minmax(0,1fr);min-height:590px;margin-top:2.7rem;overflow:hidden;border:1px solid #ffffff61;border-radius:2rem;background:var(--night);color:var(--white);box-shadow:0 42px 100px #1429382e,0 0 0 1px #172b3924}
   .interface::after{content:"";position:absolute;inset:auto -14rem -20rem auto;width:42rem;height:42rem;border-radius:50%;background:#a64c3e20;filter:blur(30px);pointer-events:none}
   .app-rail{position:relative;z-index:1;display:flex;flex-direction:column;padding:1.2rem .85rem;border-right:1px solid #ffffff14;background:#081a29b3}
@@ -91,7 +93,7 @@
   .mode::before{content:"";width:.44rem;height:.44rem;border:1px solid currentColor;border-radius:50%}
   .mode.active{background:#fffdf613;color:var(--white)}
   .mode.active::before{border-color:var(--gold-2);background:var(--gold-2)}
-  .mode.soon{color:#73828a}
+  .mode.soon{color:#8a999f}
   .soon-tag{margin-left:auto;padding:.1rem .28rem;border:1px solid #ffffff20;border-radius:.25rem;font:600 .5rem var(--mono);text-transform:uppercase}
   .rail-spacer{flex:1}
   .connection{margin-top:1rem;padding:.72rem;border:1px solid #ffffff16;border-radius:.8rem;color:#aebbc0;font-size:.7rem}
@@ -124,48 +126,80 @@
   .preview-copy p{margin:0;color:var(--muted);font-size:.7rem}
   .runner-foot{display:flex;justify-content:space-between;gap:1rem;padding:.85rem 1.15rem;border-top:1px solid #ffffff14;color:#81929a;font-size:.65rem}
   .truth{background:var(--white);border-bottom:1px solid var(--line)}
-  .truth-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2.2rem}
-  .truth-card{padding:1.45rem;border:1px solid var(--line);border-radius:18px;background:var(--paper)}
-  .truth-card h3{margin:0 0 .5rem;font:600 1.25rem var(--serif)}
-  .truth-card ul{margin:.7rem 0 0;padding-left:1.15rem;color:var(--muted)}
-  .truth-card li{margin:.36rem 0}
-  .truth-card.ready{border-top:4px solid var(--safe)}
-  .truth-card.blocked{border-top:4px solid var(--warn)}
-  .path-section{background:var(--night);color:var(--white)}
+  .truth-head{display:grid;grid-template-columns:1fr .8fr;gap:4rem;align-items:end}
+  .truth-head .section-lede{margin:0 0 .35rem}
+  .truth-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.15rem;margin-top:2.6rem}
+  .truth-card{position:relative;min-height:390px;padding:1.8rem 1.9rem 2rem;overflow:hidden;border:1px solid var(--line);border-radius:1.8rem;background:var(--paper)}
+  .truth-card::after{content:"";position:absolute;width:15rem;height:15rem;right:-8rem;bottom:-9rem;border:1px solid currentColor;border-radius:50%;opacity:.08;box-shadow:0 0 0 2rem currentColor}
+  .truth-label{display:inline-flex;align-items:center;gap:.5rem;margin-bottom:4rem;padding:.3rem .55rem;border:1px solid currentColor;border-radius:999px;font:750 .62rem var(--sans);letter-spacing:.1em;text-transform:uppercase}
+  .truth-label::before{content:"";width:.4rem;height:.4rem;border-radius:50%;background:currentColor}
+  .truth-card h3{margin:0 0 .75rem;font:600 1.6rem var(--serif)}
+  .truth-card ul{margin:.85rem 0 0;padding:0;color:var(--muted)}
+  .truth-card li{position:relative;list-style:none;margin:.62rem 0;padding-left:1.3rem;font-size:.88rem}
+  .truth-card li::before{position:absolute;left:0;top:.04rem;color:currentColor}
+  .truth-card.ready{color:var(--safe);background:#edf1e8}
+  .truth-card.ready li::before{content:"✓"}
+  .truth-card.blocked{color:var(--warn);background:#f4e9df}
+  .truth-card.blocked li::before{content:"○"}
+  .truth-card h3,.truth-card li,.truth-card a{color:var(--ink)}
+  .path-section{position:relative;overflow:hidden;background:radial-gradient(circle at 84% 16%,#315a6c78,transparent 29%),var(--night);color:var(--white)}
+  .path-section::before{content:"";position:absolute;width:38rem;height:38rem;left:-20rem;bottom:-28rem;border:1px solid #f0d39024;border-radius:50%;box-shadow:0 0 0 5rem #f0d39008,0 0 0 10rem #f0d39005}
   .path-section .eyebrow{color:var(--gold-2)}
   .path-section .section-lede{color:#cbd2d4}
-  .path{display:grid;grid-template-columns:repeat(4,1fr);gap:.7rem;margin:2.4rem 0 0;padding:0;counter-reset:path}
-  .path li{position:relative;list-style:none;min-height:190px;padding:1.2rem;border:1px solid #ffffff29;border-radius:16px;background:#ffffff0a;counter-increment:path}
-  .path li::before{content:"0" counter(path);display:block;margin-bottom:2.4rem;color:var(--gold-2);font:.75rem var(--mono)}
+  .path{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin:2.8rem 0 0;padding:0;counter-reset:path}
+  .path li{position:relative;list-style:none;min-height:270px;padding:1.5rem;border:1px solid #ffffff26;border-radius:1.7rem;background:#fffdf608;counter-increment:path;backdrop-filter:blur(12px)}
+  .path li::before{content:"0" counter(path);display:block;margin-bottom:5rem;color:var(--gold-2);font:.75rem var(--mono)}
   .path li:not(:last-child)::after{content:"→";position:absolute;right:-.68rem;top:50%;z-index:2;color:var(--gold-2);font-size:1.2rem}
-  .path h3{margin:0 0 .35rem;font:600 1.08rem var(--serif)}
-  .path p{margin:0;color:#bdc8cc;font-size:.86rem}
-  .boundary{display:grid;grid-template-columns:.85fr 1.15fr;gap:3rem;align-items:start}
-  .facts{margin:0;border-top:1px solid var(--line)}
-  .facts div{display:grid;grid-template-columns:.7fr 1.3fr;gap:1rem;padding:1rem 0;border-bottom:1px solid var(--line)}
-  .facts dt{color:var(--muted);font-size:.85rem}
-  .facts dd{margin:0;font-weight:650;overflow-wrap:anywhere}
-  .beta{background:var(--paper-2)}
-  .roles{display:grid;grid-template-columns:repeat(2,1fr);gap:.75rem;margin:2rem 0 0;padding:0}
-  .roles li{list-style:none;display:flex;gap:.75rem;align-items:baseline;padding:.85rem 1rem;border:1px solid var(--line);border-radius:12px;background:var(--white)}
-  .roles b{color:var(--sea);font:700 .72rem var(--mono)}
-  .roles span{font-size:.93rem}
+  .path h3{margin:0 0 .45rem;font:600 1.35rem var(--serif)}
+  .path p{margin:0;color:#bdc8cc;font-size:.83rem}
+  .path-caveat{position:relative;display:grid;grid-template-columns:.55fr 1.45fr;gap:2rem;align-items:start;margin-top:1rem;padding:1.3rem 1.5rem;border:1px solid #ffffff21;border-radius:1.2rem;background:#0617256b}
+  .path-caveat strong{color:var(--gold-2);font:600 1.1rem var(--serif)}
+  .path-caveat p{margin:0;color:#b8c5c9;font-size:.84rem}
+  .privacy-section{background:var(--paper)}
+  .boundary{display:grid;grid-template-columns:.82fr 1.18fr;gap:4.5rem;align-items:start}
+  .interior-note{margin:2.4rem 0 0;padding:1.2rem 0 0;border-top:1px solid var(--line);color:var(--ink);font:500 1.35rem/1.25 var(--serif)}
+  .interior-note .conviction-label{display:block;margin:0 0 .55rem;color:var(--clay);font:750 .64rem var(--sans);letter-spacing:.1em;text-transform:uppercase}
+  .interior-note .conviction-caveat{display:block;margin-top:.55rem;color:var(--muted);font:400 .76rem/1.5 var(--sans)}
+  .facts{display:grid;gap:.65rem;margin:0}
+  .facts div{display:grid;grid-template-columns:.68fr 1.32fr;gap:1.1rem;padding:1.1rem 1.2rem;border:1px solid var(--line);border-radius:1rem;background:#fffdf68a}
+  .facts dt{color:var(--clay);font:700 .68rem var(--sans);letter-spacing:.07em;text-transform:uppercase}
+  .facts dd{margin:0;color:var(--ink);font-size:.88rem;font-weight:560;overflow-wrap:anywhere}
+  .beta{position:relative;overflow:hidden;background:var(--paper-2)}
+  .beta::after{content:"";position:absolute;width:32rem;height:32rem;right:-20rem;top:-22rem;border:1px solid #a64c3e2b;border-radius:50%;box-shadow:0 0 0 4rem #a64c3e08,0 0 0 8rem #a64c3e05}
+  .beta-head{position:relative;z-index:1;display:grid;grid-template-columns:1fr .8fr;gap:4rem;align-items:end}
+  .beta-head .section-lede{margin:0 0 .35rem}
+  .roles{position:relative;z-index:1;display:grid;grid-template-columns:repeat(5,1fr);gap:.65rem;margin:2.5rem 0 0;padding:0}
+  .roles li{list-style:none;display:flex;min-height:170px;flex-direction:column;justify-content:space-between;gap:2rem;padding:1.05rem;border:1px solid var(--line);border-radius:1.2rem;background:#fffdf6c9}
+  .roles b{color:var(--clay);font:700 .68rem var(--mono)}
+  .roles span{font:600 .96rem/1.2 var(--serif)}
   .beta-actions{display:flex;flex-wrap:wrap;align-items:center;gap:1rem;margin-top:1.6rem}
   .cta-note{max-width:680px;margin:.75rem 0 0;color:var(--muted);font-size:.84rem}
   .beta .primary,.download-card .primary{background:var(--night);color:var(--white)}
   .quiet-link{font-size:.88rem;color:var(--sea);font-weight:650}
-  .candidate{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2rem}
-  .candidate article{padding:1.3rem;border:1px solid var(--line);border-radius:16px;background:var(--white)}
-  .candidate h3{margin:0 0 .45rem;font:600 1.15rem var(--serif)}
+  .evidence{background:var(--white);border-bottom:1px solid var(--line)}
+  .candidate{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2.3rem}
+  .candidate article{min-height:285px;padding:1.5rem 1.6rem;border:1px solid var(--line);border-radius:1.6rem;background:var(--paper)}
+  .candidate h3{margin:0 0 2.6rem;font:600 1.2rem var(--serif)}
   .candidate p{margin:0;color:var(--muted);font-size:.9rem}
-  .metric{display:block;margin:.5rem 0;color:var(--warn);font:600 2.4rem/1 var(--serif)}
-  .download{padding-top:0}
-  .download-card{display:grid;grid-template-columns:1.2fr .8fr;gap:2rem;padding:2rem;border:1px solid var(--line);border-radius:20px;background:var(--white)}
+  .metric{display:block;margin:.5rem 0 1rem;color:var(--warn);font:500 3.1rem/.95 var(--serif);letter-spacing:-.03em}
+  .download{background:var(--paper);padding-bottom:2.4rem}
+  .download-card{display:grid;grid-template-columns:1.14fr .86fr;gap:3.4rem;padding:clamp(1.6rem,5vw,3.6rem);overflow:hidden;border:1px solid #ffffff21;border-radius:2.4rem;background:radial-gradient(circle at 96% 8%,#315a6c80,transparent 34%),var(--night);color:var(--white);box-shadow:0 35px 90px #14293820}
   .download-card h2{font-size:clamp(2rem,4.5vw,3.6rem)}
-  .checklist{margin:0;padding:0;border-top:1px solid var(--line)}
-  .checklist li{list-style:none;padding:.68rem 0;border-bottom:1px solid var(--line);font-size:.88rem;color:var(--muted)}
-  .checklist li::before{content:"○";color:var(--warn);margin-right:.55rem}
-  .checklist strong{color:var(--warn)}
+  .download-card .eyebrow{color:var(--gold-2)}
+  .download-card .section-lede{color:#c0cbcf}
+  .download-card .primary{background:var(--gold-2);color:var(--night)}
+  .download-card .quiet-link{color:var(--gold-2)}
+  .checklist{margin:0;padding:0;border-top:1px solid #ffffff25}
+  .checklist li{list-style:none;padding:.78rem 0;border-bottom:1px solid #ffffff25;font-size:.82rem;color:#b9c6ca}
+  .checklist li::before{content:"○";color:var(--gold-2);margin-right:.55rem}
+  .checklist strong{color:var(--gold-2)}
+  .closing{position:relative;overflow:hidden;padding:7.5rem 0 8rem;background:var(--paper);text-align:center}
+  .closing::before{content:"";position:absolute;width:34rem;height:34rem;left:calc(50% - 17rem);top:4rem;border:1px solid #ad85402e;border-radius:50%;box-shadow:0 0 0 4rem #ad854009,0 0 0 8rem #ad854005}
+  .closing-inner{position:relative;max-width:900px;margin-inline:auto}
+  .closing h2{margin-inline:auto;font-size:clamp(3rem,7vw,6rem)}
+  .closing .section-lede{max-width:620px;margin:1.3rem auto 0}
+  .closing .actions{justify-content:center}
+  .closing-note{max-width:620px;margin:1rem auto 0;color:var(--muted);font-size:.76rem}
   footer{padding:2.4rem 0 3.5rem;background:var(--night);color:#c9d0d2}
   .footer-grid{display:flex;justify-content:space-between;gap:2rem;align-items:flex-start}
   footer strong{display:block;color:var(--white);font:600 1.1rem var(--serif)}
@@ -173,13 +207,13 @@
   footer nav{display:flex;flex-wrap:wrap;gap:1rem;font-size:.8rem}
   footer a{color:var(--gold-2)}
   @media(max-width:780px){
-    .navlinks a:not(.pill){display:none}.hero{min-height:auto}.hero-inner{grid-template-columns:1fr;padding-top:7rem}.hero-copy{padding-bottom:0}.hero-visual{min-height:560px}.thought-card{margin-left:1rem}.harbor-window{right:0}
-    .truth-grid,.boundary,.candidate,.download-card,.principles-head,.product-head{grid-template-columns:1fr}.path,.principle-grid{grid-template-columns:1fr 1fr}
+    .navlinks{gap:.55rem}.navlinks a{font-size:.74rem}.navlinks a[href="#principles"],.navlinks a[href="#experience"]{display:none}.navlinks .pill{padding:.48rem .68rem}.hero{min-height:auto}.hero-inner{grid-template-columns:1fr;padding-top:7rem}.hero-copy{padding-bottom:0}.hero-visual{min-height:540px}.thought-card{margin-left:1rem}.harbor-window{right:0}
+    .truth-grid,.truth-head,.boundary,.candidate,.download-card,.principles-head,.product-head,.beta-head{grid-template-columns:1fr}.path,.principle-grid{grid-template-columns:1fr 1fr}
     .product-head{gap:1rem}.interface{grid-template-columns:1fr;min-height:auto}.app-rail{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;border-right:0;border-bottom:1px solid #ffffff14}.app-brand,.mode-label,.rail-spacer,.connection{display:none}.mode{justify-content:center;padding:.55rem .3rem}.mode::before{display:none}.app-workspace{grid-template-columns:1fr}.conversation{border-right:0;border-bottom:1px solid #ffffff14}.runner{min-height:480px}
     .facts div{grid-template-columns:1fr;gap:.3rem}
-    .path li:not(:last-child)::after{display:none}.roles{grid-template-columns:1fr}.footer-grid{display:grid}
+    .path li:not(:last-child)::after{display:none}.path-caveat{grid-template-columns:1fr}.roles{grid-template-columns:repeat(2,1fr)}.footer-grid{display:grid}
   }
-  @media(max-width:470px){.path,.principle-grid{grid-template-columns:1fr}h1{font-size:3.45rem}.shell{width:min(100% - 1.3rem,1180px)}.nav{padding-left:.65rem}.brand-mark{width:1.45rem;height:1.45rem}.hero-visual{min-height:460px}.thought-card{margin-left:.55rem}.trust-rail{padding-bottom:1.2rem}.interface{border-radius:1.3rem}.app-rail{grid-template-columns:repeat(3,1fr)}.mode.settings{display:none}.conversation{padding:1rem}.messages{padding:1.4rem 0}.runner{min-height:420px}.preview{padding:1rem}.preview-art{height:150px}}
+  @media(max-width:470px){.path,.principle-grid{grid-template-columns:1fr}h1{font-size:3.45rem}.shell{width:min(100% - 1.3rem,1180px)}.nav{padding-left:.65rem}.brand-mark{width:1.45rem;height:1.45rem}.hero-visual{min-height:460px}.thought-card{margin-left:.55rem}.trust-rail{padding-bottom:1.2rem}.interface{border-radius:1.3rem}.app-rail{grid-template-columns:repeat(3,1fr)}.mode.settings{display:none}.conversation{padding:1rem}.messages{padding:1.4rem 0}.runner{min-height:420px}.preview{padding:1rem}.preview-art{height:150px}.roles{grid-template-columns:1fr}.roles li{min-height:125px}.truth-card{min-height:auto}.truth-label{margin-bottom:2.2rem}.closing{padding:5.8rem 0}}
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button:hover{transform:none}}
 </style>
 </head>
@@ -192,7 +226,7 @@
     <nav class="navlinks" aria-label="Primary">
       <a href="#principles">Why Osanwë</a>
       <a href="#experience">Experience</a>
-      <a href="#truth">Current state</a>
+      <a href="#truth">Status</a>
       <a href="https://github.com/EzraStone/Osanwe" rel="noreferrer">Source</a>
       <a class="pill" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml" rel="noreferrer">Join the beta</a>
     </nav>
@@ -205,9 +239,10 @@
       <div class="hero-copy">
         <p class="status">Free ten-person technical beta · pre-launch</p>
         <h1 id="hero-title">You are a person, not a profile.</h1>
-        <p class="hero-lede">Osanwë is experimental, accountless infrastructure for AI—designed to
-        separate who is asking from what is being asked. Its Catholic inspiration begins with human
-        dignity and moral limits, and welcomes people of every faith or none.</p>
+        <p class="hero-lede">Osanwë is an accountless local client and experimental privacy
+        infrastructure for AI—designed to separate who is asking from what is being asked. Its
+        Catholic inspiration begins with human dignity and moral limits, and welcomes people of
+        every faith or none.</p>
         <div class="actions">
           <a class="button primary" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml" rel="noreferrer">Join the first ten</a>
           <a class="button secondary" href="#truth">See the honest status</a>
@@ -225,7 +260,7 @@
       </div>
     </div>
     <div class="trust-rail shell" aria-label="Osanwë principles">
-      <span>No conventional account</span><span>Ephemeral by default</span><span>Provider policy shown</span><span>Safety systems stay intact</span>
+      <span>No Osanwë chat account</span><span>Ephemeral by default</span><span>Known and unknown provider policy shown</span><span>Provider safety policies still apply</span>
     </div>
   </section>
 
@@ -251,18 +286,21 @@
       <div class="product-head">
         <div>
           <p class="eyebrow">The local experience</p>
-          <h2 id="experience-title">Familiar to use. Unusual in what it refuses to collect.</h2>
+          <h2 id="experience-title">Familiar to use. Deliberate about what the local client retains.</h2>
         </div>
         <div>
-          <p class="section-lede">Chat keeps conversation simple. Code adds an explicit,
-          network-blocked preview for generated web work. Connections live in Settings, and Cowork
-          stays visibly unavailable until its privacy boundary is ready.</p>
-          <p class="interface-note">Static product illustration—the public website never receives prompts or keys.</p>
+          <p class="section-lede">Chat keeps conversation simple. Code adds an explicit local runner;
+          interactive HTML stays locked unless the browser can enforce its network boundary.
+          Connections live in Settings, and Cowork stays visibly unavailable until its privacy
+          boundary is ready.</p>
+          <p class="interface-note"><span>Static product illustration—the public website never
+          receives prompts or keys. Interactive HTML requires Chromium 152+ and fails closed
+          elsewhere. <a href="https://github.com/EzraStone/Osanwe/blob/main/docs/product/code-runner.md" rel="noreferrer">Read the runner limits →</a></span></p>
         </div>
       </div>
 
-      <div class="interface" aria-label="Static illustration of the Osanwë local application">
-        <aside class="app-rail" aria-label="Illustrated product modes">
+      <div class="interface" role="img" aria-label="Static illustration of the Osanwë local application showing Chat, Code with a network-blocked local preview, Settings, and Cowork marked unavailable">
+        <div class="app-rail">
           <div class="app-brand"><img src="favicon.svg" alt="">Osanwë</div>
           <p class="mode-label">Modes</p>
           <div class="mode">Chat</div>
@@ -272,7 +310,7 @@
           <p class="mode-label">Control</p>
           <div class="mode settings">Settings</div>
           <div class="connection"><b>Connected locally</b>Provider details remain visible at runtime</div>
-        </aside>
+        </div>
 
         <div class="app-workspace">
           <div class="conversation">
@@ -289,7 +327,7 @@
             <div class="preview">
               <div class="preview-card">
                 <div class="preview-art"></div>
-                <div class="preview-copy"><small>Generated locally</small><strong>A place for thoughts in transit.</strong><p>Self-contained preview · no remote assets requested</p></div>
+                <div class="preview-copy"><small>Rendered locally</small><strong>A place for thoughts in transit.</strong><p>Self-contained preview · no remote assets requested</p></div>
               </div>
             </div>
             <div class="runner-foot"><span>Opaque sandbox</span><span>Explicit run only</span><span>Disposable frame</span></div>
@@ -301,12 +339,14 @@
 
   <section class="truth" id="truth" aria-labelledby="truth-title">
     <div class="shell">
-      <p class="eyebrow">The honest status</p>
-      <h2 id="truth-title">A working prototype with launch gates still closed.</h2>
-      <p class="section-lede">The software path exists. The social, provider, deployment, and
-      independent-review assumptions that make it a trustworthy public service do not all exist yet.</p>
+      <div class="truth-head">
+        <div><p class="eyebrow">The honest status</p><h2 id="truth-title">Working software. Open launch gates.</h2></div>
+        <p class="section-lede">The software path exists. The social, provider, deployment, and
+        independent-review assumptions that make it a trustworthy public service do not all exist yet.</p>
+      </div>
       <div class="truth-grid">
         <article class="truth-card ready">
+          <span class="truth-label">Built now</span>
           <h3>Working and tested</h3>
           <ul>
             <li>Loopback-only local web app with streaming chat and model disclosures</li>
@@ -317,6 +357,7 @@
           </ul>
         </article>
         <article class="truth-card blocked">
+          <span class="truth-label">Gate remains</span>
           <h3>Still blocking public use</h3>
           <ul>
             <li>No independently operated public relay is enrolled</li>
@@ -344,16 +385,26 @@
         <li><h3>Gateway</h3><p>Sees plaintext and a blind-signed token, but is not sent the relay-side network identity.</p></li>
         <li><h3>Model provider</h3><p>Sees content under the gateway account, subject to its own retention and training policy.</p></li>
       </ol>
+      <div class="path-caveat">
+        <strong>No component sees nothing.</strong>
+        <p>The design becomes meaningful only when relay and gateway have separate operators. Even
+        then, prompt details, timing, collusion, and provider policy remain real ways information can
+        be learned or linked. Osanwë exposes that boundary instead of replacing it with a privacy score.</p>
+      </div>
     </div>
   </section>
 
-  <section aria-labelledby="boundary-title">
+  <section class="privacy-section" aria-labelledby="boundary-title">
     <div class="shell boundary">
       <div>
         <p class="eyebrow">Privacy boundary</p>
         <h2 id="boundary-title">What Osanwë does—and does not—hide.</h2>
         <p class="section-lede">Writing style, facts inside a prompt, endpoint timing, a colluding
         relay and gateway, and the provider's own data handling remain meaningful risks.</p>
+        <p class="interior-note"><span class="conviction-label">Osanwë product conviction</span>
+          The interior life is not raw material.
+          <span class="conviction-caveat">This is not a claim that the prototype already provides perfect anonymity.</span>
+        </p>
       </div>
       <dl class="facts">
         <div><dt>Provider learns</dt><dd>Prompt and answer; gateway account instead of tester account in token mode</dd></div>
@@ -367,10 +418,11 @@
 
   <section class="beta" id="beta" aria-labelledby="beta-title">
     <div class="shell">
-      <p class="eyebrow">The first ten people</p>
-      <h2 id="beta-title">A test cohort, not an audience.</h2>
-      <p class="section-lede">The best first testers cover distinct failure surfaces. Fame and follower
-      count do not matter; clear feedback, fast response, and willingness to use synthetic prompts do.</p>
+      <div class="beta-head">
+        <div><p class="eyebrow">The first ten people</p><h2 id="beta-title">A test cohort, not an audience.</h2></div>
+        <p class="section-lede">The best first testers cover distinct failure surfaces. Fame and follower
+        count do not matter; clear feedback, fast response, and willingness to use synthetic prompts do.</p>
+      </div>
       <ol class="roles">
         <li><b>01</b><span>Independent relay operator</span></li><li><b>02</b><span>Application-security engineer</span></li>
         <li><b>03</b><span>Privacy or cryptography reviewer</span></li><li><b>04</b><span>Heavy AI coding-tool user</span></li>
@@ -387,7 +439,7 @@
     </div>
   </section>
 
-  <section aria-labelledby="evidence-title">
+  <section class="evidence" aria-labelledby="evidence-title">
     <div class="shell">
       <p class="eyebrow">Evidence before positioning</p>
       <h2 id="evidence-title">Phase 0 currently points toward async work.</h2>
@@ -436,6 +488,23 @@
         <li><strong>Not yet:</strong> provider permission for a pooled model route</li>
         <li><strong>Not yet:</strong> an independently operated relay for experimental privacy traffic</li>
       </ul>
+    </div>
+  </section>
+
+  <section class="closing" aria-labelledby="closing-title">
+    <div class="shell closing-inner">
+      <p class="eyebrow">Built for the whole person</p>
+      <h2 id="closing-title">Protect the thought. Respect the person.</h2>
+      <p class="section-lede">Privacy should not be a premium cosmetic, and access should not begin
+      with surrendering an identity. Osanwë is exploring another path—one shaped by dignity,
+      truthful limits, responsibility, and careful stewardship.</p>
+      <div class="actions">
+        <a class="button primary" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml" rel="noreferrer">Join the first ten</a>
+        <a class="button secondary" href="design.html">Read the design</a>
+      </div>
+      <p class="closing-note">Free technical beta preparation. Text-only synthetic or deliberately
+      non-sensitive prompts. No public gateway, production privacy guarantee, payment, or uptime
+      promise is offered yet.</p>
     </div>
   </section>
 </main>
