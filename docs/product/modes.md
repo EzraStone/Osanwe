@@ -12,11 +12,14 @@ model choice, runtime privacy labels, and ephemeral or explicitly local retentio
 
 Code is an early coding assistant. It gives the provider a code-focused system instruction and keeps
 its conversation separate from Chat. It can explain, generate, debug, and review text the person
-supplies. Generated JavaScript can run in a timed, network-blocked worker with a small test harness;
-generated HTML can open as a script-free preview. Execution is always an explicit action.
+supplies. Generated JavaScript can run in a timed, network-blocked worker with a small test harness.
+Generated HTML, CSS, and JavaScript can run together as an interactive self-contained web preview in
+a fresh opaque sandbox. Execution is always an explicit action.
 
-Code still cannot read local files, invoke a terminal, install packages, run Python or shell code, or
-apply patches, and the interface says so. The exact execution boundary is documented in
+The Code model still cannot read local files, invoke a terminal, install packages, run Python or shell
+code, or apply patches, and the interface says so. A local preview can read a file only after the
+person deliberately selects or drops it into the generated page; the file is not sent to the model.
+The exact execution boundary is documented in
 [Code runner boundary](code-runner.md).
 
 Repository access remains later work. Before that ships, the project must define file permission,

@@ -76,10 +76,15 @@ Roughly two minutes, in the browser:
 | Ask a follow-up that depends on the first answer | The model receives the complete prior transcript |
 | Switch to **Code** | A separate coding conversation opens and its no-file/no-terminal boundary is visible |
 | Try **Cowork** | The disabled Soon tab cannot be selected |
-| Load a generated JavaScript block into the runner | Nothing executes until **Run & test** is chosen |
+| Receive a generated JavaScript or HTML block | Nothing executes until **Run code** or **Run preview** is chosen |
 | Run `test("sum", () => assert(2 + 2 === 4))` | Results reports one pass |
 | Run `while (true) {}` | The worker stops after 2.5 seconds and the rest of the app remains responsive |
-| Preview HTML containing a script and remote image | The preview renders safe markup and reports removed executable or remote-loading items |
+| Run HTML with a button and inline script | The actual page appears in Display and the button works inside the sandbox |
+| Log and throw from an HTML script | Console shows the bounded log/error output and the run ends with a warning |
+| Run HTML with a remote image or `fetch()` | The local page still renders, but the remote load is removed or blocked |
+| Try interactive HTML in a browser without the required network policy | The page does not run and asks for Chromium 152 or newer |
+| Use a generated file picker | The preview reads only a file you deliberately choose; the file is not sent to the model |
+| Edit code after running, then choose Reload | The last explicit snapshot reruns; unrun edits do not silently execute |
 | Open **Settings → Models and connection** | Only the live catalog and current local connection appear |
 | Click the seal | Plain-language account of what happened, then the raw facts |
 | Kill the relay, then send | The seal turns red and says the relay is not answering |
@@ -138,9 +143,26 @@ go test ./...              # everything, including the checks above
 ./demo/harden.sh           # a token buys one request and nothing else
 ```
 
-The interface tests and all three demos run in CI. The demos are the only checks that exercise the daemons as a
+The interface unit tests and all three demos run in CI. The live Chromium boundary test is included in the
+Node command but skips unless its explicit environment is present; a default CI pass therefore does not claim
+that browser integration ran. The demos are the only default checks that exercise the daemons as a
 person runs them — real processes, real sockets — and the unit tests have
 stayed green through several bugs that only those caught.
+
+To run the opt-in browser integration, first start a freshly built bearer UI, make the `playwright` package
+resolvable to Node, and use Chromium 152 or newer:
+
+```bash
+OSANWE_BROWSER_TEST_URL=http://127.0.0.1:8080/_osanwe/ \
+OSANWE_CHROMIUM_PATH=/absolute/path/to/chromium \
+node --test internal/ui/test/runner-browser.test.js
+```
+
+`OSANWE_CHROMIUM_PATH` may be omitted when Playwright's bundled Chromium is already version 152 or newer.
+`OSANWE_CHROMIUM_FEATURES` is available only for testing a pre-release build that requires an explicit browser
+feature flag; the shipped Chromium 152 path should not need it. This integration intercepts a fake provider
+response, clicks its generated **Run preview** action, verifies HTML/CSS/JavaScript rendering and interaction,
+and calibrates real HTTP and WebRTC probes before checking the runner's network boundary.
 
 `harden.sh` needs a running client, so start `./demo/ui.sh` first. It drives
 the endpoints a token must not reach and the request shapes it must not buy,
