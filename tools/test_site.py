@@ -144,6 +144,22 @@ class StaticSiteTest(unittest.TestCase):
         self.assertNotIn("an independently operated encrypted relay", source)
         self.assertNotIn("an unlinkable single-use token", source)
 
+    def test_landing_page_preserves_dignity_and_product_boundaries(self):
+        source = self.source[self.index]
+        text = " ".join("".join(self.page.text).split())
+        for phrase in (
+            "You are a person, not a profile.",
+            "Catholic in inspiration",
+            "Static product illustration",
+            "Interactive HTML requires Chromium 152+",
+            "Cowork",
+            "Rendered locally",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        self.assertIn('role="img"', source)
+        self.assertNotIn("Generated locally", source)
+
     def test_design_document_links_back_to_project_home(self):
         design = self.source[SITE / "design.html"]
         self.assertIn('href="./"', design)
