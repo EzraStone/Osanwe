@@ -75,6 +75,54 @@
   .principle b{display:block;margin-bottom:4.4rem;color:var(--clay);font:.72rem var(--mono)}
   .principle h3{margin:0 0 .55rem;font:600 1.2rem var(--serif)}
   .principle p{margin:0;color:var(--muted);font-size:.88rem}
+  .product{position:relative;overflow:hidden;background:var(--paper);border-bottom:1px solid var(--line)}
+  .product::before{content:"";position:absolute;width:34rem;height:34rem;left:-18rem;top:9rem;border:1px solid #ad854025;border-radius:50%;box-shadow:0 0 0 4rem #ad854009,0 0 0 8rem #ad854006}
+  .product-head{position:relative;display:grid;grid-template-columns:1fr .82fr;gap:4rem;align-items:end}
+  .product-head .section-lede{margin:0 0 .4rem}
+  .interface-note{display:flex;align-items:center;gap:.55rem;margin:1.2rem 0 0;color:var(--muted);font-size:.78rem}
+  .interface-note::before{content:"";width:.45rem;height:.45rem;border-radius:50%;background:var(--safe);box-shadow:0 0 0 .2rem #35634e19}
+  .interface{position:relative;display:grid;grid-template-columns:11.5rem minmax(0,1fr);min-height:590px;margin-top:2.7rem;overflow:hidden;border:1px solid #ffffff61;border-radius:2rem;background:var(--night);color:var(--white);box-shadow:0 42px 100px #1429382e,0 0 0 1px #172b3924}
+  .interface::after{content:"";position:absolute;inset:auto -14rem -20rem auto;width:42rem;height:42rem;border-radius:50%;background:#a64c3e20;filter:blur(30px);pointer-events:none}
+  .app-rail{position:relative;z-index:1;display:flex;flex-direction:column;padding:1.2rem .85rem;border-right:1px solid #ffffff14;background:#081a29b3}
+  .app-brand{display:flex;align-items:center;gap:.55rem;margin:.1rem .35rem 1.8rem;font:600 1.05rem var(--serif)}
+  .app-brand img{width:1.5rem;height:1.5rem}
+  .mode-label{margin:.6rem .45rem;color:#82929a;font:700 .62rem var(--sans);letter-spacing:.12em;text-transform:uppercase}
+  .mode{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin:.13rem 0;padding:.62rem .7rem;border-radius:.72rem;color:#b9c4c8;font-size:.82rem}
+  .mode::before{content:"";width:.44rem;height:.44rem;border:1px solid currentColor;border-radius:50%}
+  .mode.active{background:#fffdf613;color:var(--white)}
+  .mode.active::before{border-color:var(--gold-2);background:var(--gold-2)}
+  .mode.soon{color:#73828a}
+  .soon-tag{margin-left:auto;padding:.1rem .28rem;border:1px solid #ffffff20;border-radius:.25rem;font:600 .5rem var(--mono);text-transform:uppercase}
+  .rail-spacer{flex:1}
+  .connection{margin-top:1rem;padding:.72rem;border:1px solid #ffffff16;border-radius:.8rem;color:#aebbc0;font-size:.7rem}
+  .connection b{display:block;margin-bottom:.2rem;color:var(--white);font-weight:650}
+  .app-workspace{position:relative;z-index:1;display:grid;grid-template-columns:minmax(0,.98fr) minmax(22rem,1.02fr);min-width:0}
+  .conversation{display:flex;min-width:0;flex-direction:column;padding:1.35rem;border-right:1px solid #ffffff14}
+  .window-bar{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-bottom:1rem;border-bottom:1px solid #ffffff14;color:#95a5ac;font-size:.7rem}
+  .window-bar strong{color:var(--white);font-weight:650}
+  .local-pill{display:inline-flex;align-items:center;gap:.4rem;padding:.25rem .5rem;border:1px solid #ffffff1c;border-radius:999px}
+  .local-pill::before{content:"";width:.38rem;height:.38rem;border-radius:50%;background:#6fa585}
+  .messages{display:flex;flex:1;flex-direction:column;justify-content:center;gap:1rem;padding:2.4rem .4rem 1.5rem}
+  .message{max-width:92%;padding:1rem 1.05rem;border:1px solid #ffffff12;border-radius:1.1rem;color:#d3dcdf;font-size:.82rem}
+  .message small{display:block;margin-bottom:.36rem;color:var(--gold-2);font:700 .58rem var(--sans);letter-spacing:.1em;text-transform:uppercase}
+  .message.person{align-self:flex-end;border-bottom-right-radius:.3rem;background:#ffffff10}
+  .message.assistant{align-self:flex-start;border-bottom-left-radius:.3rem;background:#183247a8}
+  .composer{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.85rem 1rem;border:1px solid #ffffff20;border-radius:1rem;background:#fffdf608;color:#8c9ba2;font-size:.76rem}
+  .send-dot{display:grid;width:2rem;height:2rem;flex:0 0 auto;place-items:center;border-radius:50%;background:var(--gold-2);color:var(--night);font-weight:800}
+  .runner{display:flex;min-width:0;flex-direction:column;background:#06172599}
+  .runner-tabs{display:flex;align-items:center;gap:1rem;padding:1.15rem 1.3rem;border-bottom:1px solid #ffffff14;color:#84949c;font-size:.7rem}
+  .runner-tabs b{padding-bottom:.35rem;border-bottom:1px solid var(--gold-2);color:var(--white)}
+  .runner-state{margin-left:auto;color:#8db99d}
+  .preview{display:grid;flex:1;place-items:center;padding:2rem;background:radial-gradient(circle at 76% 18%,#38677b55,transparent 34%),#0a1e2b}
+  .preview-card{width:min(100%,340px);overflow:hidden;border:1px solid #ffffff2b;border-radius:1.5rem;background:#f4eee2;color:var(--ink);box-shadow:0 24px 70px #0000003b}
+  .preview-art{position:relative;height:180px;background:linear-gradient(145deg,#163a50,#3f7080 55%,#d0ae63)}
+  .preview-art::before{content:"";position:absolute;inset:20px 58px 0;border:1px solid #f7e7bd8a;border-bottom:0;border-radius:8rem 8rem 0 0}
+  .preview-art::after{content:"";position:absolute;width:2.8rem;height:2.8rem;left:calc(50% - 1.4rem);top:57px;border-radius:50%;background:#f0d390;box-shadow:0 0 0 1rem #f0d39016,0 0 2.4rem #f0d39070}
+  .preview-copy{padding:1.1rem 1.15rem 1.3rem}
+  .preview-copy small{color:var(--clay);font:700 .58rem var(--sans);letter-spacing:.1em;text-transform:uppercase}
+  .preview-copy strong{display:block;margin:.25rem 0;font:600 1.25rem var(--serif)}
+  .preview-copy p{margin:0;color:var(--muted);font-size:.7rem}
+  .runner-foot{display:flex;justify-content:space-between;gap:1rem;padding:.85rem 1.15rem;border-top:1px solid #ffffff14;color:#81929a;font-size:.65rem}
   .truth{background:var(--white);border-bottom:1px solid var(--line)}
   .truth-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:2.2rem}
   .truth-card{padding:1.45rem;border:1px solid var(--line);border-radius:18px;background:var(--paper)}
@@ -126,11 +174,12 @@
   footer a{color:var(--gold-2)}
   @media(max-width:780px){
     .navlinks a:not(.pill){display:none}.hero{min-height:auto}.hero-inner{grid-template-columns:1fr;padding-top:7rem}.hero-copy{padding-bottom:0}.hero-visual{min-height:560px}.thought-card{margin-left:1rem}.harbor-window{right:0}
-    .truth-grid,.boundary,.candidate,.download-card,.principles-head{grid-template-columns:1fr}.path,.principle-grid{grid-template-columns:1fr 1fr}
+    .truth-grid,.boundary,.candidate,.download-card,.principles-head,.product-head{grid-template-columns:1fr}.path,.principle-grid{grid-template-columns:1fr 1fr}
+    .product-head{gap:1rem}.interface{grid-template-columns:1fr;min-height:auto}.app-rail{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem;border-right:0;border-bottom:1px solid #ffffff14}.app-brand,.mode-label,.rail-spacer,.connection{display:none}.mode{justify-content:center;padding:.55rem .3rem}.mode::before{display:none}.app-workspace{grid-template-columns:1fr}.conversation{border-right:0;border-bottom:1px solid #ffffff14}.runner{min-height:480px}
     .facts div{grid-template-columns:1fr;gap:.3rem}
     .path li:not(:last-child)::after{display:none}.roles{grid-template-columns:1fr}.footer-grid{display:grid}
   }
-  @media(max-width:470px){.path,.principle-grid{grid-template-columns:1fr}h1{font-size:3.45rem}.shell{width:min(100% - 1.3rem,1180px)}.nav{padding-left:.65rem}.brand-mark{width:1.45rem;height:1.45rem}.hero-visual{min-height:460px}.thought-card{margin-left:.55rem}.trust-rail{padding-bottom:1.2rem}}
+  @media(max-width:470px){.path,.principle-grid{grid-template-columns:1fr}h1{font-size:3.45rem}.shell{width:min(100% - 1.3rem,1180px)}.nav{padding-left:.65rem}.brand-mark{width:1.45rem;height:1.45rem}.hero-visual{min-height:460px}.thought-card{margin-left:.55rem}.trust-rail{padding-bottom:1.2rem}.interface{border-radius:1.3rem}.app-rail{grid-template-columns:repeat(3,1fr)}.mode.settings{display:none}.conversation{padding:1rem}.messages{padding:1.4rem 0}.runner{min-height:420px}.preview{padding:1rem}.preview-art{height:150px}}
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button:hover{transform:none}}
 </style>
 </head>
@@ -142,8 +191,8 @@
     <a class="brand" href="./" aria-label="Osanwë home"><img class="brand-mark" src="favicon.svg" alt="">Osanwë</a>
     <nav class="navlinks" aria-label="Primary">
       <a href="#principles">Why Osanwë</a>
+      <a href="#experience">Experience</a>
       <a href="#truth">Current state</a>
-      <a href="design.html">Design</a>
       <a href="https://github.com/EzraStone/Osanwe" rel="noreferrer">Source</a>
       <a class="pill" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml" rel="noreferrer">Join the beta</a>
     </nav>
@@ -193,6 +242,59 @@
         <article class="principle"><b>II</b><h3>Truth before reassurance</h3><p>Every participant still learns something. Osanwë names those boundaries instead of hiding them behind a score.</p></article>
         <article class="principle"><b>III</b><h3>Freedom with responsibility</h3><p>Privacy does not mean bypassing model safety. Human freedom and moral limits belong together.</p></article>
         <article class="principle"><b>IV</b><h3>Stewardship over extraction</h3><p>Reliability and careful security work come before growth, fundraising, or feature breadth.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="product" id="experience" aria-labelledby="experience-title">
+    <div class="shell">
+      <div class="product-head">
+        <div>
+          <p class="eyebrow">The local experience</p>
+          <h2 id="experience-title">Familiar to use. Unusual in what it refuses to collect.</h2>
+        </div>
+        <div>
+          <p class="section-lede">Chat keeps conversation simple. Code adds an explicit,
+          network-blocked preview for generated web work. Connections live in Settings, and Cowork
+          stays visibly unavailable until its privacy boundary is ready.</p>
+          <p class="interface-note">Static product illustration—the public website never receives prompts or keys.</p>
+        </div>
+      </div>
+
+      <div class="interface" aria-label="Static illustration of the Osanwë local application">
+        <aside class="app-rail" aria-label="Illustrated product modes">
+          <div class="app-brand"><img src="favicon.svg" alt="">Osanwë</div>
+          <p class="mode-label">Modes</p>
+          <div class="mode">Chat</div>
+          <div class="mode active">Code</div>
+          <div class="mode soon">Cowork <span class="soon-tag">Soon</span></div>
+          <div class="rail-spacer"></div>
+          <p class="mode-label">Control</p>
+          <div class="mode settings">Settings</div>
+          <div class="connection"><b>Connected locally</b>Provider details remain visible at runtime</div>
+        </aside>
+
+        <div class="app-workspace">
+          <div class="conversation">
+            <div class="window-bar"><strong>Code conversation</strong><span class="local-pill">Ephemeral</span></div>
+            <div class="messages">
+              <div class="message person"><small>You</small>Create a quiet landing card inspired by a harbor at night.</div>
+              <div class="message assistant"><small>Osanwë</small>I made a self-contained HTML, CSS, and JavaScript preview. Review the code, then run it explicitly when you are ready.</div>
+            </div>
+            <div class="composer"><span>Continue the conversation…</span><span class="send-dot">↑</span></div>
+          </div>
+
+          <div class="runner">
+            <div class="runner-tabs"><b>Display</b><span>Code</span><span>Console</span><span class="runner-state">Network blocked</span></div>
+            <div class="preview">
+              <div class="preview-card">
+                <div class="preview-art"></div>
+                <div class="preview-copy"><small>Generated locally</small><strong>A place for thoughts in transit.</strong><p>Self-contained preview · no remote assets requested</p></div>
+              </div>
+            </div>
+            <div class="runner-foot"><span>Opaque sandbox</span><span>Explicit run only</span><span>Disposable frame</span></div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
