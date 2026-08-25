@@ -163,9 +163,13 @@ function fillPanel(){
     facts.push(["server history",humanize(status.privacy.conversation_history)]);
   }
   facts.forEach(function(p){
+    // One element per pair rather than two spans and a <br>. These are label
+    // and value, not a run of text that happens to wrap, and the row lets the
+    // label column size itself to the longest label instead of a guessed width.
+    var row=document.createElement("div");
     var k=document.createElement("span");k.className="k";k.textContent=p[0];
     var v=document.createElement("b");v.textContent=p[1];
-    f.appendChild(k);f.appendChild(v);f.appendChild(document.createElement("br"));
+    row.appendChild(k);row.appendChild(v);f.appendChild(row);
   });
 }
 
