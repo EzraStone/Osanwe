@@ -216,6 +216,98 @@
     .path li:not(:last-child)::after{display:none}.path-caveat{grid-template-columns:1fr}.roles{grid-template-columns:repeat(2,1fr)}.footer-grid{display:grid}
   }
   @media(max-width:470px){.path,.principle-grid{grid-template-columns:1fr}h1{font-size:3.3rem}.shell{width:min(100% - 1.1rem,1280px)}.nav{gap:.35rem;padding-left:.35rem;padding-right:.35rem}.brand{font-size:1.05rem}.navlinks{gap:.3rem}.navlinks a{font-size:.67rem}.navlinks .pill{padding:.42rem .52rem}.hero-plate{height:34rem}.hero-copy{left:1.1rem;right:1.1rem}.interface{border-radius:1.3rem}.app-rail{grid-template-columns:repeat(4,1fr)}.mode{padding:.5rem .15rem;font-size:.67rem}.soon-tag{padding:.08rem .18rem;font-size:.43rem}.conversation{padding:1rem}.messages{padding:1.4rem 0}.runner{min-height:420px}.preview{padding:1rem}.preview-art{height:150px}.roles{grid-template-columns:1fr}.roles li{min-height:125px}.truth-card{min-height:auto}.truth-label{margin-bottom:2.2rem}.closing{padding:5.8rem 0}}
+
+  /* Mockup 1a: one classical system of cream paper, brown ink, gold strokes,
+     square corners, and hairlines carrying the hierarchy. */
+  main section{padding:4.8rem 0;border-bottom:1px solid var(--line)}
+  .eyebrow{color:var(--gold);font-size:.68rem}
+  h2{font-size:clamp(2.2rem,4.8vw,4rem);letter-spacing:-.018em}
+  .section-lede{font-size:1rem;line-height:1.7}
+  .principles,.product,.truth,.privacy-section,.beta,.evidence{background:var(--paper)}
+  .principles-head,.product-head,.truth-head,.beta-head{align-items:start}
+  .principle-grid{grid-template-columns:repeat(3,1fr);margin-top:2.5rem;background:transparent}
+  .principle{min-height:205px;background:transparent}
+  .principle b{margin-bottom:2.7rem;color:var(--gold)}
+  .principle h3{font-size:1.08rem}
+  .product::before,.interface::after,.beta::after,.closing::before,.truth-card::after{display:none}
+  .interface{min-height:570px;border-color:var(--line);border-radius:0;background:var(--paper);color:var(--ink);box-shadow:none}
+  .app-rail{border-color:var(--line);background:var(--paper-2)}
+  .app-brand{color:var(--ink)}
+  .app-brand img{display:none}
+  .mode-label,.connection,.window-bar,.runner-foot{color:var(--muted)}
+  .mode{border-radius:3px;color:var(--muted)}
+  .mode::before{border-radius:0}
+  .mode.active{outline:1px solid var(--gold);background:transparent;color:var(--gold)}
+  .mode.active::before{border-color:var(--gold);background:var(--gold)}
+  .mode.soon{color:var(--muted)}
+  .soon-tag,.connection,.local-pill{border-color:var(--line)}
+  .connection b,.window-bar strong{color:var(--ink)}
+  .conversation{border-color:var(--line)}
+  .message{border-radius:4px;color:var(--ink)}
+  .message small{color:var(--gold)}
+  .message.person{border-color:var(--line);background:var(--paper-2)}
+  .message.assistant{border:0;background:transparent}
+  .composer{border-color:var(--line);border-radius:4px;background:var(--white);color:var(--muted)}
+  .send-dot{border-radius:50%;background:var(--gold);color:var(--white)}
+  .runner{background:var(--paper)}
+  .runner-tabs,.runner-foot{border-color:var(--line)}
+  .runner-tabs{color:var(--muted)}
+  .runner-tabs b{border-color:var(--gold);color:var(--ink)}
+  .runner-state{color:var(--gold)}
+  .preview{background:var(--paper-2)}
+  .preview-card{border-color:var(--line);border-radius:4px;background:var(--white);box-shadow:none}
+  .preview-art{background:linear-gradient(145deg,#3a270d,#7d5411 55%,#e1ad66)}
+  .participant-table{width:100%;margin-top:2.5rem;border-collapse:collapse;font-size:.88rem}
+  .participant-table th{text-align:left;padding:.7rem .8rem;border-block:1px solid var(--line);color:var(--gold);font:.68rem var(--sans);letter-spacing:.1em;text-transform:uppercase}
+  .participant-table td{padding:1rem .8rem;border-bottom:1px solid var(--line);vertical-align:top}
+  .participant-table td:first-child{font:600 1rem var(--serif)}
+  .claims-grid{display:grid;grid-template-columns:1fr 1fr;margin-top:2.5rem;border:1px solid var(--line)}
+  .claim{padding:1.6rem 1.8rem}
+  .claim+ .claim{border-left:1px solid var(--line)}
+  .claim h3{margin:0 0 1rem;color:var(--gold);font:.7rem var(--sans);letter-spacing:.12em;text-transform:uppercase}
+  .claim ul{margin:0;padding:0}
+  .claim li{list-style:none;margin:.8rem 0;padding-top:.8rem;border-top:1px solid var(--line);font-size:.88rem}
+  .launch-note{display:grid;grid-template-columns:auto 1fr;gap:2rem;margin:2rem 0 0;padding:1.2rem 0;border-block:1px solid var(--line)}
+  .launch-note strong{color:var(--gold);font:.72rem var(--sans);letter-spacing:.1em;text-transform:uppercase}
+  .launch-note p{margin:0;color:var(--muted);font-size:.86rem}
+  .path-section{background:var(--paper);color:var(--ink)}
+  .path-section::before{display:none}
+  .path-section .eyebrow{color:var(--gold)}
+  .path-section .section-lede{color:var(--muted)}
+  .path{gap:0;border:1px solid var(--line)}
+  .path li{min-height:230px;border:0;border-right:1px solid var(--line);border-radius:0;background:transparent}
+  .path li:last-child{border-right:0}
+  .path li::before{margin-bottom:3rem;color:var(--gold)}
+  .path li:not(:last-child)::after{display:none}
+  .path li p{color:var(--muted)}
+  .path-caveat{border:0;border-block:1px solid var(--line);border-radius:0;background:transparent}
+  .path-caveat strong{color:var(--gold)}
+  .path-caveat p{color:var(--muted)}
+  .facts{gap:0;border-top:1px solid var(--line)}
+  .facts div{padding:1rem 0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}
+  .facts dt{color:var(--gold)}
+  .interior-note{font-size:1.55rem}
+  .roles{gap:0;border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .roles li{min-height:150px;border-radius:0;background:transparent}
+  .roles b{color:var(--gold)}
+  .candidate{gap:0;border:1px solid var(--line)}
+  .candidate article{min-height:245px;border:0;border-radius:0;background:transparent}
+  .candidate article+article{border-left:1px solid var(--line)}
+  .metric{color:var(--gold)}
+  .download-card{border-radius:0;background:var(--night);box-shadow:none}
+  .download-card .section-lede,.checklist li{color:#cfc4b2}
+  .download-card .primary{border-color:var(--gold-2);background:transparent;color:var(--gold-2)}
+  .closing{padding:6.5rem 0;background:var(--paper)}
+  footer{background:var(--night);color:#cfc4b2}
+  @media(max-width:780px){
+    .principle-grid{grid-template-columns:1fr 1fr}
+    .claims-grid,.launch-note{grid-template-columns:1fr}
+    .claim+.claim{border-left:0;border-top:1px solid var(--line)}
+    .path{grid-template-columns:1fr 1fr}
+    .path li{border-bottom:1px solid var(--line)}
+    .candidate article+article{border-left:0;border-top:1px solid var(--line)}
+  }
+  @media(max-width:470px){.principle-grid,.path{grid-template-columns:1fr}.participant-table{display:block;overflow-x:auto}.path li{border-right:0}}
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button:hover{transform:none}}
 </style>
 </head>
@@ -258,15 +350,15 @@
     <div class="shell">
       <div class="principles-head">
         <div><p class="eyebrow">Catholic in inspiration · open to everyone</p><h2 id="principles-title">Technology should serve the human person.</h2></div>
-        <p class="section-lede">You are a person, not a profile. Osanwë begins with human dignity and freedom. That conviction sets
-        both its privacy ambition and its moral limits; it is an invitation to people of every faith
-        or none, never a claim of institutional endorsement.</p>
+        <p class="section-lede">You are a person, not a profile. Osanwë’s Catholic inspiration begins with human dignity, freedom, moral limits, and stewardship. It welcomes people of every faith or none and claims no institutional endorsement.</p>
       </div>
       <div class="principle-grid">
-        <article class="principle"><b>I</b><h3>Dignity before data</h3><p>A question should not require becoming an account, a profile, or an advertising subject.</p></article>
-        <article class="principle"><b>II</b><h3>Truth before reassurance</h3><p>Every participant still learns something. Osanwë names those boundaries instead of hiding them behind a score.</p></article>
-        <article class="principle"><b>III</b><h3>Freedom with responsibility</h3><p>Privacy does not mean bypassing model safety. Human freedom and moral limits belong together.</p></article>
-        <article class="principle"><b>IV</b><h3>Stewardship over extraction</h3><p>Reliability and careful security work come before growth, fundraising, or feature breadth.</p></article>
+        <article class="principle"><b>01</b><h3>No conventional user account</h3><p>A question should not require becoming an account, a profile, or an advertising subject.</p></article>
+        <article class="principle"><b>02</b><h3>No server-side conversation history</h3><p>History is ephemeral unless a person deliberately saves it in the local browser profile.</p></article>
+        <article class="principle"><b>03</b><h3>No behavioral profile</h3><p>Prompt-based advertising, telemetry, and behavioral targeting have no place in this client.</p></article>
+        <article class="principle"><b>04</b><h3>Payment and inference separated</h3><p>Where the payment rail permits it, blind issuance keeps buying access apart from spending it.</p></article>
+        <article class="principle"><b>05</b><h3>One place for the truth</h3><p>The interface states what each participant can learn instead of hiding uncertainty behind a score.</p></article>
+        <article class="principle"><b>06</b><h3>Provider choice without pretense</h3><p>Provider retention, training, identity, and expiry remain explicit facts—including when the answer is unknown.</p></article>
       </div>
     </div>
   </section>
@@ -330,35 +422,32 @@
   <section class="truth" id="truth" aria-labelledby="truth-title">
     <div class="shell">
       <div class="truth-head">
-        <div><p class="eyebrow">The honest status</p><h2 id="truth-title">Working software. Open launch gates.</h2></div>
-        <p class="section-lede">The software path exists. The social, provider, deployment, and
-        independent-review assumptions that make it a trustworthy public service do not all exist yet.</p>
+        <div><p class="eyebrow">Who can learn what</p><h2 id="truth-title">There is no single participant called “the service.”</h2></div>
+        <p class="section-lede">Each role receives different information. The design matters only when relay and gateway are actually operated separately, and even then timing, collusion, and identifying prompt content remain.</p>
       </div>
-      <div class="truth-grid">
-        <article class="truth-card ready">
-          <span class="truth-label">Built now</span>
-          <h3>Working and tested</h3>
-          <ul>
-            <li>Loopback-only local web app with streaming chat and model disclosures</li>
-            <li>Encrypted, pinned relay with a default-deny destination allowlist</li>
-            <li>Blind-signed single-use request tokens and durable replay protection on Linux</li>
-            <li>Aggregate request, input, output, and optional cost ceilings</li>
-            <li>Client binaries cross-compile for Windows, Linux, and macOS; launcher syntax is checked</li>
-          </ul>
-        </article>
-        <article class="truth-card blocked">
-          <span class="truth-label">Gate remains</span>
-          <h3>Still blocking public use</h3>
-          <ul>
-            <li>No independently operated public relay is enrolled</li>
-            <li>The gateway can read prompts; attested execution is not built</li>
-            <li><a href="https://github.com/EzraStone/Osanwe/blob/main/docs/beta-invites.md" rel="noreferrer">Per-invite fairness has no client wallet yet</a></li>
-            <li>The payment path has no independent security review</li>
-            <li>Ox Alpha integration permission and conflicting data-use language are unresolved</li>
-            <li>Clean native installs and OS warning paths have not passed all three platform smoke tests</li>
-          </ul>
-        </article>
+      <table class="participant-table">
+        <thead><tr><th scope="col">Participant</th><th scope="col">What it sees</th><th scope="col">What is kept</th></tr></thead>
+        <tbody>
+          <tr><td>Local client</td><td>Your request, because your own application sends it there</td><td>Counters and connection state; no server-side conversation log</td></tr>
+          <tr><td>Relay</td><td>Your network address and encrypted flow—ciphertext, not prompt text</td><td>No protocol decryption key for the request</td></tr>
+          <tr><td>Gateway</td><td>Prompt and answer text; attaches its provider credential</td><td>Not your source network address</td></tr>
+          <tr><td>Model provider</td><td>Prompt, answer, and timing; your account in bring-your-own-key mode</td><td>Unknown unless a dated provider policy is shown</td></tr>
+          <tr><td>Mint</td><td>That an entitlement was redeemed; signs it blindly</td><td>Not the credential later shown to the gateway</td></tr>
+        </tbody>
+      </table>
+      <div class="claims-grid">
+        <article class="claim"><h3>What we can say today</h3><ul>
+          <li>A correctly configured and pinned relay receives end-to-end ciphertext and has no protocol decryption key for the request.</li>
+          <li>Blind-signed tokens cannot be directly cryptographically matched to their blinded issuance transcript.</li>
+          <li>The local process exposes no server-side conversation-history endpoint.</li>
+        </ul></article>
+        <article class="claim"><h3>What we cannot say today</h3><ul>
+          <li>That the gateway operator is technically unable to read prompts.</li>
+          <li>That writing style or prompt content cannot identify a person.</li>
+          <li>That every provider deletes or declines to train on prompts.</li>
+        </ul></article>
       </div>
+      <div class="launch-note"><strong>Current status</strong><p>The client, pinned relay, blind-token gateway, durable replay protection, aggregate limits, Windows installer, and cross-platform archives are built and tested. Public use remains gated by an independently operated relay, complete per-invite wallet, provider permission, platform validation, and independent review of the payment path.</p></div>
     </div>
   </section>
 
