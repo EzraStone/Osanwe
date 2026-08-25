@@ -17,9 +17,9 @@
 }
 
 :root{
-  --ground:#f3f2f2; --raised:#f8f7f7; --sunk:#eae9e9;
-  --ink:#201f1d; --muted:#565353; --faint:#605d5d;
-  --line:#d7d3d3; --gild:#8f6725; --gild-soft:#f0e6d6; --gild-dim:#b68235;
+  --ground:#fff3e4; --raised:#fffaf1; --sunk:#f5e5cf;
+  --ink:#3a270d; --muted:#604d34; --faint:#6d593d;
+  --line:#d8c6aa; --gild:#9a681d; --gild-soft:#f5e5cf; --gild-dim:#b68235;
   --alarm:#a33f31;
   --serif:"Cormorant Garamond","Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
   --sans:"Lora",Georgia,"Iowan Old Style","Times New Roman",serif;
@@ -44,9 +44,9 @@
   --alarm:#df776b;
 }
 :root[data-theme="light"]{
-  --ground:#f3f2f2; --raised:#f8f7f7; --sunk:#eae9e9;
-  --ink:#201f1d; --muted:#565353; --faint:#605d5d;
-  --line:#d7d3d3; --gild:#8f6725; --gild-soft:#f0e6d6; --gild-dim:#b68235;
+  --ground:#fff3e4; --raised:#fffaf1; --sunk:#f5e5cf;
+  --ink:#3a270d; --muted:#604d34; --faint:#6d593d;
+  --line:#d8c6aa; --gild:#9a681d; --gild-soft:#f5e5cf; --gild-dim:#b68235;
   --alarm:#a33f31;
 }
 *{box-sizing:border-box}
@@ -450,3 +450,52 @@ table.catalog tr.is-selected td{background:var(--gild-soft)}
 .choose-model:hover{color:var(--gild)}
 .choose-model[aria-pressed="true"]{color:var(--gild)}
 .choose-model:focus-visible{outline:2px solid var(--gild); outline-offset:2px; border-radius:2px}
+
+/* ---- the supplied mockups, carried into the working client ---------------
+   Paper, ink and rules do the structural work. Curves are reserved for the
+   seal and status marks rather than being applied to every control. */
+.chrome{
+  min-height:4rem; justify-content:flex-start; gap:1.25rem; padding:.65rem 1.45rem;
+  background:var(--ground);
+}
+.wordmark{font-size:21px; color:var(--ink)}
+.seg{gap:0; padding:0; border:0; border-radius:0; background:transparent}
+.seg button{
+  min-height:2.05rem; padding:.3rem .9rem; border:1px solid transparent;
+  border-radius:3px; background:transparent;
+}
+.seg button[aria-selected="true"]{border-color:var(--gild-dim); background:transparent; color:var(--gild)}
+.seg button:disabled{border-color:transparent; background:transparent}
+.chrome-actions{margin-left:auto; gap:.35rem}
+.ghost{border:1px solid transparent; border-radius:3px; padding:.38rem .65rem}
+.ghost:hover{border-color:var(--line); background:transparent}
+#themeBtn,#newBtn{border-color:var(--line)}
+.workspace-shell{background:var(--ground)}
+.thread{padding-inline:1.5rem}
+.rail,.composer-inner,.storage-warning{max-width:48rem}
+.opening{text-align:center}
+.opening h2{font-size:clamp(2.3rem,4.8vw,3.6rem); font-weight:500; letter-spacing:-.018em}
+.opening p{margin-inline:auto; font-size:13px}
+.opening .mode-kicker{margin-bottom:.65rem}
+.opening-action{border-radius:3px; background:transparent}
+.opening::before{left:auto; right:-.22em; bottom:-.32em; font-size:15rem; opacity:.07}
+.turn{max-width:100%; margin-bottom:2rem}
+.turn.you{width:min(86%,35rem); margin-left:auto}
+.turn.you .who{text-align:right; color:var(--gild)}
+.turn.you .body{
+  padding:.8rem 1rem; border:1px solid var(--line); border-left:1px solid var(--line);
+  border-radius:4px; background:var(--raised); color:var(--ink);
+}
+.turn.reply .who{color:var(--gild)}
+.composer-wrap{padding:.75rem 1.5rem 1.15rem}
+.composer{border-radius:4px; background:var(--raised); box-shadow:0 8px 24px color-mix(in srgb,var(--ink) 5%,transparent)}
+.send,.stop{border-radius:3px}
+.model{border-radius:2px}
+
+@media(max-width:34rem){
+  .chrome{gap:.6rem; padding:.55rem .7rem}
+  .chrome-actions{gap:.12rem}
+  .ghost{padding:.35rem .45rem}
+  .opening h2{font-size:2.35rem}
+  .turn.you{width:94%}
+}
