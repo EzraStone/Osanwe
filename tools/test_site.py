@@ -148,6 +148,7 @@ class StaticSiteTest(unittest.TestCase):
         source = self.source[self.index]
         text = " ".join("".join(self.page.text).split())
         for phrase in (
+            "Humans deserve to maintain their dignity when using our greatest invention.",
             "You are a person, not a profile.",
             "Catholic in inspiration",
             "Real local client interface",
@@ -157,6 +158,9 @@ class StaticSiteTest(unittest.TestCase):
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
+        self.assertNotIn("Humans deserve to preserve their dignity", text)
+        self.assertIn(".hero-plate.shell{width:100%;height:100svh", source)
+        self.assertIn('href="http://127.0.0.1:8080/_osanwe/"', source)
         self.assertIn('role="img"', source)
         self.assertNotIn("Generated locally", source)
 
