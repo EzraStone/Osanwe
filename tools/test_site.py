@@ -150,10 +150,10 @@ class StaticSiteTest(unittest.TestCase):
         for phrase in (
             "You are a person, not a profile.",
             "Catholic in inspiration",
-            "Static product illustration",
+            "Real local client interface",
             "Interactive HTML requires Chromium 152+",
             "Cowork",
-            "Rendered locally",
+            "What are you thinking about?",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)

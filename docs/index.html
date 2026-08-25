@@ -308,6 +308,48 @@
     .candidate article+article{border-left:0;border-top:1px solid var(--line)}
   }
   @media(max-width:470px){.principle-grid,.path{grid-template-columns:1fr}.participant-table{display:block;overflow-x:auto}.path li{border-right:0}}
+  /* The plate is the complete first page: no frame and no navigation band
+     competing with the proposition. The supporting material begins below. */
+  .topbar{display:none}
+  .hero-plate.shell{width:100%;height:100svh;min-height:42rem;margin:0;border:0}
+  .hero-copy{left:clamp(2rem,5.7vw,4.6rem);bottom:clamp(3.5rem,10vh,6.8rem)}
+  .client-preview{position:relative;min-height:640px;margin:2.7rem 0 0;overflow:hidden;border:1px solid var(--line);background:var(--paper);box-shadow:0 28px 70px #3a270d12}
+  .client-chrome{display:flex;min-height:4rem;align-items:center;gap:1.25rem;padding:.65rem 1.45rem;border-bottom:1px solid var(--line)}
+  .client-wordmark{font:600 1.35rem var(--serif)}
+  .client-modes,.client-actions{display:flex;align-items:center;gap:.35rem;font-size:.76rem}
+  .client-modes span,.client-actions span{padding:.38rem .65rem;border:1px solid transparent;border-radius:3px;color:var(--muted)}
+  .client-modes .selected{border-color:var(--gold);color:var(--gold)}
+  .client-modes .unavailable{opacity:.55}
+  .client-modes small{margin-left:.18rem;font-size:.48rem;letter-spacing:.08em;text-transform:uppercase}
+  .client-actions{margin-left:auto}
+  .client-actions .control{border-color:var(--line);color:var(--ink)}
+  .client-chat{position:relative;display:flex;min-height:576px;flex-direction:column;padding:2rem 1.5rem 1.15rem}
+  .client-opening{position:absolute;left:50%;top:47%;width:min(90%,48rem);transform:translate(-50%,-50%);text-align:center}
+  .client-opening .kicker{margin:0 0 .65rem;color:var(--gold);font:.64rem var(--sans);font-weight:700;letter-spacing:.13em;text-transform:uppercase}
+  .client-opening h3{position:relative;z-index:1;margin:0 0 .65rem;font:500 clamp(2.7rem,5vw,4.1rem)/1 var(--serif);letter-spacing:-.018em}
+  .client-opening p:not(.kicker){position:relative;z-index:1;max-width:43ch;margin:0 auto;color:var(--muted);font-size:.82rem}
+  .client-ghost{position:absolute;right:1rem;bottom:-3.3rem;color:var(--gold);font:600 14rem/.8 var(--serif);opacity:.07}
+  .client-compose{width:min(100%,48rem);margin:auto auto 0}
+  .client-prompt{display:flex;align-items:center;gap:.75rem;padding:.7rem .75rem .7rem 1rem;border:1px solid var(--line);border-radius:4px;background:var(--white);color:var(--muted);box-shadow:0 8px 24px #3a270d0d}
+  .client-prompt>span:first-of-type{margin-left:auto}
+  .client-seal{display:grid;width:2rem;height:2rem;place-items:center;color:var(--gold);font-size:1.1rem}
+  .client-send{display:grid;width:2.15rem;height:2.15rem;place-items:center;border-radius:3px;background:var(--gold);color:var(--white)}
+  .client-meta{display:flex;justify-content:space-between;gap:1rem;padding:.55rem .2rem 0;color:var(--muted);font-size:.7rem}
+  .client-caption{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:.85rem 0 0;color:var(--muted);font-size:.76rem}
+  .client-caption p{margin:0}
+  .client-launch{display:inline-flex;flex:0 0 auto;align-items:center;min-height:38px;padding:.5rem .8rem;border:1px solid var(--gold);border-radius:3px;color:var(--gold);font-weight:650;text-decoration:none}
+  @media(max-width:780px){
+    .client-preview{min-height:590px}
+    .client-chrome{gap:.45rem;padding:.55rem .7rem}
+    .client-actions .settings-label,.client-actions .new-label{display:none}
+    .client-modes span,.client-actions span{padding:.34rem .45rem}
+    .client-chat{min-height:526px;padding-inline:.8rem}
+    .client-opening{top:43%}
+    .client-opening h3{font-size:clamp(2.15rem,10vw,3rem)}
+    .client-ghost{right:0;font-size:10rem}
+    .client-caption{align-items:flex-start;flex-direction:column}
+  }
+  @media(max-width:470px){.hero-plate.shell{height:100svh;min-height:36rem}.hero-copy{bottom:3.2rem}}
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button:hover{transform:none}}
 </style>
 </head>
@@ -334,7 +376,7 @@
       <div class="hero-copy">
         <p class="status">An encrypted relay for AI inference</p>
         <h1 id="hero-title">A prompt is a thought in transit.</h1>
-        <p class="hero-lede">Humans deserve to preserve their dignity when using our greatest invention.</p>
+        <p class="hero-lede">Humans deserve to maintain their dignity when using our greatest invention.</p>
       </div>
     </div>
     <div class="hero-foot shell">
@@ -375,46 +417,35 @@
           interactive HTML stays locked unless the browser can enforce its network boundary.
           Connections live in Settings, and Cowork stays visibly unavailable until its privacy
           boundary is ready.</p>
-          <p class="interface-note"><span>Static product illustration—the public website never
-          receives prompts or keys. Interactive HTML requires Chromium 152+ and fails closed
-          elsewhere. <a href="https://github.com/EzraStone/Osanwe/blob/main/docs/product/code-runner.md" rel="noreferrer">Read the runner limits →</a></span></p>
+          <p class="interface-note"><span>Real local client interface, reproduced from the shipped
+          Chat surface. This public website never receives prompts or keys. Interactive HTML requires
+          Chromium 152+ in Code and fails closed elsewhere.
+          <a href="https://github.com/EzraStone/Osanwe/blob/main/docs/product/code-runner.md" rel="noreferrer">Read the runner limits →</a></span></p>
         </div>
       </div>
 
-      <div class="interface" role="img" aria-label="Static illustration of the Osanwë local application showing Chat, Code with a network-blocked local preview, Settings, and Cowork marked unavailable">
-        <div class="app-rail">
-          <div class="app-brand"><img src="favicon.svg" alt="">Osanwë</div>
-          <p class="mode-label">Modes</p>
-          <div class="mode">Chat</div>
-          <div class="mode active">Code</div>
-          <div class="mode soon">Cowork <span class="soon-tag">Soon</span></div>
-          <div class="rail-spacer"></div>
-          <p class="mode-label">Control</p>
-          <div class="mode settings">Settings</div>
-          <div class="connection"><b>Connected locally</b>Provider details remain visible at runtime</div>
+      <figure class="client-preview" role="img" aria-label="The real Osanwë local Chat interface, shown without accepting input on the public website">
+        <div class="client-chrome">
+          <span class="client-wordmark">Osanwë</span>
+          <div class="client-modes" aria-hidden="true"><span class="selected">Chat</span><span>Code</span><span class="unavailable">Cowork <small>Soon</small></span></div>
+          <div class="client-actions" aria-hidden="true"><span class="control">☾</span><span class="settings-label">Settings</span><span class="control new-label">New</span></div>
         </div>
-
-        <div class="app-workspace">
-          <div class="conversation">
-            <div class="window-bar"><strong>Code conversation</strong><span class="local-pill">Ephemeral</span></div>
-            <div class="messages">
-              <div class="message person"><small>You</small>Create a quiet landing card inspired by a harbor at night.</div>
-              <div class="message assistant"><small>Osanwë</small>I made a self-contained HTML, CSS, and JavaScript preview. Review the code, then run it explicitly when you are ready.</div>
-            </div>
-            <div class="composer"><span>Continue the conversation…</span><span class="send-dot">↑</span></div>
+        <div class="client-chat">
+          <div class="client-opening">
+            <p class="kicker">Private chat</p>
+            <h3>What are you thinking about?</h3>
+            <p>Nothing here is kept, and nothing leaves this device unsealed.</p>
+            <span class="client-ghost" aria-hidden="true">Ó</span>
           </div>
-
-          <div class="runner">
-            <div class="runner-tabs"><b>Display</b><span>Code</span><span>Console</span><span class="runner-state">Network blocked</span></div>
-            <div class="preview">
-              <div class="preview-card">
-                <div class="preview-art"></div>
-                <div class="preview-copy"><small>Rendered locally</small><strong>A place for thoughts in transit.</strong><p>Self-contained preview · no remote assets requested</p></div>
-              </div>
-            </div>
-            <div class="runner-foot"><span>Opaque sandbox</span><span>Explicit run only</span><span>Disposable frame</span></div>
+          <div class="client-compose" aria-hidden="true">
+            <div class="client-prompt">Ask anything <span class="client-seal">◉</span><span class="client-send">↑</span></div>
+            <div class="client-meta"><span>Choose a model⌄</span><span>Ephemeral &nbsp; Sealed</span></div>
           </div>
         </div>
+      </figure>
+      <div class="client-caption">
+        <p>The interface above is the actual Chat design, presented without a prompt field. Launching below opens the working client on this device when Osanwë is installed and running.</p>
+        <a class="client-launch" href="http://127.0.0.1:8080/_osanwe/" rel="noreferrer">Open installed Osanwë</a>
       </div>
     </div>
   </section>
