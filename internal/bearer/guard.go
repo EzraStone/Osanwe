@@ -69,6 +69,24 @@ func (s *Server) checkOrigin(r *http.Request) error {
 	return nil
 }
 
+// uiEntryNavigation reports the one cross-site request a local UI must accept:
+// a person's top-level navigation to its static entry document. The page that
+// linked here receives no response body, no opener (the public link uses
+// noreferrer), and no access to the new loopback origin. Everything that can
+// read state or spend a token still goes through checkOrigin.
+func (s *Server) uiEntryNavigation(r *http.Request) bool {
+	if !s.cfg.UI || r.Method != http.MethodGet || r.URL.RawQuery != "" || r.Header.Get("Origin") != "" {
+		return false
+	}
+	path := r.URL.Path
+	if path != Prefix && path != strings.TrimSuffix(Prefix, "/") {
+		return false
+	}
+	return r.Header.Get("Sec-Fetch-Mode") == "navigate" &&
+		r.Header.Get("Sec-Fetch-Dest") == "document" &&
+		(s.cfg.AllowNonLoopback || isLoopbackHost(r.Host))
+}
+
 // originAllowed reports whether an Origin header may talk to this client.
 func (s *Server) originAllowed(origin string) bool {
 	for _, allowed := range s.cfg.AllowOrigins {

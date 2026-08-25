@@ -253,7 +253,7 @@ func (s *Server) routes(proxy http.Handler) http.Handler {
 	mux.Handle("/", notAWebsite(proxy))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := s.checkOrigin(r); err != nil {
+		if err := s.checkOrigin(r); err != nil && !s.uiEntryNavigation(r) {
 			s.refuseOrigin(w, err)
 			return
 		}

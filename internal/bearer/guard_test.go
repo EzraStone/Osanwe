@@ -186,6 +186,44 @@ func TestTheGuardCoversTheProxiedPathsToo(t *testing.T) {
 	}
 }
 
+// A link on the public explanation page may open the local application, but
+// it must not turn that page into a caller of the local API. Browser fetch
+// metadata distinguishes a top-level document navigation from fetch/XHR.
+func TestCrossSiteNavigationMayOpenOnlyTheUIEntry(t *testing.T) {
+	s := testServer(t, func(c *Config) { c.UI = true })
+	navigation := map[string]string{
+		"Sec-Fetch-Site": "cross-site",
+		"Sec-Fetch-Mode": "navigate",
+		"Sec-Fetch-Dest": "document",
+	}
+
+	if resp := ask(t, s, Prefix, navigation); resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("UI navigation = %d, want 200: %s", resp.StatusCode, body)
+	}
+
+	cases := []struct {
+		name    string
+		method  string
+		path    string
+		headers map[string]string
+	}{
+		{"status fetch", http.MethodGet, Prefix + "status", navigation},
+		{"prompt request", http.MethodPost, "/v1/messages", navigation},
+		{"subresource", http.MethodGet, Prefix + "assets/app.js", navigation},
+		{"script-shaped request", http.MethodGet, Prefix, map[string]string{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty"}},
+		{"foreign origin", http.MethodGet, Prefix, map[string]string{"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}},
+		{"foreign host", http.MethodGet, Prefix, map[string]string{"Host": "evil.example:8080", "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if resp := askMethod(t, s, tc.method, tc.path, tc.headers); resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403", resp.StatusCode)
+			}
+		})
+	}
+}
+
 // No CORS header may ever be granted. Adding one later "to make the interface
 // work" would undo the entire guard, so its absence is asserted rather than
 // assumed.
