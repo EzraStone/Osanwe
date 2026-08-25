@@ -563,3 +563,11 @@ table.catalog th{color:var(--gild)}
 .generated-code-head{border-color:#5c452a; color:#d9b06b}
 .generated-code-head button{border-color:#9a681d; border-radius:3px; background:transparent; color:#e5bd7b}
 .generated-code pre{color:#f8ead5}
+:root[data-theme="dark"] .code-runner{
+  --runner-chrome:#16140f; --runner-raised:#1d1a14; --runner-line:#4c4233;
+  --runner-ink:#efe9dc; --runner-muted:#b8ad9a; --runner-accent:#d9b06b;
+  --runner-warn:#df776b; --runner-subtle:#b0a795;
+}
+:root[data-theme="dark"] .preview-toolbar button:hover:not(:disabled){background:#2b2418}
+:root[data-theme="dark"] .preview-address{background:#100e0a; color:#b8ad9a}
+:root[data-theme="dark"] .network-off{border-color:#8f7444; color:#d9b06b}
