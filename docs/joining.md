@@ -1,33 +1,38 @@
 # Running the client on a new machine
 
-Invited testers should use a release archive. The source-build path remains below for operators and
-developers.
+Invited testers should use the Windows installer or a portable release archive. The source-build
+path remains below for operators and developers.
 
 ## Invited beta: no development toolchain
 
 Public downloads will remain unpublished until the beta gates in [`beta.md`](beta.md) are met. Once
 invited:
 
-1. Download the archive for your platform from the project's GitHub release and compare its SHA-256
-   digest with `SHA256SUMS` on the release.
-2. Place the non-secret `osanwe.json` supplied by the beta operator beside the launcher. If that file
-   names `gateway.crt`, place the supplied public certificate there too.
-3. On Windows, double-click **Start Osanwe.cmd**. On macOS, double-click **Start Osanwe.command**.
-   On Linux, open a terminal in the extracted folder and run `./start-osanwe.sh`; secret entry
-   requires an interactive terminal and the launcher exits clearly if one is unavailable.
-4. Paste the relay secret and beta entitlement only when the local launcher asks. They are inherited
-   by the client process, removed before it starts browser helpers, not saved to `osanwe.json`, and
-   not put on its command line.
+1. Download the file for your platform from the project's GitHub release and compare its SHA-256
+   digest with `SHA256SUMS` on the release. Windows testers should prefer
+   `Osanwe-Setup_<version>_windows_amd64.exe`; the `.zip` is the portable alternative.
+2. On Windows, run the per-user installer and open **Osanwe** from Start or the desktop shortcut. The
+   first launch asks you to select the non-secret `osanwe.json` supplied by the beta operator and
+   imports a relative gateway certificate from beside it. Closing the dedicated app window stops
+   the local client; the shortcut reopens it later. No terminal is required.
+3. On macOS, place `osanwe.json` and any named `gateway.crt` beside the launcher, then double-click
+   **Start Osanwe.command**. On Linux, place those files beside the launcher, open a terminal in the
+   extracted folder, and run `./start-osanwe.sh`; secret entry requires an interactive terminal.
+4. Enter the relay secret and beta entitlement only when the local launcher asks. On Windows they
+   pass through the child process environment from a masked native prompt; on macOS and Linux they
+   pass through the interactive launcher. The client removes them before it starts browser helpers.
+   They are not saved to `osanwe.json` or placed on its command line.
 5. Before sending a test prompt, acknowledge that the configured model provider receives both the
    prompt and answer under the gateway account, subject to that provider's retention and training
    policy. Use only supplied synthetic or deliberately non-sensitive text.
-6. The launcher opens the chat at `http://127.0.0.1:8080/_osanwe/`. The static public project website
+6. The launcher opens the chat at `http://127.0.0.1:8080/_osanwe/`. Windows uses a dedicated Edge app
+   window and a separate local browser profile when Edge is available. The static public project website
    has no application path that receives the secret, entitlement, prompt, response, or local history.
 
-The initial archives are not code-signed or notarized, so Windows SmartScreen and macOS Gatekeeper
-may warn. Do not bypass a warning unless the archive digest matches the release and the invite came
-through the expected channel. Native signing is a later paid decision, not a property of the first
-technical build.
+The initial installer and archives are not code-signed or notarized, so Windows SmartScreen and
+macOS Gatekeeper may warn. Do not bypass a warning unless the digest matches the release and the
+invite came through the expected channel. Native signing is a later paid decision, not a property of
+the first technical build.
 
 The rest of this page is the source-build route: from nothing to a working window on Ubuntu or WSL,
 with macOS notes at the end.

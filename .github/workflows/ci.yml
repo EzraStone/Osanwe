@@ -37,6 +37,9 @@ jobs:
       - name: immutable workflow dependencies
         run: python3 -m unittest discover -s tools -p 'test_workflows.py' -v
 
+      - name: desktop packaging policy
+        run: python3 -m unittest discover -s tools -p 'test_packaging.py' -v
+
       - name: launcher and enrollment-file syntax
         run: |
           bash -n packaging/client/start-osanwe.sh
@@ -82,6 +85,21 @@ jobs:
 
       - name: client executable
         run: go build -trimpath -o bearer.exe ./cmd/bearer
+
+      - name: Windows launcher syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path -LiteralPath 'packaging/client/start-osanwe.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
 
   go:
     runs-on: ubuntu-latest
