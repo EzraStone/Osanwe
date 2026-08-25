@@ -170,6 +170,45 @@ jobs:
           if ($installer.Count -ne 1) { throw "Expected one installer, found $($installer.Count)" }
           "INSTALLER=$($installer[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: smoke install Windows app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $smokeRoot = Join-Path $env:RUNNER_TEMP 'Osanwe smoke install'
+          $arguments = @(
+            '/VERYSILENT',
+            '/SUPPRESSMSGBOXES',
+            '/NORESTART',
+            '/SP-',
+            '/NOICONS',
+            "/DIR=`"$smokeRoot`""
+          )
+          $setup = Start-Process -FilePath $env:INSTALLER -ArgumentList $arguments -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "Installer smoke test exited with $($setup.ExitCode)" }
+
+          foreach ($relative in @('bearer.exe', 'start-osanwe.ps1', 'QUICKSTART.md', 'unins000.exe')) {
+            $installed = Join-Path $smokeRoot $relative
+            if (-not (Test-Path -LiteralPath $installed -PathType Leaf)) {
+              throw "Installer did not create $relative"
+            }
+          }
+          $identity = & (Join-Path $smokeRoot 'bearer.exe') -version
+          if ($identity -notmatch [regex]::Escape($env:GITHUB_SHA.Substring(0, 12))) {
+            throw "Installed client identity did not name commit $($env:GITHUB_SHA.Substring(0, 12)): $identity"
+          }
+
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $smokeRoot 'start-osanwe.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+
       - name: upload Windows installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

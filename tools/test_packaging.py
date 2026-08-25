@@ -61,6 +61,9 @@ class DesktopPackagingTest(unittest.TestCase):
         self.assertIn("windows-installer:", self.release)
         self.assertIn("Osanwe-Setup_*.exe", self.release)
         self.assertIn("sha256sum osanwe-client_* Osanwe-Setup_*.exe", self.release)
+        self.assertIn("smoke install Windows app", self.release)
+        self.assertIn("'/VERYSILENT'", self.release)
+        self.assertIn("'unins000.exe'", self.release)
 
 
 if __name__ == "__main__":
