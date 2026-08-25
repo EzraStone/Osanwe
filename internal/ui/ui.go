@@ -28,6 +28,11 @@ const contentSecurityPolicy = "default-src 'none'; " +
 	"style-src 'self'; " +
 	"script-src 'self'; " +
 	"img-src 'self' data:; " +
+	// The two text faces are served from this binary like every other asset.
+	// 'self' rather than a font CDN keeps the promise the rest of this policy
+	// makes: the page reaches no outside origin, so no outside origin learns
+	// that somebody opened it.
+	"font-src 'self'; " +
 	"connect-src 'self'; " +
 	"frame-src 'self'; " +
 	"form-action 'none'; " +
@@ -78,8 +83,10 @@ var assetFiles = []struct {
 	{"/assets/api.js", "assets/api.js", "text/javascript; charset=utf-8", ""},
 	{"/assets/code.js", "assets/code.js", "text/javascript; charset=utf-8", ""},
 	{"/assets/conversation.js", "assets/conversation.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/cormorant-garamond.woff2", "assets/cormorant-garamond.woff2", "font/woff2", ""},
 	{"/assets/disclosure.js", "assets/disclosure.js", "text/javascript; charset=utf-8", ""},
 	{"/assets/lifecycle.js", "assets/lifecycle.js", "text/javascript; charset=utf-8", ""},
+	{"/assets/lora.woff2", "assets/lora.woff2", "font/woff2", ""},
 	{"/assets/models.js", "assets/models.js", "text/javascript; charset=utf-8", ""},
 	{"/assets/runner.html", "assets/runner.html", "text/html; charset=utf-8", runnerContentSecurityPolicy},
 	{"/assets/snippets.js", "assets/snippets.js", "text/javascript; charset=utf-8", ""},
