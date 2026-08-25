@@ -499,3 +499,47 @@ table.catalog tr.is-selected td{background:var(--gild-soft)}
   .opening h2{font-size:2.35rem}
   .turn.you{width:94%}
 }
+
+/* Disclosure is the right-hand fact drawer shown in mockup 1d. */
+.veil.open{opacity:.38}
+.panel{border-radius:0; background:var(--raised)}
+.panel-inner{max-width:48rem}
+.panel h3{font-size:1.45rem}
+.told{max-width:none; padding-block:.25rem; border-block:1px solid var(--line)}
+.told li{margin:0; padding:.78rem 0 .78rem 1.35rem; border-bottom:1px solid var(--line)}
+.told li:last-child{border-bottom:0}
+.facts{padding:0; border:0; border-radius:0; background:transparent; font-family:var(--sans)}
+.facts>div{grid-template-columns:8.5rem minmax(0,1fr); gap:1rem; padding:.58rem 0; border-bottom:1px solid var(--line)}
+.facts .k{color:var(--gild); font-size:9px; font-weight:650; letter-spacing:.1em; text-transform:uppercase}
+.panel .close{border-radius:3px}
+
+/* Settings and the expanded catalog correspond to mockups 1f and 1g. */
+.settings-dialog{
+  width:min(94vw,43rem); border-radius:6px; background:var(--raised);
+  box-shadow:0 24px 70px color-mix(in srgb,var(--ink) 20%,transparent);
+}
+.settings-dialog:has(.settings-details[open]){width:min(96vw,76rem); max-height:94vh}
+.settings-dialog::backdrop{background:color-mix(in srgb,var(--ink) 36%,transparent)}
+.settings-inner{padding:1.55rem}
+.settings-heading{padding-bottom:1rem; border-bottom:1px solid var(--line)}
+.settings-inner h2{font-size:1.65rem}
+.settings-close{border:1px solid var(--line); border-radius:3px; background:transparent}
+.settings-section{padding:1.2rem 0}
+.settings-section .provider-warning{border-left:1px solid var(--gild-dim); background:var(--ground)}
+.settings-inner fieldset{border-radius:3px; background:var(--ground)}
+.byok-key-row input,.byok-key-row button,.endpoint,.copy,pre.code{border-radius:3px}
+.settings-details summary{color:var(--gild); font-weight:600}
+.catalog-wrap{border-radius:0; background:var(--ground)}
+table.catalog th{color:var(--gild)}
+.settings-actions{padding-top:1rem; border-top:1px solid var(--line)}
+.settings-actions button{border-radius:3px}
+
+@media(min-width:60rem){
+  .panel{
+    top:4rem; right:0; bottom:0; left:auto; width:min(31rem,42vw); max-height:none;
+    padding:1.7rem 1.8rem; border-top:0; border-left:1px solid var(--line);
+    transform:translateX(101%);
+  }
+  .panel.open{transform:translateX(0)}
+  .panel-inner{max-width:none}
+}

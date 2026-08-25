@@ -182,7 +182,8 @@ function openPanel(o){
   seal.setAttribute("aria-expanded",String(o));
   document.querySelectorAll(".chrome,.view").forEach(function(node){node.inert=o});
   if(o){
-    $("closePanel").focus();
+    panel.scrollTop=0;
+    panel.focus({preventScroll:true});
   }else{
     panel.hidden=true;veil.hidden=true;
     var target=dialogOpener&&dialogOpener.isConnected?dialogOpener:seal;
