@@ -129,3 +129,39 @@ export function humanize(value) {
   if (!value || value === UNKNOWN) return "Unknown";
   return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 }
+
+// catalogRow reduces one model to the six columns the catalog table shows.
+//
+// Every value is either something the gateway reported or the word "unknown".
+// There is deliberately no score, rating or shield: a single number would
+// average away the one distinction that matters, which is whether a fact was
+// disclosed and dated or merely absent.
+export function catalogRow(model, retentionMode = "ephemeral") {
+  const disclosed = model.privacy.providerIdentity !== UNKNOWN
+    ? "provider disclosed"
+    : "provider undisclosed";
+  const tags = [disclosed];
+  if (model.lifecycle.experimental) tags.push("experimental");
+
+  let retention = humanize(model.privacy.providerRetention);
+  if (model.privacy.policyCheckedAt !== UNKNOWN && retention !== "Unknown") {
+    retention += " · checked " + model.privacy.policyCheckedAt;
+  }
+
+  const request = [];
+  if (model.capabilities.text) request.push("text in / text out");
+  if (model.capabilities.streaming) request.push("streaming");
+  if (model.limits.maxOutputTokens) {
+    request.push("max " + model.limits.maxOutputTokens.toLocaleString() + " out");
+  }
+
+  return {
+    id: model.id,
+    tags,
+    availability: "Available now",
+    request: request.length ? request.join(" · ") : "not reported by the catalog",
+    ours: retentionMode === "device" ? "saved on this device" : "ephemeral in this page",
+    theirs: retention,
+    expiry: model.lifecycle.expiresAt === UNKNOWN ? "—" : model.lifecycle.expiresAt,
+  };
+}

@@ -3,7 +3,7 @@ import { buildPreviewBundle, parseCodeFences } from "./code.js";
 import { appendTurn, conversationTitle, conversationTurnText, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
 import { disclosureNarrative } from "./disclosure.js";
 import { ConversationLifecycle } from "./lifecycle.js";
-import { buildIdentityLabel, humanize, modelFacts, normalizeCatalog, relayVerificationLabel } from "./models.js";
+import { buildIdentityLabel, catalogRow, humanize, normalizeCatalog, relayVerificationLabel } from "./models.js";
 import { connectionSnippets } from "./snippets.js";
 import { readProviderTextStream } from "./sse.js";
 import { conversationStore } from "./storage.js";
@@ -686,6 +686,13 @@ function wireTabKeys(list){
 }
 document.querySelectorAll("[role='tablist']").forEach(wireTabKeys);
 
+// Re-reading the catalog is free and needs no token, so the control is always
+// live rather than gated on an error state.
+$("reloadCatalog").addEventListener("click",function(){
+  $("catalogState").textContent="Reading the catalog…";
+  loadModels();
+});
+
 $("copyEndpoint").addEventListener("click",function(){
   var btn=this,feedback=function(message,ok){
     btn.textContent=message;btn.classList.toggle("done",ok);
@@ -746,38 +753,40 @@ function loadModels(){
 }
 
 function renderModelCards(){
-  var grid=$("modelGrid");grid.textContent="";
+  var body=$("catalogBody");body.textContent="";
   $("catalogState").textContent=catalogModels.length
-    ? plural(catalogModels.length,"model")+" available through this gateway."
-    : "No models are currently reported.";
+    ? "Read from the connected gateway · "+plural(catalogModels.length,"route")
+    : "No routes are currently reported.";
+
   catalogModels.forEach(function(item){
-    var card=document.createElement("article");card.className="model-card";
+    var row=catalogRow(item,retentionMode);
     var selected=item.id===model.value;
-    card.classList.toggle("is-selected",selected);
-    var title=document.createElement("h2");title.textContent=item.id;card.appendChild(title);
+    var tr=document.createElement("tr");
+    tr.classList.toggle("is-selected",selected);
 
-    var caps=document.createElement("div");caps.className="capabilities";
-    [["Text",item.capabilities.text],["Streaming",item.capabilities.streaming],
-      ["Tools",item.capabilities.tools],["Images",item.capabilities.images]].forEach(function(entry){
-      var badge=document.createElement("span");badge.className="capability"+(entry[1]?" yes":"");
-      badge.textContent=entry[1]?entry[0]:"No "+entry[0].toLowerCase();caps.appendChild(badge);
-    });
-    card.appendChild(caps);
-
-    var facts=document.createElement("dl");facts.className="model-facts";
-    modelFacts(item,status,retentionMode).forEach(function(pair){
-      var row=document.createElement("div"),term=document.createElement("dt"),value=document.createElement("dd");
-      term.textContent=pair[0];value.textContent=pair[1];row.appendChild(term);row.appendChild(value);facts.appendChild(row);
-    });
-    card.appendChild(facts);
-
-    var choose=document.createElement("button");choose.type="button";choose.className="choose-model";
+    // The model name doubles as the control that selects it. A separate button
+    // per row would put six of them in a column that is already dense, and the
+    // row is the thing a reader is pointing at anyway.
+    var name=document.createElement("td");
+    var choose=document.createElement("button");
+    choose.type="button";choose.className="choose-model";
     choose.setAttribute("aria-pressed",String(selected));
-    choose.textContent=selected?"Selected":"Use in Chat and Code";
+    choose.textContent=row.id;
     choose.addEventListener("click",function(){
       model.value=item.id;conversation.model=item.id;rememberModel(item.id);persistConversation();renderModelCards();
     });
-    card.appendChild(choose);grid.appendChild(card);
+    name.appendChild(choose);
+    var tags=document.createElement("div");tags.className="row-tags";
+    row.tags.forEach(function(t){
+      var tag=document.createElement("span");tag.className="row-tag";tag.textContent=t;tags.appendChild(tag);
+    });
+    name.appendChild(tags);
+    tr.appendChild(name);
+
+    [row.availability,row.request,row.ours,row.theirs,row.expiry].forEach(function(text){
+      var td=document.createElement("td");td.textContent=text;tr.appendChild(td);
+    });
+    body.appendChild(tr);
   });
 }
 

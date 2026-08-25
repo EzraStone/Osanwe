@@ -198,8 +198,29 @@
     <details class="settings-details">
       <summary>Models and connection</summary>
       <div class="settings-detail-body">
-        <p class="catalog-state" id="catalogState" role="status">Loading the local catalog…</p>
-        <div class="model-grid" id="modelGrid" aria-live="polite"></div>
+        <div class="catalog-head">
+          <div>
+            <h3>Model catalog</h3>
+            <p class="catalog-state" id="catalogState" role="status">Loading the local catalog…</p>
+          </div>
+          <button type="button" class="ghost" id="reloadCatalog">Reload catalog</button>
+        </div>
+        <p class="catalog-caveat">Labels state observable facts. They do not produce a privacy
+        score. Provider retention and training are unknown unless the route carries a dated,
+        attributable source.</p>
+        <div class="catalog-wrap">
+          <table class="catalog" id="catalogTable">
+            <thead><tr>
+              <th scope="col">Model</th><th scope="col">Availability</th><th scope="col">Request</th>
+              <th scope="col">Our retention</th><th scope="col">Provider retention</th>
+              <th scope="col">Expiry (UTC)</th>
+            </tr></thead>
+            <tbody id="catalogBody" aria-live="polite"></tbody>
+          </table>
+        </div>
+        <p class="catalog-caveat">Image, audio, file, remote-URL, tool-use and browsing are false
+        unless the gateway validates, prices and reports them. An experimental route is refused at
+        its expiry instant; extending it is an affirmative policy review.</p>
 
         <div class="block">
           <h3>Local endpoint</h3>
@@ -228,7 +249,13 @@
           <h3>Connection</h3>
           <div class="status-list" id="connList"></div>
           <p class="aside" id="connAside"></p>
-          <div class="status-list"><div><span>Upstream</span><b class="mono" id="upstreamText">—</b></div></div>
+          <div class="status-list">
+            <div><span>Upstream</span><b class="mono" id="upstreamText">—</b></div>
+            <div><span>Operator separation</span><b id="operatorSeparation">unverified</b></div>
+          </div>
+          <p class="aside">A pin or threshold-signed directory authenticates the configured relay
+          key. It does not prove the operator's identity, independence, location, deployment
+          correctness, or non-collusion.</p>
         </div>
       </div>
     </details>

@@ -266,26 +266,13 @@ body[data-mode="code"] .turn.you .body{font-family:var(--mono); font-size:13.5px
 
 /* models */
 .models-page{flex:1 1 auto; overflow-y:auto; width:100%; padding:2.2rem 1.1rem 3rem}
-.models-intro,.catalog-state,.model-grid{width:100%; max-width:58rem; margin-left:auto; margin-right:auto}
+.models-intro,.catalog-state{width:100%; max-width:58rem; margin-left:auto; margin-right:auto}
 .models-intro{margin-bottom:1.5rem}
 .eyebrow{margin:0 0 .35rem; color:var(--gild); font-size:10.5px; font-weight:650; letter-spacing:.14em; text-transform:uppercase}
 .models-intro h1{margin:0 0 .45rem; font-family:var(--serif); font-size:clamp(1.9rem,4vw,2.7rem); font-weight:600; letter-spacing:-.01em}
 .models-intro>p:last-child{margin:0; max-width:58ch; color:var(--muted)}
 .catalog-state{color:var(--faint); font-size:13px}
 .catalog-state:empty{display:none}
-.model-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr)); gap:.85rem}
-.model-card{display:flex; flex-direction:column; min-height:20rem; padding:1.1rem; border:1px solid var(--line); border-radius:12px; background:var(--raised)}
-.model-card.is-selected{border-color:var(--gild-dim); box-shadow:inset 0 0 0 1px var(--gild-dim)}
-.model-card h2{overflow-wrap:anywhere; margin:0 0 .4rem; font-family:var(--serif); font-size:1.12rem; font-weight:600}
-.capabilities{display:flex; flex-wrap:wrap; gap:.35rem; margin:0 0 1rem}
-.capability{padding:.14rem .45rem; border:1px solid var(--line); border-radius:100px; color:var(--faint); font-size:10.5px}
-.capability.yes{border-color:var(--gild-dim); color:var(--gild)}
-.model-facts{display:grid; gap:.42rem; margin:0 0 1rem}
-.model-facts div{display:grid; grid-template-columns:minmax(6rem,.8fr) minmax(0,1.2fr); gap:.65rem; padding-bottom:.42rem; border-bottom:1px solid var(--line); font-size:12px}
-.model-facts dt{color:var(--faint)}
-.model-facts dd{margin:0; color:var(--muted); overflow-wrap:anywhere}
-.choose-model{margin-top:auto; align-self:flex-start; padding:.42rem .8rem; border:1px solid var(--gild-dim); border-radius:100px; background:var(--gild-soft); color:var(--gild); cursor:pointer; font:600 12px var(--sans)}
-.choose-model[aria-pressed="true"]{background:var(--gild); color:var(--ground)}
 
 /* connect */
 .dev{flex:1 1 auto; overflow-y:auto; padding:.4rem 1.1rem 1.4rem}
@@ -388,8 +375,6 @@ pre.code .s{color:var(--gild)}
 .settings-details{margin-top:1rem; border-block:1px solid var(--line)}
 .settings-details summary{padding:.8rem 0; color:var(--muted); cursor:pointer; font-size:12.5px}
 .settings-detail-body{padding:0 0 .8rem}
-.settings-detail-body .model-grid{grid-template-columns:1fr}
-.settings-detail-body .model-card{min-height:0}
 .settings-detail-body .block:first-of-type{border-top:1px solid var(--line)}
 .settings-status{min-height:1.4em; color:var(--muted); font-size:12px}
 .settings-actions{display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:.55rem}
@@ -438,3 +423,30 @@ pre.code .s{color:var(--gild)}
 }
 .opening>*{position:relative; z-index:1}
 @media (max-width:600px){ .opening::before{font-size:9rem} }
+
+/* ---- model catalog table -------------------------------------------------
+   Six columns of stated fact. No score, no shield, no colour coding: an
+   undisclosed retention policy is set in the same ink as a disclosed one,
+   because dressing one of them up is how a label becomes a recommendation. */
+.catalog-head{display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin:0 0 .35rem}
+.catalog-head h3{margin:0 0 .15rem}
+.catalog-caveat{color:var(--muted); font-size:12.5px; line-height:1.55; max-width:70ch; margin:.5rem 0 .9rem}
+.catalog-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:8px; background:var(--raised)}
+table.catalog{border-collapse:collapse; width:100%; min-width:760px; font-size:13px}
+table.catalog th{
+  text-align:left; font-weight:600; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--faint); padding:.7rem .8rem; border-bottom:1px solid var(--line); white-space:nowrap;
+}
+table.catalog td{padding:.75rem .8rem; border-bottom:1px solid var(--line); vertical-align:top; color:var(--muted)}
+table.catalog tr:last-child td{border-bottom:0}
+table.catalog tr.is-selected td{background:var(--gild-soft)}
+.row-tags{display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.3rem}
+.row-tag{font-size:10.5px; letter-spacing:.03em; color:var(--faint)}
+.row-tag+.row-tag::before{content:"· "; color:var(--faint)}
+.choose-model{
+  background:none; border:0; padding:0; cursor:pointer; text-align:left;
+  font-family:var(--serif); font-size:15px; font-weight:600; color:var(--ink);
+}
+.choose-model:hover{color:var(--gild)}
+.choose-model[aria-pressed="true"]{color:var(--gild)}
+.choose-model:focus-visible{outline:2px solid var(--gild); outline-offset:2px; border-radius:2px}
