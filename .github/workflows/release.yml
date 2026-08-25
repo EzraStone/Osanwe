@@ -38,6 +38,7 @@ jobs:
         run: |
           bash -n packaging/client/start-osanwe.sh
           bash -n "packaging/client/Start Osanwe.command"
+          python3 -m unittest discover -s tools -p 'test_packaging.py' -v
 
   client-archives:
     needs: preflight
@@ -124,9 +125,62 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  windows-installer:
+    needs: preflight
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          cache: true
+
+      - name: build per-user Windows installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:GITHUB_REF_NAME
+          if ($env:GITHUB_REF_TYPE -ne 'tag') {
+            $version = "dev-$($env:GITHUB_SHA.Substring(0, 12))"
+          }
+          $builtAt = git show -s --format=%cI $env:GITHUB_SHA
+          $stage = Join-Path $PWD "dist\osanwe-installer-$version"
+          $installerDir = Join-Path $PWD 'dist\installer'
+          New-Item -ItemType Directory -Path $stage, $installerDir -Force | Out-Null
+
+          $ldflags = "-s -w -X github.com/EzraStone/osanwe/internal/version.Version=$version -X github.com/EzraStone/osanwe/internal/version.Commit=$env:GITHUB_SHA -X github.com/EzraStone/osanwe/internal/version.Date=$builtAt"
+          go build -trimpath -buildvcs=true -ldflags $ldflags -o (Join-Path $stage 'bearer.exe') ./cmd/bearer
+          Copy-Item packaging/client/start-osanwe.ps1, packaging/client/QUICKSTART.md, packaging/client/osanwe.example.json, LICENSE, NOTICE, SECURITY.md, THIRD_PARTY_NOTICES.md -Destination $stage
+
+          $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) {
+            $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          }
+          if (-not (Test-Path -LiteralPath $iscc -PathType Leaf)) {
+            throw 'The pinned GitHub Windows image no longer includes Inno Setup.'
+          }
+          & $iscc "/DAppVersion=$version" "/DClientDir=$stage" "/DInstallerDir=$installerDir" packaging/client/osanwe.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup exited with $LASTEXITCODE" }
+
+          $installer = @(Get-ChildItem -LiteralPath $installerDir -Filter 'Osanwe-Setup_*.exe')
+          if ($installer.Count -ne 1) { throw "Expected one installer, found $($installer.Count)" }
+          "INSTALLER=$($installer[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: upload Windows installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: client-windows-installer
+          path: ${{ env.INSTALLER }}
+          if-no-files-found: error
+          retention-days: 14
+
   release-bundle:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: client-archives
+    needs: [client-archives, windows-installer]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -149,7 +203,13 @@ jobs:
             find release-files -maxdepth 2 -type f -print >&2
             exit 1
           fi
-          (cd release-files && sha256sum osanwe-client_* > SHA256SUMS)
+          mapfile -t installers < <(find release-files -maxdepth 1 -type f -name 'Osanwe-Setup_*.exe' | sort)
+          if [[ "${#installers[@]}" -ne 1 ]]; then
+            printf 'expected 1 Windows installer, found %s\n' "${#installers[@]}" >&2
+            find release-files -maxdepth 2 -type f -print >&2
+            exit 1
+          fi
+          (cd release-files && sha256sum osanwe-client_* Osanwe-Setup_*.exe > SHA256SUMS)
 
       - name: upload verified release bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -157,6 +217,7 @@ jobs:
           name: release-bundle
           path: |
             release-files/osanwe-client_*
+            release-files/Osanwe-Setup_*.exe
             release-files/SHA256SUMS
           if-no-files-found: error
           retention-days: 1
@@ -196,7 +257,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create "${GITHUB_REF_NAME}" release-files/osanwe-client_* release-files/SHA256SUMS \
+          gh release create "${GITHUB_REF_NAME}" release-files/osanwe-client_* release-files/Osanwe-Setup_*.exe release-files/SHA256SUMS \
             --verify-tag \
             --draft \
             --title "Osanwe ${GITHUB_REF_NAME}" \
