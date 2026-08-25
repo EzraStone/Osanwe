@@ -554,7 +554,7 @@ $("runnerResizer").addEventListener("pointerdown",function(event){
   handle.addEventListener("pointermove",move);handle.addEventListener("pointerup",done);handle.addEventListener("pointercancel",done);
 });
 $("runnerResizer").addEventListener("keydown",function(event){
-  var current=Number(this.getAttribute("aria-valuenow"))||54;
+  var current=Number(this.getAttribute("aria-valuenow"))||38;
   if(event.key==="ArrowLeft")current+=2;
   else if(event.key==="ArrowRight")current-=2;
   else if(event.key==="Home")current=35;
