@@ -30,6 +30,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	notAfterText := fs.String("not-after", "", "exclusive issuance end as a whole-second RFC3339 UTC time ending in Z")
 	seats := fs.Int("seats", 0, "number of invite books to generate (required)")
 	vouchers := fs.Int("vouchers-per-invite", 0, "one-shot vouchers in each invite book (required)")
+	vouchersPerEpoch := fs.Int("vouchers-per-epoch", 0, "optional per-invite allowance in each anonymous epoch")
+	epochDuration := fs.Duration("epoch-duration", 0, "epoch length, for example 24h; required with -vouchers-per-epoch")
 	out := fs.String("out", "", "new output directory; must not already exist")
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "invitebook — generate fixed-window free-beta voucher books offline.")
@@ -68,6 +70,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		NotAfter:          notAfter,
 		Seats:             *seats,
 		VouchersPerInvite: *vouchers,
+		VouchersPerEpoch:  *vouchersPerEpoch,
+		EpochDuration:     *epochDuration,
 		OutputDir:         *out,
 	}); err != nil {
 		return fmt.Errorf("invitebook: %w", err)
@@ -76,6 +80,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Deliberately report only public capacity and paths. Secret seeds remain
 	// in owner-only files under books/ and never enter terminal history.
 	fmt.Fprintf(stdout, "Generated %d invite book(s), %d voucher(s) each.\n", *seats, *vouchers)
+	if *vouchersPerEpoch > 0 {
+		fmt.Fprintf(stdout, "Anonymous fairness: %d voucher(s) per %s epoch.\n", *vouchersPerEpoch, epochDuration.String())
+	}
 	fmt.Fprintf(stdout, "Mint manifest: %s\n", *out+string(os.PathSeparator)+"invite-manifest.json")
 	fmt.Fprintf(stdout, "Secret books: %s\n", *out+string(os.PathSeparator)+"books")
 	fmt.Fprintln(stdout, "Keep books off the mint host and out of synced/version-controlled storage; retained mapped copies weaken issuer-side unlinkability.")

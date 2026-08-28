@@ -113,6 +113,64 @@ func TestInviteAuthorizerClaimsVoucherExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestEpochInviteOnlyAuthorizesCurrentAnonymousDay(t *testing.T) {
+	if err := invitePlatformCheck(); err != nil {
+		t.Skip(err)
+	}
+	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	out := filepath.Join(t.TempDir(), "daily-invites")
+	if err := GenerateInviteBooks(InviteBookGenerationConfig{
+		ProgramID: "beta-daily", MintKeyID: testInviteKeyID,
+		NotBefore: start, NotAfter: start.Add(3 * 24 * time.Hour),
+		Seats: 2, VouchersPerInvite: 6, VouchersPerEpoch: 2,
+		EpochDuration: 24 * time.Hour, OutputDir: out,
+	}); err != nil {
+		t.Fatalf("GenerateInviteBooks: %v", err)
+	}
+	var manifest inviteManifestFile
+	readJSONFile(t, filepath.Join(out, "invite-manifest.json"), &manifest)
+	if manifest.SchemaVersion != dailyInviteSchemaVersion || len(manifest.Epochs) != 3 {
+		t.Fatalf("daily manifest = schema %d, epochs %d", manifest.SchemaVersion, len(manifest.Epochs))
+	}
+	for i, epoch := range manifest.Epochs {
+		if len(epoch.Fingerprints) != 4 {
+			t.Fatalf("epoch %d fingerprints = %d, want seats*vouchers_per_epoch = 4", i, len(epoch.Fingerprints))
+		}
+		if !sort.StringsAreSorted(epoch.Fingerprints) {
+			t.Fatalf("epoch %d fingerprints are not canonically ungrouped", i)
+		}
+	}
+	var book inviteBookFile
+	readJSONFile(t, filepath.Join(out, "books", "invite-001.json"), &book)
+	if book.VouchersPerEpoch != 2 || len(book.Epochs) != 3 {
+		t.Fatalf("daily book = vouchers_per_epoch %d, epochs %d", book.VouchersPerEpoch, len(book.Epochs))
+	}
+
+	now := start
+	auth, err := NewInviteAuthorizer(InviteAuthorizerConfig{
+		ManifestPath: filepath.Join(out, "invite-manifest.json"), MintKeyID: testInviteKeyID,
+		Receipts: NewMemoryReceiptStore(), Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("NewInviteAuthorizer: %v", err)
+	}
+	dayOne := []byte(voucherFromBook(t, book, 0))
+	dayTwo := []byte(voucherFromBook(t, book, 2))
+	if err := auth.Authorize(context.Background(), dayOne); err != nil {
+		t.Fatalf("day-one voucher at day-one start: %v", err)
+	}
+	if err := auth.Authorize(context.Background(), dayTwo); !errors.Is(err, ErrInviteWindowClosed) {
+		t.Fatalf("future voucher = %v, want ErrInviteWindowClosed", err)
+	}
+	now = start.Add(24 * time.Hour)
+	if err := auth.Authorize(context.Background(), dayTwo); err != nil {
+		t.Fatalf("day-two voucher at day-two start: %v", err)
+	}
+	if err := auth.Authorize(context.Background(), []byte(voucherFromBook(t, book, 1))); !errors.Is(err, ErrInviteWindowClosed) {
+		t.Fatalf("expired day-one voucher = %v, want ErrInviteWindowClosed", err)
+	}
+}
+
 func TestInviteVoucherIssuesOneBlindTokenOverHTTP(t *testing.T) {
 	if err := invitePlatformCheck(); err != nil {
 		t.Skip(err)

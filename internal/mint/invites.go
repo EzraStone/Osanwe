@@ -21,12 +21,13 @@ import (
 )
 
 const (
-	inviteSchemaVersion   = 1
-	inviteSeedBytes       = 32
-	inviteVoucherBytes    = 32
-	maxInviteManifestSize = 8 << 20
-	maxInviteVouchers     = 100_000
-	inviteTimeFormat      = "2006-01-02T15:04:05Z"
+	inviteSchemaVersion      = 1
+	dailyInviteSchemaVersion = 2
+	inviteSeedBytes          = 32
+	inviteVoucherBytes       = 32
+	maxInviteManifestSize    = 8 << 20
+	maxInviteVouchers        = 100_000
+	inviteTimeFormat         = "2006-01-02T15:04:05Z"
 )
 
 var (
@@ -63,30 +64,50 @@ type InviteAuthorizer struct {
 	notAfter       time.Time
 	membershipRail string
 	claimRail      string
-	valid          map[[sha256.Size]byte]struct{}
+	valid          map[[sha256.Size]byte]inviteWindow
 	receipts       ReceiptStore
 	now            func() time.Time
 }
 
+type inviteWindow struct {
+	notBefore time.Time
+	notAfter  time.Time
+}
+
+type inviteEpochFile struct {
+	NotBefore    string   `json:"not_before"`
+	NotAfter     string   `json:"not_after"`
+	Fingerprints []string `json:"voucher_fingerprints"`
+}
+
+type inviteBookEpochFile struct {
+	NotBefore string `json:"not_before"`
+	NotAfter  string `json:"not_after"`
+}
+
 type inviteManifestFile struct {
-	SchemaVersion     int      `json:"schema_version"`
-	ProgramID         string   `json:"program_id"`
-	MintKeyID         string   `json:"mint_key_id"`
-	NotBefore         string   `json:"not_before"`
-	NotAfter          string   `json:"not_after"`
-	Seats             int      `json:"seats"`
-	VouchersPerInvite int      `json:"vouchers_per_invite"`
-	Fingerprints      []string `json:"voucher_fingerprints"`
+	SchemaVersion     int               `json:"schema_version"`
+	ProgramID         string            `json:"program_id"`
+	MintKeyID         string            `json:"mint_key_id"`
+	NotBefore         string            `json:"not_before"`
+	NotAfter          string            `json:"not_after"`
+	Seats             int               `json:"seats"`
+	VouchersPerInvite int               `json:"vouchers_per_invite"`
+	Fingerprints      []string          `json:"voucher_fingerprints,omitempty"`
+	VouchersPerEpoch  int               `json:"vouchers_per_epoch,omitempty"`
+	Epochs            []inviteEpochFile `json:"epochs,omitempty"`
 }
 
 type inviteBookFile struct {
-	SchemaVersion int    `json:"schema_version"`
-	ProgramID     string `json:"program_id"`
-	MintKeyID     string `json:"mint_key_id"`
-	NotBefore     string `json:"not_before"`
-	NotAfter      string `json:"not_after"`
-	VoucherCount  int    `json:"voucher_count"`
-	Seed          string `json:"seed"`
+	SchemaVersion    int                   `json:"schema_version"`
+	ProgramID        string                `json:"program_id"`
+	MintKeyID        string                `json:"mint_key_id"`
+	NotBefore        string                `json:"not_before"`
+	NotAfter         string                `json:"not_after"`
+	VoucherCount     int                   `json:"voucher_count"`
+	Seed             string                `json:"seed"`
+	VouchersPerEpoch int                   `json:"vouchers_per_epoch,omitempty"`
+	Epochs           []inviteBookEpochFile `json:"epochs,omitempty"`
 }
 
 // NewInviteAuthorizer loads and validates a fixed-window invite manifest.
@@ -119,12 +140,15 @@ func NewInviteAuthorizer(cfg InviteAuthorizerConfig) (*InviteAuthorizer, error) 
 		now = time.Now
 	}
 	membershipRail := inviteMembershipRail(manifest.ProgramID, manifest.MintKeyID)
-	valid := make(map[[sha256.Size]byte]struct{}, len(manifest.Fingerprints))
-	for _, encoded := range manifest.Fingerprints {
-		raw, _ := base64.RawURLEncoding.Strict().DecodeString(encoded)
-		var fingerprint [sha256.Size]byte
-		copy(fingerprint[:], raw)
-		valid[fingerprint] = struct{}{}
+	valid := make(map[[sha256.Size]byte]inviteWindow, manifest.VouchersPerInvite*manifest.Seats)
+	if manifest.SchemaVersion == inviteSchemaVersion {
+		window := inviteWindow{mustParseInviteTime(manifest.NotBefore), mustParseInviteTime(manifest.NotAfter)}
+		addInviteFingerprints(valid, manifest.Fingerprints, window)
+	} else {
+		for _, epoch := range manifest.Epochs {
+			window := inviteWindow{mustParseInviteTime(epoch.NotBefore), mustParseInviteTime(epoch.NotAfter)}
+			addInviteFingerprints(valid, epoch.Fingerprints, window)
+		}
 	}
 
 	return &InviteAuthorizer{
@@ -156,16 +180,17 @@ func (a *InviteAuthorizer) Authorize(ctx context.Context, receipt []byte) error 
 	if err != nil {
 		return ErrInviteVoucherInvalid
 	}
-	now := a.now().UTC()
-	if now.Before(a.notBefore) || !now.Before(a.notAfter) {
-		return ErrInviteWindowClosed
-	}
 	fingerprint, err := receiptKey(a.membershipRail, voucher)
 	if err != nil {
 		return ErrInviteVoucherInvalid
 	}
-	if _, ok := a.valid[fingerprint]; !ok {
+	window, ok := a.valid[fingerprint]
+	if !ok {
 		return ErrInviteVoucherInvalid
+	}
+	now := a.now().UTC()
+	if now.Before(window.notBefore) || !now.Before(window.notAfter) {
+		return ErrInviteWindowClosed
 	}
 	return a.receipts.Claim(ctx, a.claimRail, voucher)
 }
@@ -191,7 +216,12 @@ type InviteBookGenerationConfig struct {
 	NotAfter          time.Time
 	Seats             int
 	VouchersPerInvite int
-	OutputDir         string
+	// VouchersPerEpoch enables anonymous fixed-epoch fairness. It must divide
+	// VouchersPerInvite, and EpochDuration must exactly partition the issuance
+	// window. A value of zero retains the legacy whole-window book format.
+	VouchersPerEpoch int
+	EpochDuration    time.Duration
+	OutputDir        string
 
 	// random is deliberately not exported: callers cannot accidentally replace
 	// the CSPRNG. Package tests inject deterministic failures through it.
@@ -257,18 +287,27 @@ func GenerateInviteBooks(cfg InviteBookGenerationConfig) error {
 				return errors.New("mint: invite randomness produced a duplicate voucher; output is incomplete and must not be used")
 			}
 			seen[fingerprint] = struct{}{}
-			manifest.Fingerprints = append(manifest.Fingerprints,
-				base64.RawURLEncoding.EncodeToString(fingerprint[:]))
+			encoded := base64.RawURLEncoding.EncodeToString(fingerprint[:])
+			if manifest.SchemaVersion == dailyInviteSchemaVersion {
+				epoch := slot / manifest.VouchersPerEpoch
+				manifest.Epochs[epoch].Fingerprints = append(manifest.Epochs[epoch].Fingerprints, encoded)
+			} else {
+				manifest.Fingerprints = append(manifest.Fingerprints, encoded)
+			}
 		}
 
 		book := inviteBookFile{
-			SchemaVersion: inviteSchemaVersion,
-			ProgramID:     manifest.ProgramID,
-			MintKeyID:     manifest.MintKeyID,
-			NotBefore:     manifest.NotBefore,
-			NotAfter:      manifest.NotAfter,
-			VoucherCount:  manifest.VouchersPerInvite,
-			Seed:          base64.RawURLEncoding.EncodeToString(seed),
+			SchemaVersion:    inviteSchemaVersion,
+			ProgramID:        manifest.ProgramID,
+			MintKeyID:        manifest.MintKeyID,
+			NotBefore:        manifest.NotBefore,
+			NotAfter:         manifest.NotAfter,
+			VoucherCount:     manifest.VouchersPerInvite,
+			Seed:             base64.RawURLEncoding.EncodeToString(seed),
+			VouchersPerEpoch: manifest.VouchersPerEpoch,
+		}
+		for _, epoch := range manifest.Epochs {
+			book.Epochs = append(book.Epochs, inviteBookEpochFile{NotBefore: epoch.NotBefore, NotAfter: epoch.NotAfter})
 		}
 		path := filepath.Join(booksDir, fmt.Sprintf("invite-%03d.json", seat))
 		if err := writeJSONExclusive(path, book, 0o600); err != nil {
@@ -276,7 +315,13 @@ func GenerateInviteBooks(cfg InviteBookGenerationConfig) error {
 		}
 	}
 
-	sort.Strings(manifest.Fingerprints)
+	if manifest.SchemaVersion == dailyInviteSchemaVersion {
+		for i := range manifest.Epochs {
+			sort.Strings(manifest.Epochs[i].Fingerprints)
+		}
+	} else {
+		sort.Strings(manifest.Fingerprints)
+	}
 	if _, err := parseInviteManifest(mustMarshalJSON(manifest), cfg.MintKeyID); err != nil {
 		return fmt.Errorf("mint: generated an invalid invite manifest (output is incomplete): %w", err)
 	}
@@ -295,6 +340,25 @@ func validateInviteGeneration(cfg InviteBookGenerationConfig) (inviteManifestFil
 		NotAfter:          cfg.NotAfter.UTC().Format(inviteTimeFormat),
 		Seats:             cfg.Seats,
 		VouchersPerInvite: cfg.VouchersPerInvite,
+	}
+	if cfg.VouchersPerEpoch != 0 || cfg.EpochDuration != 0 {
+		manifest.SchemaVersion = dailyInviteSchemaVersion
+		manifest.VouchersPerEpoch = cfg.VouchersPerEpoch
+		if cfg.VouchersPerEpoch < 1 || cfg.VouchersPerInvite%cfg.VouchersPerEpoch != 0 {
+			return manifest, errors.New("mint: vouchers_per_epoch must be positive and divide vouchers_per_invite")
+		}
+		if cfg.EpochDuration < time.Minute || cfg.EpochDuration%time.Second != 0 {
+			return manifest, errors.New("mint: epoch duration must be a whole number of seconds of at least one minute")
+		}
+		if cfg.NotAfter.Sub(cfg.NotBefore) != time.Duration(cfg.VouchersPerInvite/cfg.VouchersPerEpoch)*cfg.EpochDuration {
+			return manifest, errors.New("mint: epoch duration and voucher counts must exactly partition the invite window")
+		}
+		for start := cfg.NotBefore.UTC(); start.Before(cfg.NotAfter.UTC()); start = start.Add(cfg.EpochDuration) {
+			manifest.Epochs = append(manifest.Epochs, inviteEpochFile{
+				NotBefore: start.Format(inviteTimeFormat),
+				NotAfter:  start.Add(cfg.EpochDuration).Format(inviteTimeFormat),
+			})
+		}
 	}
 	if strings.TrimSpace(cfg.OutputDir) == "" {
 		return manifest, errors.New("mint: invite output directory is required")
@@ -344,6 +408,7 @@ func validateInviteManifestJSONShape(data []byte) error {
 		"schema_version": {}, "program_id": {}, "mint_key_id": {},
 		"not_before": {}, "not_after": {}, "seats": {},
 		"vouchers_per_invite": {}, "voucher_fingerprints": {},
+		"vouchers_per_epoch": {}, "epochs": {},
 	}
 	seen := make(map[string]struct{}, len(allowed))
 	for dec.More() {
@@ -375,8 +440,8 @@ func validateInviteManifestJSONShape(data []byte) error {
 }
 
 func validateInviteManifestFields(manifest inviteManifestFile, expectedMintKeyID string, requireFingerprints bool) error {
-	if manifest.SchemaVersion != inviteSchemaVersion {
-		return fmt.Errorf("mint: invite manifest schema_version is %d, want %d", manifest.SchemaVersion, inviteSchemaVersion)
+	if manifest.SchemaVersion != inviteSchemaVersion && manifest.SchemaVersion != dailyInviteSchemaVersion {
+		return fmt.Errorf("mint: invite manifest schema_version is %d, want %d or %d", manifest.SchemaVersion, inviteSchemaVersion, dailyInviteSchemaVersion)
 	}
 	if !inviteProgramPattern.MatchString(manifest.ProgramID) {
 		return errors.New("mint: invite manifest program_id must be 1-64 ASCII letters, digits, dots, underscores, or hyphens, beginning with a letter or digit")
@@ -408,7 +473,16 @@ func validateInviteManifestFields(manifest inviteManifestFile, expectedMintKeyID
 	}
 	want := manifest.Seats * manifest.VouchersPerInvite
 	if !requireFingerprints {
+		if manifest.SchemaVersion == dailyInviteSchemaVersion {
+			return validateDailyInviteEpochs(manifest, false)
+		}
 		return nil
+	}
+	if manifest.SchemaVersion == dailyInviteSchemaVersion {
+		return validateDailyInviteEpochs(manifest, true)
+	}
+	if manifest.VouchersPerEpoch != 0 || len(manifest.Epochs) != 0 {
+		return errors.New("mint: fixed-window invite manifest must not contain epoch fields")
 	}
 	if len(manifest.Fingerprints) != want {
 		return fmt.Errorf("mint: invite manifest has %d voucher fingerprints, want seats*vouchers_per_invite = %d", len(manifest.Fingerprints), want)
@@ -430,6 +504,72 @@ func validateInviteManifestFields(manifest inviteManifestFile, expectedMintKeyID
 		seen[fingerprint] = struct{}{}
 	}
 	return nil
+}
+
+func validateDailyInviteEpochs(manifest inviteManifestFile, requireFingerprints bool) error {
+	if len(manifest.Fingerprints) != 0 {
+		return errors.New("mint: epoch invite manifest must not contain top-level voucher_fingerprints")
+	}
+	if manifest.VouchersPerEpoch < 1 || manifest.VouchersPerInvite%manifest.VouchersPerEpoch != 0 {
+		return errors.New("mint: epoch invite manifest vouchers_per_epoch must be positive and divide vouchers_per_invite")
+	}
+	wantEpochs := manifest.VouchersPerInvite / manifest.VouchersPerEpoch
+	if len(manifest.Epochs) != wantEpochs {
+		return fmt.Errorf("mint: epoch invite manifest has %d epochs, want %d", len(manifest.Epochs), wantEpochs)
+	}
+	programStart := mustParseInviteTime(manifest.NotBefore)
+	programEnd := mustParseInviteTime(manifest.NotAfter)
+	previous := programStart
+	seen := make(map[[sha256.Size]byte]struct{}, manifest.Seats*manifest.VouchersPerInvite)
+	for epochIndex, epoch := range manifest.Epochs {
+		start, err := parseInviteTime(epoch.NotBefore)
+		if err != nil {
+			return fmt.Errorf("mint: invite epoch %d not_before: %w", epochIndex, err)
+		}
+		end, err := parseInviteTime(epoch.NotAfter)
+		if err != nil {
+			return fmt.Errorf("mint: invite epoch %d not_after: %w", epochIndex, err)
+		}
+		if !start.Equal(previous) || !end.After(start) || end.After(programEnd) {
+			return fmt.Errorf("mint: invite epoch %d must be contiguous, positive, and inside the program window", epochIndex)
+		}
+		previous = end
+		if !requireFingerprints {
+			continue
+		}
+		want := manifest.Seats * manifest.VouchersPerEpoch
+		if len(epoch.Fingerprints) != want {
+			return fmt.Errorf("mint: invite epoch %d has %d voucher fingerprints, want %d", epochIndex, len(epoch.Fingerprints), want)
+		}
+		for i, encoded := range epoch.Fingerprints {
+			if i > 0 && encoded <= epoch.Fingerprints[i-1] {
+				return fmt.Errorf("mint: invite epoch %d voucher_fingerprints must be unique and sorted", epochIndex)
+			}
+			raw, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
+			if err != nil || len(raw) != sha256.Size || base64.RawURLEncoding.EncodeToString(raw) != encoded {
+				return fmt.Errorf("mint: invite epoch %d voucher_fingerprints[%d] is not canonical base64url for a SHA-256 value", epochIndex, i)
+			}
+			var fingerprint [sha256.Size]byte
+			copy(fingerprint[:], raw)
+			if _, duplicate := seen[fingerprint]; duplicate {
+				return fmt.Errorf("mint: invite epoch %d voucher_fingerprints[%d] is duplicated", epochIndex, i)
+			}
+			seen[fingerprint] = struct{}{}
+		}
+	}
+	if !previous.Equal(programEnd) {
+		return errors.New("mint: invite epochs do not cover the complete program window")
+	}
+	return nil
+}
+
+func addInviteFingerprints(valid map[[sha256.Size]byte]inviteWindow, encodedValues []string, window inviteWindow) {
+	for _, encoded := range encodedValues {
+		raw, _ := base64.RawURLEncoding.Strict().DecodeString(encoded)
+		var fingerprint [sha256.Size]byte
+		copy(fingerprint[:], raw)
+		valid[fingerprint] = window
+	}
 }
 
 func parseInviteTime(value string) (time.Time, error) {
