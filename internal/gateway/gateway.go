@@ -923,6 +923,13 @@ func (s *Server) modifyResponse(resp *http.Response) error {
 		s.log.Warn("provider redirect blocked after dispatch; token remains spent", "status", status)
 		return nil
 	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		replaceProviderCapacityResponse(resp)
+		resp.Header.Set(TokenOutcomeHeader, TokenOutcomeSpent)
+		s.metrics.UpstreamErr.Add(1)
+		s.log.Warn("provider capacity exhausted after dispatch; token remains spent")
+		return nil
+	}
 	if pick, ok := resp.Request.Context().Value(routeKey{}).(chosen); ok && pick.translated {
 		if err := translateBack(resp); err != nil {
 			return err
@@ -939,6 +946,30 @@ func (s *Server) modifyResponse(resp *http.Response) error {
 	// design removes.
 	s.log.Warn("provider failed after dispatch; token remains spent", "status", resp.StatusCode)
 	return nil
+}
+
+func replaceProviderCapacityResponse(resp *http.Response) {
+	retryAfter := resp.Header.Get("Retry-After")
+	if !safeHeaderFragment(retryAfter) {
+		retryAfter = ""
+	}
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	body := []byte(`{"type":"error","error":{"type":"osanwe_provider_capacity_exhausted","message":"Free test capacity is temporarily exhausted. This request reached the provider, so its one-shot token remains spent."}}` + "\n")
+	resp.StatusCode = http.StatusTooManyRequests
+	resp.Status = fmt.Sprintf("%d %s", http.StatusTooManyRequests, http.StatusText(http.StatusTooManyRequests))
+	resp.Header = make(http.Header)
+	resp.Header.Set("Content-Type", "application/json")
+	if retryAfter != "" {
+		resp.Header.Set("Retry-After", retryAfter)
+	}
+	setPrivateResponseHeaders(resp.Header)
+	resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.ContentLength = int64(len(body))
+	resp.TransferEncoding = nil
+	resp.Trailer = nil
 }
 
 func redirectsAutomatically(status int) bool {

@@ -118,6 +118,30 @@ func TestFileBudgetEnforcesBothAggregateCeilings(t *testing.T) {
 	}
 }
 
+func TestMultiBudgetRefusesBeforeSpendAndRollsBackEarlierCeilings(t *testing.T) {
+	now := time.Date(2026, 8, 9, 1, 15, 0, 0, time.UTC)
+	daily := openTestBudget(t, &now, 10, 100)
+	burst := openTestBudget(t, &now, 1, 100)
+	combined, err := NewMultiBudget(daily, burst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := BudgetRequest{Model: "demo", InputBytes: 1, MaxOutputTokens: 1}
+	if _, err := combined.Reserve(context.Background(), request); err != nil {
+		t.Fatalf("first Reserve: %v", err)
+	}
+	if _, err := combined.Reserve(context.Background(), request); !errors.Is(err, ErrBudgetExhausted) {
+		t.Fatalf("second Reserve = %v, want burst refusal", err)
+	}
+	usage, err := daily.Usage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Requests != 1 {
+		t.Fatalf("daily requests = %d, want failed burst reservation rolled back", usage.Requests)
+	}
+}
+
 func TestFileBudgetReleaseRestoresCapacityExactlyOnce(t *testing.T) {
 	now := time.Date(2026, 8, 9, 1, 15, 0, 0, time.UTC)
 	b := openTestBudget(t, &now, 1, 10)

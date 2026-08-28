@@ -52,6 +52,59 @@ type Budget interface {
 	Reserve(context.Context, BudgetRequest) (BudgetReservation, error)
 }
 
+// MultiBudget applies several independent ceilings to the same provider
+// request, for example a daily free-tier allowance and a minute-level burst
+// limit. Every ceiling is reserved before the token is spent. If a later
+// ceiling refuses, earlier reservations are released.
+type MultiBudget struct {
+	budgets []Budget
+}
+
+func NewMultiBudget(budgets ...Budget) (*MultiBudget, error) {
+	filtered := make([]Budget, 0, len(budgets))
+	for _, budget := range budgets {
+		if budget != nil {
+			filtered = append(filtered, budget)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, errors.New("gateway: multi-budget requires at least one ceiling")
+	}
+	return &MultiBudget{budgets: filtered}, nil
+}
+
+func (m *MultiBudget) Reserve(ctx context.Context, request BudgetRequest) (BudgetReservation, error) {
+	if m == nil || len(m.budgets) == 0 {
+		return nil, errors.New("gateway: multi-budget is not configured")
+	}
+	reservations := make([]BudgetReservation, 0, len(m.budgets))
+	for _, budget := range m.budgets {
+		reservation, err := budget.Reserve(ctx, request)
+		if err != nil {
+			for i := len(reservations) - 1; i >= 0; i-- {
+				_ = reservations[i].Release(context.Background())
+			}
+			return nil, err
+		}
+		reservations = append(reservations, reservation)
+	}
+	return multiBudgetReservation{reservations: reservations}, nil
+}
+
+type multiBudgetReservation struct {
+	reservations []BudgetReservation
+}
+
+func (r multiBudgetReservation) Release(ctx context.Context) error {
+	var errs []error
+	for i := len(r.reservations) - 1; i >= 0; i-- {
+		if err := r.reservations[i].Release(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // UnlimitedBudget is an explicit escape hatch for tests and local demos. A
 // production command never selects it implicitly.
 type UnlimitedBudget struct{}

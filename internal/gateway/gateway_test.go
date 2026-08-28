@@ -1065,3 +1065,34 @@ func TestTokenWireFormatRoundTrips(t *testing.T) {
 		}
 	}
 }
+
+func TestProviderRateLimitIsSanitizedAndExplicitlySpent(t *testing.T) {
+	s := &Server{cfg: Config{Credential: Credential{Header: "authorization", Prefix: "Bearer ", Value: pooledKey}}, log: quiet()}
+	request := httptest.NewRequest(http.MethodPost, "https://provider.example/v1/messages", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Status:     "429 Too Many Requests",
+		Header: http.Header{
+			"Retry-After":   []string{"60"},
+			"X-Provider-Id": []string{"account-specific-detail"},
+		},
+		Body:    io.NopCloser(strings.NewReader(`{"error":"provider account quota"}`)),
+		Request: request,
+	}
+	if err := s.modifyResponse(resp); err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Header.Get(TokenOutcomeHeader) != TokenOutcomeSpent || resp.Header.Get("Retry-After") != "60" {
+		t.Fatalf("headers = %v", resp.Header)
+	}
+	if resp.Header.Get("X-Provider-Id") != "" || strings.Contains(string(body), "provider account quota") {
+		t.Fatalf("provider-specific capacity response leaked: headers=%v body=%s", resp.Header, body)
+	}
+	if !strings.Contains(string(body), "one-shot token remains spent") {
+		t.Fatalf("capacity response does not disclose token outcome: %s", body)
+	}
+}

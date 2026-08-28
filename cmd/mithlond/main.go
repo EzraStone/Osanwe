@@ -66,6 +66,11 @@ func run() error {
 	budgetInputBytes := fs.Uint64("budget-input-bytes", gateway.DefaultBudgetInputBytes, "maximum normalized input bytes reserved in one budget window")
 	budgetOutputTokens := fs.Uint64("budget-output-tokens", gateway.DefaultBudgetOutputTokens, "maximum requested output tokens reserved in one budget window")
 	budgetCostUSD := fs.String("budget-cost-usd", "", "optional conservative provider-cost ceiling per window in USD; requires model prices")
+	burstBudgetDB := fs.String("burst-budget-db", "", "optional second durable budget database for provider minute limits")
+	burstBudgetWindow := fs.Duration("burst-budget-window", time.Minute, "fixed window for the optional provider burst limit")
+	burstBudgetRequests := fs.Uint64("burst-budget-requests", 5, "maximum provider requests in one burst window")
+	burstBudgetInputBytes := fs.Uint64("burst-budget-input-bytes", 1<<20, "maximum normalized input bytes reserved in one burst window")
+	burstBudgetOutputTokens := fs.Uint64("burst-budget-output-tokens", 8_000, "maximum requested output tokens reserved in one burst window")
 	inputUSDPerMillion := fs.String("input-usd-per-million", "", "single-upstream input price per million tokens; input bytes are conservatively treated as tokens")
 	outputUSDPerMillion := fs.String("output-usd-per-million", "", "single-upstream output price per million tokens")
 	hosts := fs.String("hosts", "", "comma-separated names or IPs for a generated certificate")
@@ -219,13 +224,34 @@ func run() error {
 			log.Error("closing aggregate-budget database", "error", err)
 		}
 	}()
+	var providerBudget gateway.Budget = budget
+	var burstBudget *gateway.FileBudget
+	if strings.TrimSpace(*burstBudgetDB) != "" {
+		burstBudget, err = gateway.OpenFileBudget(gateway.FileBudgetConfig{
+			Path: *burstBudgetDB, Window: *burstBudgetWindow,
+			MaxRequests: *burstBudgetRequests, MaxInputBytes: *burstBudgetInputBytes,
+			MaxOutputTokens: *burstBudgetOutputTokens,
+		})
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := burstBudget.Close(); err != nil {
+				log.Error("closing burst-budget database", "error", err)
+			}
+		}()
+		providerBudget, err = gateway.NewMultiBudget(budget, burstBudget)
+		if err != nil {
+			return err
+		}
+	}
 
 	srv, err := gateway.New(gateway.Config{
 		Addr:             *addr,
 		Upstream:         *upstream,
 		MintKeys:         keys,
 		Spent:            spent,
-		Budget:           budget,
+		Budget:           providerBudget,
 		Models:           commaList(*modelsCSV),
 		MaxRequestBody:   *maxRequestBytes,
 		MaxOutputTokens:  *maxOutputTokens,
@@ -248,7 +274,9 @@ func run() error {
 		"budget_window", budgetWindow.String(), "budget_requests", *budgetRequests,
 		"budget_input_bytes", *budgetInputBytes,
 		"budget_output_tokens", *budgetOutputTokens,
-		"budget_cost_usd", *budgetCostUSD)
+		"budget_cost_usd", *budgetCostUSD,
+		"burst_budget_db", *burstBudgetDB, "burst_budget_window", burstBudgetWindow.String(),
+		"burst_budget_requests", *burstBudgetRequests)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(tlsConf) }()
