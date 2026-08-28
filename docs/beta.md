@@ -40,9 +40,9 @@ The beta begins only when:
 - a clean Windows, macOS, and Linux install has been exercised;
 - incomplete streams, cancellation, local storage failures, and relay verification are shown
   truthfully in the interface;
-- aggregate limits and per-invite issuance are enabled, and the operator has rehearsed disabling
-  the route; the [fixed-window invite design](beta-invites.md) currently has only its server and
-  offline-generator half, so this gate is not yet complete;
+- aggregate daily and minute limits and anonymous per-epoch invitation issuance are enabled, and
+  the operator has rehearsed disabling the route; the [invitation wallet](beta-invites.md) is
+  implemented, but this gate remains incomplete until the live migration and drills are recorded;
 - the beta agreement says it is free, experimental, text-only, and unsuitable for sensitive data,
   and requires testers to acknowledge that the configured model provider receives prompts and
   answers under the gateway account;
