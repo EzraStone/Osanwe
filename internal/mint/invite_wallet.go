@@ -88,8 +88,18 @@ func OpenInviteWallet(cfg InviteWalletConfig) (*InviteWallet, error) {
 	if err := os.MkdirAll(filepath.Dir(abs), 0o700); err != nil {
 		return nil, fmt.Errorf("mint: creating invite wallet directory: %w", err)
 	}
-	if err := os.Chmod(filepath.Dir(abs), 0o700); err != nil && os.PathSeparator == '/' {
-		return nil, fmt.Errorf("mint: securing invite wallet directory: %w", err)
+	if os.PathSeparator == '/' {
+		parent, err := os.Lstat(filepath.Dir(abs))
+		if err != nil || !parent.IsDir() || parent.Mode().Perm()&0o077 != 0 {
+			return nil, fmt.Errorf("mint: invite wallet directory must be owner-only")
+		}
+		if existing, err := os.Lstat(abs); err == nil {
+			if !existing.Mode().IsRegular() || existing.Mode().Perm()&0o077 != 0 {
+				return nil, errors.New("mint: existing invite wallet must be a regular owner-only file")
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("mint: inspecting invite wallet: %w", err)
+		}
 	}
 	db, err := bolt.Open(abs, 0o600, &bolt.Options{Timeout: time.Second})
 	if err != nil {

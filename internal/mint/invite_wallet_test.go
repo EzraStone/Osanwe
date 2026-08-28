@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -142,5 +143,22 @@ func TestInviteWalletRejectsBookReplacementAndWrongMint(t *testing.T) {
 	wrong := testDailyInviteBook(t, "mint-a-different-key", start)
 	if err := wallet.ActivateInviteBook(wrong); err == nil {
 		t.Fatal("invite book for another mint was accepted")
+	}
+}
+
+func TestInviteWalletRefusesSharedUnixDirectory(t *testing.T) {
+	if os.PathSeparator != '/' {
+		t.Skip("Unix permission check")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := OpenInviteWallet(InviteWalletConfig{
+		Client:    &Client{URL: "https://mint.example", ExpectKeyID: "mint-test"},
+		StatePath: filepath.Join(dir, "wallet.db"),
+	})
+	if err == nil {
+		t.Fatal("shared directory accepted for secret wallet")
 	}
 }

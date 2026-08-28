@@ -315,7 +315,7 @@ func run() error {
 			}
 			defer trialWallet.Close()
 			if *inviteBook != "" {
-				book, err := os.ReadFile(*inviteBook)
+				book, err := readInviteBook(*inviteBook)
 				if err != nil {
 					return fmt.Errorf("bearer: reading -invite-book: %w", err)
 				}
@@ -414,6 +414,23 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(ctx)
+}
+
+func readInviteBook(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	const limit = 64 << 10
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > limit {
+		return nil, fmt.Errorf("invitation is larger than %d bytes", limit)
+	}
+	return data, nil
 }
 
 // stdinCloseSignal lets a desktop launcher own the client without putting a
