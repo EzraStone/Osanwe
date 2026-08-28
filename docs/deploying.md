@@ -14,10 +14,10 @@ gateway have not been validated there. Run `mithlond`, `palantir`, and public
 relay infrastructure on Linux or WSL rather than treating a successful Windows
 client build as operator support.
 
-The ten-person free-beta authorization design is documented in
-[`beta-invites.md`](beta-invites.md). Its server and offline-generator half exists, but the client
-book wallet and the required rollback and expiry drills do not. Do not treat the mint flags in that
-document as a launch checklist.
+The implemented ten-person free-beta authorization and local wallet are documented in
+[`beta-invites.md`](beta-invites.md). The remaining blockers are operational: provider approval,
+independent relay acceptance, clean-platform release validation, live migration, and recorded
+rollback/expiry drills. Do not treat working code as completion of those gates.
 
 ---
 
@@ -299,10 +299,9 @@ and restarts the gateway, or you will find out the hard way.
 
 ```bash
 sudo -u osanwe tee /var/lib/osanwe/routes.conf <<'EOF'
-# Prices below are illustrative USD per million tokens. Replace them with the
-# provider's current input and output prices before setting a cost ceiling.
-llama-3.1-8b-instant     openai  https://api.groq.com/openai  GROQ_API_KEY  0.50 1.00
-llama-3.3-70b-versatile  openai  https://api.groq.com/openai  GROQ_API_KEY  1.00 2.00
+# Keep this identical to the Groq project's one-model allowlist. Replace the
+# expiry with a boundary no later than the final project key's expiry.
+openai/gpt-oss-20b openai https://api.groq.com/openai GROQ_API_KEY experimental=true expires=2026-09-04T23:59:59Z
 EOF
 ```
 
@@ -342,11 +341,16 @@ ExecStart=/usr/local/bin/mithlond \
   -mint-key /var/lib/osanwe/mint.pub \
   -spent-db /var/lib/osanwe/spent.db \
   -budget-db /var/lib/osanwe/budget.db \
-  -budget-window 1h \
-  -budget-requests 100 \
-  -budget-input-bytes 10485760 \
-  -budget-output-tokens 100000 \
-  -budget-cost-usd 10.00 \
+  -budget-window 24h \
+  -budget-requests 50 \
+  -budget-input-bytes 200000 \
+  -budget-output-tokens 50000 \
+  -burst-budget-db /var/lib/osanwe/minute-budget.db \
+  -burst-budget-window 1m \
+  -burst-budget-requests 5 \
+  -burst-budget-input-bytes 32768 \
+  -burst-budget-output-tokens 8000 \
+  -max-output-tokens 1024 \
   -cert /var/lib/osanwe/gateway.crt \
   -key /var/lib/osanwe/gateway.key
 Restart=always
@@ -387,7 +391,8 @@ the gateway can prove no connection to the provider was made. A crash between
 reservation and dispatch can therefore under-use the rest of that window, but
 cannot overspend it. The database is intentionally single-process and
 single-host; a future multi-host gateway needs a shared implementation of
-`gateway.Budget`.
+`gateway.Budget`. `-burst-budget-db` adds a second durable ceiling that must
+also reserve before token spend; use it to stay below provider minute limits.
 
 For a single upstream instead of `-routes`, enable the same cost ceiling with
 `-input-usd-per-million` and `-output-usd-per-million`. If
