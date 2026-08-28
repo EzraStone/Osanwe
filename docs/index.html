@@ -379,19 +379,12 @@
         <p class="hero-lede">Humans deserve to maintain their dignity when using our greatest invention.</p>
       </div>
     </div>
-    <div class="hero-foot shell">
-      <div class="actions">
-        <a class="button primary" href="https://github.com/EzraStone/Osanwe/blob/main/docs/beta.md" rel="noreferrer">Read the beta charter</a>
-        <a class="button secondary" href="https://github.com/EzraStone/Osanwe/blob/main/docs/quickstart.md" rel="noreferrer">Quickstart</a>
-      </div>
-      <p class="hero-note">The first beta is ten invited testers: free, text-only, and limited to synthetic or deliberately non-sensitive prompts. This site is an explanation and download front door, not a hosted chat service. Applying requires GitHub sign-in and creates a public issue tied to your username.</p>
-    </div>
   </section>
 
   <section class="principles" id="principles" aria-labelledby="principles-title">
     <div class="shell">
       <div class="principles-head">
-        <div><p class="eyebrow">Catholic in inspiration · open to everyone</p><h2 id="principles-title">Technology should serve the human person.</h2></div>
+        <div><p class="eyebrow">Catholic in inspiration · open to everyone</p><h2 id="principles-title">Technology should serve the human first.</h2></div>
         <p class="section-lede">You are a person, not a profile. Osanwë’s Catholic inspiration begins with human dignity, freedom, moral limits, and stewardship. It welcomes people of every faith or none and claims no institutional endorsement.</p>
       </div>
       <div class="principle-grid">
@@ -523,81 +516,6 @@
         <div><dt>Osanwë stores</dt><dd>No server-side conversation history; optional browser-only local history</dd></div>
         <div><dt>Not yet protected</dt><dd>Gateway plaintext from its operator through attested execution</dd></div>
       </dl>
-    </div>
-  </section>
-
-  <section class="beta" id="beta" aria-labelledby="beta-title">
-    <div class="shell">
-      <div class="beta-head">
-        <div><p class="eyebrow">The first ten people</p><h2 id="beta-title">A test cohort, not an audience.</h2></div>
-        <p class="section-lede">The best first testers cover distinct failure surfaces. Fame and follower
-        count do not matter; clear feedback, fast response, and willingness to use synthetic prompts do.</p>
-      </div>
-      <ol class="roles">
-        <li><b>01</b><span>Independent relay operator</span></li><li><b>02</b><span>Application-security engineer</span></li>
-        <li><b>03</b><span>Privacy or cryptography reviewer</span></li><li><b>04</b><span>Heavy AI coding-tool user</span></li>
-        <li><b>05</b><span>Nontechnical Windows user</span></li><li><b>06</b><span>macOS user</span></li>
-        <li><b>07</b><span>Linux developer</span></li><li><b>08</b><span>Keyboard-only or screen-reader user</span></li>
-        <li><b>09</b><span>Reliability or DevOps operator</span></li><li><b>10</b><span>Privacy-conscious product tester</span></li>
-      </ol>
-      <div class="beta-actions">
-        <a class="button primary" href="https://github.com/EzraStone/Osanwe/issues/new?template=beta-interest.yml" rel="noreferrer">Apply on GitHub</a>
-        <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/beta.md" rel="noreferrer">Read the complete beta charter →</a>
-      </div>
-      <p class="cta-note">GitHub sign-in is required. Submitting the form creates a public issue linked
-      to your GitHub username; do not include private contact details, prompts, or answers.</p>
-    </div>
-  </section>
-
-  <section class="evidence" aria-labelledby="evidence-title">
-    <div class="shell">
-      <p class="eyebrow">Evidence before positioning</p>
-      <h2 id="evidence-title">Phase 0 currently points toward async work.</h2>
-      <div class="candidate">
-        <article>
-          <h3>Measured route</h3>
-          <span class="metric">+448 ms</span>
-          <p>Provisional p95 time-to-first-token overhead from a Chicago-area client through a
-          <code>us-west1-b</code> relay. That exceeds the project's 400 ms chat-failure boundary. Two
-          independent regions remain, so this is a provisional verdict—not a universal latency claim.</p>
-        </article>
-        <article>
-          <h3>Ox Alpha candidate</h3>
-          <span class="metric">Disabled</span>
-          <p>The route is technically compatible, free at the time checked, and temporary. It remains
-          internal-only while OpenRouter clarifies integration permission, retention, training,
-          lifecycle, and required tester language in writing.</p>
-        </article>
-      </div>
-      <div class="beta-actions">
-        <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/phase0-results.md" rel="noreferrer">Read Phase 0 results →</a>
-        <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/providers/ox-alpha.md" rel="noreferrer">Read the Ox Alpha gate →</a>
-      </div>
-    </div>
-  </section>
-
-  <section class="download" aria-labelledby="download-title">
-    <div class="shell download-card">
-      <div>
-        <p class="eyebrow">Website, not web chat</p>
-        <h2 id="download-title">Download locally. Keep the public page out of the conversation.</h2>
-        <p class="section-lede">The website explains, recruits, and will publish checksummed archives.
-        The chat stays on <code>127.0.0.1</code>; this site has no prompt box, analytics, Osanwë account
-        system, key field, or access to local history. The separate beta application uses a public
-        GitHub account. Invited testers receive a non-secret connection file and paste secrets only
-        into the local launcher.</p>
-        <div class="beta-actions">
-          <a class="button primary" href="https://github.com/EzraStone/Osanwe/releases" rel="noreferrer">Check releases</a>
-          <a class="quiet-link" href="https://github.com/EzraStone/Osanwe/blob/main/docs/joining.md" rel="noreferrer">Technical setup →</a>
-        </div>
-      </div>
-      <ul class="checklist" aria-label="Download gates">
-        <li><strong>Not yet:</strong> published Windows, macOS, and Linux client archives</li>
-        <li><strong>Not yet:</strong> published SHA-256 checksums and embedded version identity</li>
-        <li><strong>Not yet:</strong> clean-platform validation of launchers and OS warning paths</li>
-        <li><strong>Not yet:</strong> provider permission for a pooled model route</li>
-        <li><strong>Not yet:</strong> an independently operated relay for experimental privacy traffic</li>
-      </ul>
     </div>
   </section>
 

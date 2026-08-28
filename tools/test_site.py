@@ -123,16 +123,16 @@ class StaticSiteTest(unittest.TestCase):
             with self.subTest(reference=reference):
                 self.assertIn("noreferrer", anchor.get("rel", "").split())
 
-    def test_beta_call_to_action_discloses_public_github_identity(self):
+    def test_removed_recruitment_and_evidence_sections_stay_absent(self):
         text = " ".join("".join(self.page.text).split())
-        self.assertIn("GitHub sign-in is required", text)
-        self.assertIn("public issue linked to your GitHub username", text)
-
-    def test_every_download_gate_has_visible_not_yet_text(self):
-        self.assertGreater(len(self.page.download_gates), 0)
-        for gate in self.page.download_gates:
-            with self.subTest(gate=gate):
-                self.assertTrue(gate.casefold().startswith("not yet:"), gate)
+        for phrase in (
+            "A test cohort, not an audience.",
+            "Phase 0 currently points toward async work.",
+            "Download locally. Keep the public page out of the conversation.",
+            "Read the beta charter",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertNotIn(phrase, text)
 
     def test_landing_page_uses_two_tone_keyboard_focus_indicator(self):
         source = self.source[self.index]
@@ -149,6 +149,7 @@ class StaticSiteTest(unittest.TestCase):
         text = " ".join("".join(self.page.text).split())
         for phrase in (
             "Humans deserve to maintain their dignity when using our greatest invention.",
+            "Technology should serve the human first.",
             "You are a person, not a profile.",
             "Catholic in inspiration",
             "Real local client interface",
