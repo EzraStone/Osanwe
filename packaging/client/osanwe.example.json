@@ -4,6 +4,9 @@
   "pin": "sha256/replace-with-the-relay-pin",
   "upstream": "https://gateway.example",
   "upstream_ca": "gateway.crt",
+  "api_style": "anthropic",
+  "models": ["openai/gpt-oss-20b"],
   "mint": "https://mint.example",
-  "mint_key_id": "mint-replace-with-independently-verified-id"
+  "mint_key_id": "mint-replace-with-independently-verified-id",
+  "trial_access": true
 }

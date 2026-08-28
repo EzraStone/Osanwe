@@ -56,7 +56,7 @@ function Get-JsonValue {
 }
 
 function Import-OsanweEnrollment {
-    Show-OsanweMessage "Choose the osanwe.json enrollment file supplied by your beta inviter. The relay secret and beta entitlement are never imported or saved."
+    Show-OsanweMessage "Choose the osanwe.json enrollment file supplied by your beta inviter. Relay secrets are never imported or saved. A free-test invitation is activated later inside the local app."
 
     $picker = New-Object System.Windows.Forms.OpenFileDialog
     $picker.Title = "Choose Osanwe enrollment"
@@ -119,7 +119,7 @@ function Read-OsanweCredentials {
     $form.Controls.Add($title)
 
     $explanation = New-Object System.Windows.Forms.Label
-    $explanation.Text = "These beta credentials stay in memory only for this session. Your provider API key is entered later in Settings."
+    $explanation.Text = "The relay secret stays in memory only for this session. Provider or free-test access is configured later inside the local app."
     $explanation.AutoSize = $false
     $explanation.Size = New-Object System.Drawing.Size(420, 38)
     $explanation.Location = New-Object System.Drawing.Point(24, 53)
@@ -294,7 +294,9 @@ try {
     }
 
     $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-    $needsEntitlement = -not [string]::IsNullOrWhiteSpace([string](Get-JsonValue -Object $config -Name "mint"))
+    $hasMint = -not [string]::IsNullOrWhiteSpace([string](Get-JsonValue -Object $config -Name "mint"))
+    $trialAccess = [bool](Get-JsonValue -Object $config -Name "trial_access")
+    $needsEntitlement = $hasMint -and -not $trialAccess
     $credentials = Read-OsanweCredentials -NeedsEntitlement $needsEntitlement
     if ($null -eq $credentials) { exit 0 }
 

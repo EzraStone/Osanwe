@@ -53,7 +53,8 @@ if [ -z "$OSANWE_SECRET" ]; then
 fi
 export OSANWE_SECRET
 
-if grep -Eq '"mint"[[:space:]]*:[[:space:]]*"[^"[:space:]]' "$config_path"; then
+if grep -Eq '"mint"[[:space:]]*:[[:space:]]*"[^"[:space:]]' "$config_path" &&
+   ! grep -Eq '"trial_access"[[:space:]]*:[[:space:]]*true' "$config_path"; then
   printf '%s' "Paste the beta entitlement (it will not be saved): "
   hide_terminal_input
   if ! IFS= read -r OSANWE_RECEIPT; then

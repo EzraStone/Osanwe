@@ -18,16 +18,17 @@ invited:
 3. On macOS, place `osanwe.json` and any named `gateway.crt` beside the launcher, then double-click
    **Start Osanwe.command**. On Linux, place those files beside the launcher, open a terminal in the
    extracted folder, and run `./start-osanwe.sh`; secret entry requires an interactive terminal.
-4. Enter the relay secret and beta entitlement only when the local launcher asks. On Windows they
-   pass through the child process environment from a masked native prompt; on macOS and Linux they
-   pass through the interactive launcher. The client removes them before it starts browser helpers.
-   They are not saved to `osanwe.json` or placed on its command line.
+4. Enter the relay secret only when the local launcher asks. It passes through the child process
+   environment from a masked Windows prompt or hidden terminal entry on macOS/Linux, and is removed
+   before browser helpers start. Then open **Settings → Free test access** and choose the separate
+   invitation JSON. The invitation and unspent tokens are saved only in the local wallet; the
+   gateway's Groq key is never shipped to the tester.
 5. Before sending a test prompt, acknowledge that the configured model provider receives both the
    prompt and answer under the gateway account, subject to that provider's retention and training
    policy. Use only supplied synthetic or deliberately non-sensitive text.
 6. The launcher opens the chat at `http://127.0.0.1:8080/_osanwe/`. Windows uses a dedicated Edge app
    window and a separate local browser profile when Edge is available. The static public project website
-   has no application path that receives the secret, entitlement, prompt, response, or local history.
+   has no application path that receives the secret, invitation, prompt, response, or local history.
 
 The initial installer and archives are not code-signed or notarized, so Windows SmartScreen and
 macOS Gatekeeper may warn. Do not bypass a warning unless the digest matches the release and the
