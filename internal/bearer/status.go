@@ -3,10 +3,13 @@ package bearer
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/EzraStone/osanwe/internal/mint"
 	"github.com/EzraStone/osanwe/internal/ui"
 	"github.com/EzraStone/osanwe/internal/version"
 )
@@ -107,8 +110,24 @@ type DirectoryInfo struct {
 }
 
 type WalletInfo struct {
-	OnHand int    `json:"on_hand"`
-	Spent  uint64 `json:"spent"`
+	OnHand int              `json:"on_hand"`
+	Spent  uint64           `json:"spent"`
+	Trial  *TrialWalletInfo `json:"trial,omitempty"`
+}
+
+type TrialWalletInfo struct {
+	Activated      bool   `json:"activated"`
+	RemainingEpoch int    `json:"remaining_epoch"`
+	EpochEnds      string `json:"epoch_ends,omitempty"`
+	Expires        string `json:"expires,omitempty"`
+}
+
+type inviteWalletStatus interface {
+	InviteStatus() mint.InviteWalletStatus
+}
+
+type inviteBookActivator interface {
+	ActivateInviteBook([]byte) error
 }
 
 type RequestInfo struct {
@@ -169,6 +188,18 @@ func (s *Server) Status() Status {
 		st.Privacy.OperatorSeparation = "not_verified_by_client"
 		if w, ok := s.cfg.Tokens.(WalletStatus); ok {
 			st.Wallet = &WalletInfo{OnHand: w.Len(), Spent: w.Spent()}
+			if trial, ok := s.cfg.Tokens.(inviteWalletStatus); ok {
+				info := trial.InviteStatus()
+				st.Wallet.Trial = &TrialWalletInfo{
+					Activated: info.Activated, RemainingEpoch: info.RemainingEpoch,
+				}
+				if !info.EpochEnds.IsZero() {
+					st.Wallet.Trial.EpochEnds = info.EpochEnds.UTC().Format(time.RFC3339)
+				}
+				if !info.Expires.IsZero() {
+					st.Wallet.Trial.Expires = info.Expires.UTC().Format(time.RFC3339)
+				}
+			}
 		}
 	}
 
@@ -197,6 +228,36 @@ func (s *Server) Status() Status {
 		}
 	}
 	return st
+}
+
+const maxInviteActivationBody = 64 << 10
+
+func (s *Server) handleInviteActivation(w http.ResponseWriter, r *http.Request) {
+	setPrivateResponseHeaders(w.Header())
+	w.Header().Set("Content-Type", "application/json")
+	activator, ok := s.cfg.Tokens.(inviteBookActivator)
+	if !ok {
+		http.Error(w, `{"error":{"type":"trial_access_unavailable","message":"This client was not enrolled for free test access."}}`, http.StatusNotFound)
+		return
+	}
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		http.Error(w, `{"error":{"type":"invalid_invite_book","message":"The invitation must be a JSON file."}}`, http.StatusUnsupportedMediaType)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxInviteActivationBody+1))
+	if err != nil || len(body) > maxInviteActivationBody {
+		http.Error(w, `{"error":{"type":"invalid_invite_book","message":"The invitation file is too large or could not be read."}}`, http.StatusRequestEntityTooLarge)
+		return
+	}
+	if err := activator.ActivateInviteBook(body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{
+			"type": "invalid_invite_book", "message": err.Error(),
+		}})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleStatus serves the status document.
@@ -246,6 +307,7 @@ func (s *Server) routes(proxy http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+Prefix+"status", s.handleStatus)
 	if s.cfg.UI {
+		mux.HandleFunc("POST "+Prefix+"activate", s.handleInviteActivation)
 		// More specific patterns win, so the status route above is unaffected.
 		mux.Handle(Prefix, ui.Handler(Prefix))
 		mux.Handle(strings.TrimSuffix(Prefix, "/"), http.RedirectHandler(Prefix, http.StatusMovedPermanently))

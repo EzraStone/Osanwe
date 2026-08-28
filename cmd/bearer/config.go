@@ -27,6 +27,7 @@ type clientFileConfig struct {
 	UpstreamCA    string   `json:"upstream_ca,omitempty"`
 	Mint          string   `json:"mint,omitempty"`
 	MintKeyID     string   `json:"mint_key_id,omitempty"`
+	TrialAccess   bool     `json:"trial_access,omitempty"`
 }
 
 func loadClientFileConfig(path string) (clientFileConfig, error) {

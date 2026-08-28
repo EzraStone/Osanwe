@@ -404,6 +404,53 @@ func (s stubWallet) Put(*mint.Token) {}
 func (s stubWallet) Len() int        { return s.on }
 func (s stubWallet) Spent() uint64   { return s.spent }
 
+type trialStubWallet struct {
+	stubWallet
+	activated []byte
+}
+
+func (s *trialStubWallet) ActivateInviteBook(book []byte) error {
+	s.activated = append([]byte(nil), book...)
+	return nil
+}
+
+func (*trialStubWallet) InviteStatus() mint.InviteWalletStatus {
+	return mint.InviteWalletStatus{
+		Activated: true, RemainingEpoch: 3,
+		EpochEnds: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
+		Expires:   time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC),
+	}
+}
+
+func TestTrialWalletStatusAndActivationStayOnLocalReservedRoutes(t *testing.T) {
+	wallet := &trialStubWallet{stubWallet: stubWallet{on: 2, spent: 1}}
+	s := testServer(t, func(c *Config) { c.Tokens = wallet; c.UI = true })
+
+	resp := ask(t, s, Prefix+"status", nil)
+	var status Status
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Wallet == nil || status.Wallet.Trial == nil || !status.Wallet.Trial.Activated || status.Wallet.Trial.RemainingEpoch != 3 {
+		t.Fatalf("trial status = %+v", status.Wallet)
+	}
+
+	book := `{"schema_version":2}`
+	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080"+Prefix+"activate", strings.NewReader(book))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	rec := &recorder{header: http.Header{}}
+	s.http.Handler.ServeHTTP(rec, req)
+	if rec.code != http.StatusNoContent {
+		t.Fatalf("activation status = %d, body %s", rec.code, rec.body.String())
+	}
+	if string(wallet.activated) != book {
+		t.Fatalf("activation imported %q", wallet.activated)
+	}
+}
+
 // A browser opening the interface asks for a favicon unprompted. Answer it
 // locally with the browser-specific refusal; token mode's paid-path policy is
 // an independent second layer that must also keep the wallet untouched.

@@ -261,8 +261,13 @@ body[data-mode="code"] .turn.you .body{font-family:var(--mono); font-size:13.5px
 .byok-key-row label{grid-column:1 / -1; color:var(--faint); font-size:11px; letter-spacing:.06em; text-transform:uppercase}
 .byok-key-row input{min-width:0; padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:var(--raised); color:var(--ink); font:13px var(--mono)}
 .byok-key-row button{padding:.55rem .75rem; border:1px solid var(--gild-dim); border-radius:7px; background:var(--gild-soft); color:var(--gild); cursor:pointer; font:600 12px var(--sans)}
+.trial-access-row{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.5rem; align-items:end; margin-top:.75rem}
+.trial-access-row label{grid-column:1 / -1; color:var(--faint); font-size:11px; letter-spacing:.06em; text-transform:uppercase}
+.trial-access-row input{min-width:0; padding:.5rem; border:1px solid var(--line); border-radius:7px; background:var(--raised); color:var(--ink); font:12px var(--sans)}
+.trial-access-row button{padding:.55rem .75rem; border:1px solid var(--gild-dim); border-radius:7px; background:var(--gild-soft); color:var(--gild); cursor:pointer; font:600 12px var(--sans)}
 .byok-key-status{min-height:1.4em; color:var(--faint); font-size:12px}
 @media(max-width:36rem){.byok-key-row{grid-template-columns:1fr}.byok-key-row button{width:100%}}
+@media(max-width:36rem){.trial-access-row{grid-template-columns:1fr}.trial-access-row button{width:100%}}
 
 /* models */
 .models-page{flex:1 1 auto; overflow-y:auto; width:100%; padding:2.2rem 1.1rem 3rem}

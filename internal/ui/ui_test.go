@@ -65,6 +65,8 @@ func TestPrimaryModesAndProviderSettingsAreHonest(t *testing.T) {
 		`disabled aria-disabled="true">Cowork`,
 		`id="themeIcon"`,
 		`id="providerSettings"`,
+		`id="trialAccessSettings"`,
+		`id="activateTrialAccess">Activate free test access`,
 		`cannot read files, run commands, or apply changes`,
 		`id="codeRunner"`,
 		`id="runCode">Run in preview`,

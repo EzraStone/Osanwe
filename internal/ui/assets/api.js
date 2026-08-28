@@ -13,6 +13,18 @@ export async function loadModels(fetchImpl = globalThis.fetch) {
   return Array.isArray(catalog.data) ? catalog : { data: [] };
 }
 
+export async function activateInviteBook(contents, fetchImpl = globalThis.fetch) {
+  if (typeof contents !== "string" || contents.length === 0 || contents.length > 64 * 1024) {
+    throw new TypeError("the invitation file must be a non-empty JSON file no larger than 64 KiB");
+  }
+  const response = await fetchImpl(`${PREFIX}activate`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: contents,
+  });
+  if (!response.ok) throw await responseError(response, "free test activation failed");
+}
+
 export function buildMessageBody({ model, messages, system = "", maxTokens = 2048, stream = true }) {
   if (typeof model !== "string" || !model.trim()) throw new TypeError("a model is required");
   if (!Array.isArray(messages) || messages.length === 0) throw new TypeError("at least one message is required");

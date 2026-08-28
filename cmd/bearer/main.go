@@ -23,6 +23,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -64,6 +65,9 @@ func run() error {
 	mintURL := fs.String("mint", "", "mint to buy tokens from. Switches to paying with tokens instead of your own API key, and -upstream must then be a gateway")
 	mintKeyID := fs.String("mint-key-id", "", "the mint's key id, obtained anywhere other than the mint itself. Required with -mint")
 	receipt := fs.String("receipt", "", "proof of payment to present to the mint (or set OSANWE_RECEIPT)")
+	trialAccess := fs.Bool("trial-access", false, "use an expiring local free-beta invite wallet instead of a payment receipt")
+	walletState := fs.String("wallet-state", "", "private local free-beta wallet database (defaults to the user configuration directory)")
+	inviteBook := fs.String("invite-book", "", "activate free test access from this invitation JSON file")
 	noUI := fs.Bool("no-ui", false, "do not serve the local interface")
 	openUI := fs.Bool("open-ui", false, "open the local interface in the default browser after startup")
 	exitOnStdinClose := fs.Bool("exit-on-stdin-close", false, "shut down when the launcher's private stdin pipe closes")
@@ -130,9 +134,21 @@ func run() error {
 		if !set["mint-key-id"] {
 			*mintKeyID = cfg.MintKeyID
 		}
+		if !set["trial-access"] {
+			*trialAccess = cfg.TrialAccess
+		}
 	}
 	if *openUI && *noUI {
 		return errors.New("bearer: -open-ui cannot be combined with -no-ui")
+	}
+	if *trialAccess && (*mintURL == "" || *mintKeyID == "") {
+		return errors.New("bearer: -trial-access needs -mint and -mint-key-id")
+	}
+	if *inviteBook != "" && !*trialAccess {
+		return errors.New("bearer: -invite-book requires -trial-access")
+	}
+	if *trialAccess && (envReceipt != "" || *receipt != "") {
+		return errors.New("bearer: free trial access cannot be combined with a payment receipt")
 	}
 
 	// Buying a single token needs no relay, no secret and no listener, so it
@@ -269,20 +285,55 @@ func run() error {
 
 	// Paying with tokens is opt-in and, once on, changes what the upstream
 	// must be: a provider would reject a token and has no idea what one is.
-	var wallet *mint.Wallet
+	var wallet interface {
+		bearer.TokenSource
+		Len() int
+		Spent() uint64
+		Run(context.Context)
+	}
 	if *mintURL != "" {
 		if *mintKeyID == "" {
 			return errors.New("bearer: -mint needs -mint-key-id. " +
 				"Take the id from somewhere other than the mint: a mint that handed every buyer a key of their own " +
 				"would put each of them in an anonymity set of one while appearing to work perfectly")
 		}
-		rcpt := envReceipt
-		if *receipt != "" {
-			rcpt = *receipt
+		client := &mint.Client{URL: *mintURL, ExpectKeyID: *mintKeyID}
+		if *trialAccess {
+			statePath := *walletState
+			if statePath == "" {
+				configDir, err := os.UserConfigDir()
+				if err != nil {
+					return fmt.Errorf("bearer: locating the user configuration directory for the trial wallet: %w", err)
+				}
+				statePath = filepath.Join(configDir, "Osanwe", "trial-wallet.db")
+			}
+			trialWallet, err := mint.OpenInviteWallet(mint.InviteWalletConfig{
+				Client: client, StatePath: statePath, Batch: 5,
+			})
+			if err != nil {
+				return err
+			}
+			defer trialWallet.Close()
+			if *inviteBook != "" {
+				book, err := os.ReadFile(*inviteBook)
+				if err != nil {
+					return fmt.Errorf("bearer: reading -invite-book: %w", err)
+				}
+				if err := trialWallet.ActivateInviteBook(book); err != nil {
+					return fmt.Errorf("bearer: activating -invite-book: %w", err)
+				}
+			}
+			wallet = trialWallet
+			log.Info("free test wallet enabled", "mint", *mintURL, "key", *mintKeyID, "state", statePath)
+		} else {
+			rcpt := envReceipt
+			if *receipt != "" {
+				rcpt = *receipt
+			}
+			wallet = mint.NewWallet(client, rcpt, 8)
+			log.Info("paying with tokens", "mint", *mintURL, "key", *mintKeyID)
 		}
-		wallet = mint.NewWallet(&mint.Client{URL: *mintURL, ExpectKeyID: *mintKeyID}, rcpt, 8)
 		go wallet.Run(runCtx)
-		log.Info("paying with tokens", "mint", *mintURL, "key", *mintKeyID)
 	} else if *mintKeyID != "" {
 		return errors.New("bearer: -mint-key-id given without -mint, so no tokens would be bought and your own API key would still be used")
 	}

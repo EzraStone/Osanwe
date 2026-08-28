@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildMessageBody, buildOpenAIMessageBody, loadModels, loadStatus, responseError, sendMessages } from "../assets/api.js";
+import { activateInviteBook, buildMessageBody, buildOpenAIMessageBody, loadModels, loadStatus, responseError, sendMessages } from "../assets/api.js";
 
 test("message bodies preserve complete multi-turn context", () => {
   assert.deepEqual(
@@ -73,6 +73,19 @@ test("status and model reads use only their exact local endpoints", async () => 
   assert.equal((await loadStatus(fetchImpl)).paying, "tokens");
   assert.equal((await loadModels(fetchImpl)).data[0].id, "m");
   assert.deepEqual(calls.map(([url]) => url), ["/_osanwe/status", "/v1/models"]);
+});
+
+test("free test activation posts the selected JSON only to the local activation endpoint", async () => {
+  let seen;
+  await activateInviteBook('{"schema_version":2}', async (url, options) => {
+    seen = { url, options };
+    return { ok: true };
+  });
+  assert.equal(seen.url, "/_osanwe/activate");
+  assert.equal(seen.options.method, "POST");
+  assert.equal(seen.options.headers["content-type"], "application/json");
+  assert.equal(seen.options.body, '{"schema_version":2}');
+  await assert.rejects(activateInviteBook(""), /non-empty JSON/);
 });
 
 test("sendMessages cannot add an arbitrary endpoint or request field", async () => {

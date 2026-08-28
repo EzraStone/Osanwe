@@ -1,4 +1,4 @@
-import { loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
+import { activateInviteBook, loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
 import { buildPreviewBundle, parseCodeFences } from "./code.js";
 import { appendTurn, conversationTitle, conversationTurnText, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
 import { disclosureNarrative } from "./disclosure.js";
@@ -55,7 +55,10 @@ function plural(n,word){return n+" "+word+(n===1?"":"s")}
 function render(){
   if(!status)return;
   var tokens=status.paying==="tokens";
-	var chatAvailable=(tokens||providerKey)&&modelsReady&&catalogModels.some(function(item){return item.id===model.value});
+	var trial=status.wallet&&status.wallet.trial;
+	var trialReady=!trial||trial.activated;
+	var trialAvailable=!trial||((status.wallet.on_hand||0)+(trial.remaining_epoch||0)>0);
+	var chatAvailable=((tokens&&trialReady&&trialAvailable)||(!tokens&&providerKey))&&modelsReady&&catalogModels.some(function(item){return item.id===model.value});
 
   $("endpointText").textContent="http://"+status.endpoint;
   $("copyEndpoint").dataset.copy="http://"+status.endpoint;
@@ -63,6 +66,19 @@ function render(){
   showSnippet(currentSnip);
 
   providerSettings.hidden=tokens;
+	$("trialAccessSettings").hidden=!tokens||!trial;
+	if(trial){
+		$("trialActivationControls").hidden=trial.activated;
+		$("trialAccessFacts").hidden=!trial.activated;
+		$("trialAccessSummary").textContent=trial.activated
+			?"Free test access is active in this local wallet. The invitation and tokens never leave this device except as unlinkable one-shot vouchers and blind-signed tokens."
+			:"Choose the invitation JSON file supplied by your beta inviter. It is imported only by this local app and is never sent to Groq, the relay, or the gateway.";
+		if(trial.activated){
+			$("trialRequestsAvailable").textContent=String((status.wallet.on_hand||0)+(trial.remaining_epoch||0));
+			$("trialEpochEnds").textContent=trial.epoch_ends?formatUTC(trial.epoch_ends):"No current allowance";
+			$("trialExpires").textContent=trial.expires?formatUTC(trial.expires):"—";
+		}
+	}
   $("openProviderSettings").hidden=tokens||Boolean(providerKey);
   $("codeContext").hidden=activeMode!=="code";
   var runnerVisible=activeMode==="code"&&runnerOpen;
@@ -74,11 +90,15 @@ function render(){
   syncRunnerModality();
   $("rerunCode").disabled=runnerBusy||!runnerLastSnapshot;
   input.disabled=!chatAvailable;
-	input.placeholder=!tokens&&!providerKey?"Connect a provider in Settings":(!modelsReady?"Checking active models":"No active model available");
+	input.placeholder=!tokens&&!providerKey?"Connect a provider in Settings":(!trialReady?"Activate free test access in Settings":(!trialAvailable?"Today's free test allowance is exhausted":(!modelsReady?"Checking active models":"No active model available")));
 	if(chatAvailable)input.placeholder=modeCopy[activeMode].placeholder;
   $("modeKicker").textContent=modeCopy[activeMode].kicker;
   $("openingTitle").textContent=modeCopy[activeMode].title;
-  if(!tokens&&!providerKey){
+  if(tokens&&!trialReady){
+	$("openingSub").textContent="Open Settings and activate the invitation file supplied by your beta inviter.";
+  }else if(tokens&&!trialAvailable){
+	$("openingSub").textContent="The current free test allowance is exhausted. The exact reset time is shown in Settings.";
+  }else if(!tokens&&!providerKey){
     $("openingSub").textContent="Connect a session-only provider key in Settings to begin.";
   }else if(!chatAvailable){
     $("openingSub").textContent="The gateway currently reports no active model. No request can be sent.";
@@ -128,6 +148,11 @@ function render(){
   if(catalogModels.length)renderModelCards();
 
   refresh();
+}
+
+function formatUTC(value){
+	var parsed=new Date(value);
+	return Number.isNaN(parsed.getTime())?"—":parsed.toISOString().replace(".000Z","Z");
 }
 
 function humanAge(s){
@@ -591,8 +616,28 @@ function forgetProviderKey(){
   render();providerKeyInput.focus();
 }
 
+async function activateSelectedInvite(){
+	var chooser=$("inviteBookFile"),button=$("activateTrialAccess"),message=$("trialAccessStatus");
+	var file=chooser.files&&chooser.files[0];
+	if(!file){message.textContent="Choose the invitation JSON file supplied by your beta inviter.";chooser.focus();return}
+	if(file.size<1||file.size>64*1024){message.textContent="The invitation must be a non-empty JSON file no larger than 64 KiB.";return}
+	button.disabled=true;chooser.disabled=true;message.textContent="Validating locally…";
+	try{
+		var contents=await file.text();
+		await activateInviteBook(contents);
+		chooser.value="";
+		await load();
+		message.textContent="Free test access is active. The invitation is now held in this device's private wallet.";
+	}catch(error){
+		message.textContent=error&&error.message?error.message:"Free test activation failed.";
+	}finally{
+		button.disabled=false;chooser.disabled=false;
+	}
+}
+
 $("connectProviderKey").addEventListener("click",connectProviderKey);
 $("forgetProviderKey").addEventListener("click",forgetProviderKey);
+$("activateTrialAccess").addEventListener("click",function(){activateSelectedInvite()});
 $("openProviderSettings").addEventListener("click",openSettings);
 providerKeyInput.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();connectProviderKey()}});
 window.addEventListener("pagehide",function(){providerKey="";providerKeyInput.value=""});

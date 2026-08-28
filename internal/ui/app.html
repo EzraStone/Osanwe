@@ -162,6 +162,22 @@
       <button type="button" class="settings-close" id="closeSettingsIcon" aria-label="Close settings">×</button>
     </div>
 
+    <section class="settings-section" id="trialAccessSettings" aria-labelledby="trialAccessTitle" hidden>
+      <h3 id="trialAccessTitle">Free test access</h3>
+      <p id="trialAccessSummary">Choose the invitation JSON file supplied by your beta inviter. It is imported only by this local app and is never sent to Groq, the relay, or the gateway.</p>
+      <div class="trial-access-row" id="trialActivationControls">
+        <label for="inviteBookFile">Invitation file</label>
+        <input type="file" id="inviteBookFile" accept="application/json,.json">
+        <button type="button" id="activateTrialAccess">Activate free test access</button>
+      </div>
+      <div class="status-list" id="trialAccessFacts" hidden>
+        <div><span>Requests available now</span><b id="trialRequestsAvailable">—</b></div>
+        <div><span>Current allowance resets</span><b id="trialEpochEnds">—</b></div>
+        <div><span>Invitation expires</span><b id="trialExpires">—</b></div>
+      </div>
+      <p class="byok-key-status" id="trialAccessStatus" role="status" aria-live="polite"></p>
+    </section>
+
     <section class="settings-section" id="providerSettings" aria-labelledby="providerTitle">
       <h3 id="providerTitle">Provider access</h3>
       <p>Connect your own API key for this page. The key stays in page memory, is not intentionally saved, and is forgotten when you reload or close this page.</p>
