@@ -80,6 +80,48 @@ func TestRunRequiresEveryCapacityAndWindowFlag(t *testing.T) {
 	}
 }
 
+func TestRunGeneratesDailyEpochBooks(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("invite generation requires verified Unix owner permissions")
+	}
+	out := filepath.Join(t.TempDir(), "daily-books")
+	args := []string{
+		"-program", "beta-daily", "-mint-key-id", "mint-test-key",
+		"-not-before", "2026-09-01T00:00:00Z", "-not-after", "2026-09-08T00:00:00Z",
+		"-seats", "10", "-vouchers-per-invite", "35",
+		"-vouchers-per-epoch", "5", "-epoch-duration", "24h", "-out", out,
+	}
+	var stdout, stderr bytes.Buffer
+	if err := run(args, &stdout, &stderr); err != nil {
+		t.Fatalf("run: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "5 voucher(s) per 24h0m0s epoch") {
+		t.Fatalf("daily fairness summary missing: %q", stdout.String())
+	}
+	manifestData, err := os.ReadFile(filepath.Join(out, "invite-manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		SchemaVersion    int `json:"schema_version"`
+		VouchersPerEpoch int `json:"vouchers_per_epoch"`
+		Epochs           []struct {
+			Fingerprints []string `json:"voucher_fingerprints"`
+		} `json:"epochs"`
+	}
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.SchemaVersion != 2 || manifest.VouchersPerEpoch != 5 || len(manifest.Epochs) != 7 {
+		t.Fatalf("daily manifest = %+v", manifest)
+	}
+	for i, epoch := range manifest.Epochs {
+		if len(epoch.Fingerprints) != 50 {
+			t.Fatalf("epoch %d fingerprints = %d, want 50", i, len(epoch.Fingerprints))
+		}
+	}
+}
+
 func TestRunRejectsNonCanonicalTimesAndPositionalArguments(t *testing.T) {
 	base := []string{
 		"-program", "beta-test", "-mint-key-id", "mint-test-key",
