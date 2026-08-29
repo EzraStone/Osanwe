@@ -35,6 +35,15 @@ func testDailyInviteBook(t *testing.T, keyID string, start time.Time) []byte {
 	return data
 }
 
+func testInviteWalletPath(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "private-wallet")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(dir, "trial-wallet.db")
+}
+
 func TestInviteWalletPersistsQuotaAndTokensAcrossRestart(t *testing.T) {
 	priv := key(t)
 	m, err := New(priv, OpenAuthorizer{})
@@ -45,7 +54,7 @@ func TestInviteWalletPersistsQuotaAndTokensAcrossRestart(t *testing.T) {
 	defer server.Close()
 	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	now := start
-	statePath := filepath.Join(t.TempDir(), "trial-wallet.db")
+	statePath := testInviteWalletPath(t)
 	client := &Client{URL: server.URL, ExpectKeyID: m.KeyID()}
 
 	wallet, err := OpenInviteWallet(InviteWalletConfig{
@@ -119,7 +128,7 @@ func TestInviteWalletRejectsBookReplacementAndWrongMint(t *testing.T) {
 	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	wallet, err := OpenInviteWallet(InviteWalletConfig{
 		Client:    &Client{URL: server.URL, ExpectKeyID: m.KeyID()},
-		StatePath: filepath.Join(t.TempDir(), "wallet.db"), Batch: 1,
+		StatePath: testInviteWalletPath(t), Batch: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
