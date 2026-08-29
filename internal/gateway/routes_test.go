@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -18,6 +19,33 @@ import (
 
 	"github.com/EzraStone/osanwe/internal/mint"
 )
+
+func TestShippedGroqBetaRouteIsSingleModelAndFailClosed(t *testing.T) {
+	f, err := os.Open("../../docs/routes.groq.conf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	routes, err := ParseRoutes(f, func(name string) string {
+		if name == "GROQ_API_KEY" {
+			return "gsk-test-only"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("ParseRoutes: %v", err)
+	}
+	if got := routes.Models(); !reflect.DeepEqual(got, []string{"openai/gpt-oss-20b"}) {
+		t.Fatalf("Groq beta models = %v", got)
+	}
+	route, ok := routes.Lookup("openai/gpt-oss-20b")
+	if !ok || route.Style != StyleOpenAI || route.Upstream != "https://api.groq.com/openai" || !route.Lifecycle.Experimental || route.Lifecycle.ExpiresAt.IsZero() {
+		t.Fatalf("Groq beta route = %+v", route)
+	}
+	if _, ok := routes.Lookup("llama-3.3-70b-versatile"); ok {
+		t.Fatal("legacy fallback model remains reachable")
+	}
+}
 
 // routedHarness is a gateway fronting two providers, so a test can check which
 // one a request actually reached.
