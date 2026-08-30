@@ -81,6 +81,17 @@ func main() {
 
 // handle answers a Messages-API-shaped request.
 func handle(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"object": "list",
+			"data": []map[string]string{{
+				"id":     "demo",
+				"object": "model",
+			}},
+		})
+		return
+	}
 	if r.URL.Path != "/v1/messages" {
 		http.Error(w, `{"type":"error","error":{"message":"not found"}}`, http.StatusNotFound)
 		return
