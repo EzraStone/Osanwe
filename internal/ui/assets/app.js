@@ -15,6 +15,8 @@ var PREFIX="/_osanwe/";
 var $=function(id){return document.getElementById(id)};
 var thread=$("thread"),rail=$("rail"),opening=$("opening"),
     input=$("input"),send=$("send"),stop=$("stop"),seal=$("seal"),state=$("state"),model=$("model"),
+    modelPicker=$("modelPicker"),modelTrigger=$("modelTrigger"),modelMenu=$("modelMenu"),
+    modelChoiceToggle=$("modelChoiceToggle"),modelChoices=$("modelChoices"),modelAdvancedToggle=$("modelAdvancedToggle"),
     providerKeyInput=$("providerKey"),providerConsent=$("providerConsent"),
     panel=$("panel"),veil=$("veil"),providerSettings=$("providerSettings"),runnerFrame=$("runnerPreview");
 
@@ -762,6 +764,33 @@ $("copyEndpoint").addEventListener("click",function(){
 // not available, which is its own kind of lie.
 //
 // The catalog is free and needs no token, so asking costs nothing.
+function closeModelMenu(){
+  modelMenu.hidden=true;modelTrigger.setAttribute("aria-expanded","false");
+  modelChoices.hidden=true;modelChoiceToggle.setAttribute("aria-expanded","false");
+  $("modelAdvanced").hidden=true;modelAdvancedToggle.setAttribute("aria-expanded","false");
+}
+
+function syncModelPicker(){
+  var selected=model.value||"No model";
+  $("modelTriggerValue").textContent=selected;
+  $("modelMenuValue").textContent=selected;
+  modelTrigger.disabled=model.disabled;
+  modelChoices.textContent="";
+  catalogModels.forEach(function(item){
+    var choice=document.createElement("button");
+    choice.type="button";choice.className="model-choice";choice.setAttribute("role","option");
+    choice.setAttribute("aria-selected",String(item.id===model.value));choice.textContent=item.id;
+    choice.addEventListener("click",function(){selectModel(item.id);closeModelMenu();modelTrigger.focus()});
+    modelChoices.appendChild(choice);
+  });
+}
+
+function selectModel(id){
+  if(!catalogModels.some(function(item){return item.id===id}))return;
+  model.value=id;conversation.model=id;rememberModel(id);persistConversation();
+  syncModelPicker();renderModelCards();render();
+}
+
 function loadModels(){
   var request=++catalogRequest;
   return fetchModels()
@@ -775,7 +804,7 @@ function loadModels(){
 	  modelsReady=true;
       if(!catalogModels.length){
         $("catalogState").textContent="The connected endpoint did not report a model catalog.";
-		model.textContent="";model.disabled=true;conversation.model="";render();renderModelCards();
+		model.textContent="";model.disabled=true;conversation.model="";syncModelPicker();closeModelMenu();render();renderModelCards();
         return;
       }
 	  model.disabled=false;
@@ -789,11 +818,11 @@ function loadModels(){
       // Keep the selection if it survived, otherwise take the first.
       if(catalogModels.some(function(m){return m.id===current}))model.value=current;
       conversation.model=model.value;
-	  render();renderModelCards();
+	  syncModelPicker();render();renderModelCards();
     })
     .catch(function(){
 	  if(request!==catalogRequest)return;
-	  modelsReady=true;catalogModels=[];model.textContent="";model.disabled=true;conversation.model="";render();renderModelCards();
+	  modelsReady=true;catalogModels=[];model.textContent="";model.disabled=true;conversation.model="";syncModelPicker();closeModelMenu();render();renderModelCards();
       $("catalogState").textContent="The local model catalog is unavailable.";
     });
 }
@@ -818,9 +847,7 @@ function renderModelCards(){
     choose.type="button";choose.className="choose-model";
     choose.setAttribute("aria-pressed",String(selected));
     choose.textContent=row.id;
-    choose.addEventListener("click",function(){
-      model.value=item.id;conversation.model=item.id;rememberModel(item.id);persistConversation();renderModelCards();
-    });
+    choose.addEventListener("click",function(){selectModel(item.id)});
     name.appendChild(choose);
     var tags=document.createElement("div");tags.className="row-tags";
     row.tags.forEach(function(t){
@@ -842,7 +869,23 @@ function rememberModel(id){
 }
 
 model.addEventListener("change",function(){
-  conversation.model=model.value;rememberModel(model.value);persistConversation();renderModelCards();
+  conversation.model=model.value;rememberModel(model.value);persistConversation();syncModelPicker();renderModelCards();
+});
+modelTrigger.addEventListener("click",function(){
+  var open=modelMenu.hidden;
+  if(open){modelMenu.hidden=false;modelTrigger.setAttribute("aria-expanded","true");modelChoiceToggle.focus()}
+  else closeModelMenu();
+});
+modelChoiceToggle.addEventListener("click",function(){
+  var open=modelChoices.hidden;modelChoices.hidden=!open;modelChoiceToggle.setAttribute("aria-expanded",String(open));
+  if(open){var first=modelChoices.querySelector(".model-choice");if(first)first.focus()}
+});
+modelAdvancedToggle.addEventListener("click",function(){
+  var detail=$("modelAdvanced"),open=detail.hidden;detail.hidden=!open;modelAdvancedToggle.setAttribute("aria-expanded",String(open));
+});
+document.addEventListener("click",function(event){if(!modelMenu.hidden&&!modelPicker.contains(event.target))closeModelMenu()});
+document.addEventListener("keydown",function(event){
+  if(event.key==="Escape"&&!modelMenu.hidden){event.preventDefault();closeModelMenu();modelTrigger.focus()}
 });
 
 function retentionLabel(){
@@ -914,6 +957,7 @@ function renderConversation(){
   });
   setEmpty(conversation.turns.length===0);
   if(catalogModels.some(function(item){return item.id===conversation.model}))model.value=conversation.model;
+  syncModelPicker();
   scroll();refresh();
 }
 
@@ -1012,6 +1056,7 @@ $("exportConversationBtn").addEventListener("click",function(){
 
 showSnippet("shell");
 retentionLabel();
+syncModelPicker();
 load().then(loadModels);
 // The client is local, so polling it is nearly free, and a relay that failed
 // over should not sit behind a stale label until the page is reloaded.

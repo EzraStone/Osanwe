@@ -64,6 +64,11 @@ func TestPrimaryModesAndProviderSettingsAreHonest(t *testing.T) {
 		`id="coworkTab"`,
 		`disabled aria-disabled="true">Cowork`,
 		`id="themeIcon"`,
+		`class="ghost settings-control" id="settingsBtn"`,
+		`id="modelTrigger"`,
+		`id="modelMenu" role="dialog" aria-label="Model selection"`,
+		`id="modelChoices" role="listbox"`,
+		`Effort and speed remain provider-controlled in this beta.`,
 		`id="providerSettings"`,
 		`id="trialAccessSettings"`,
 		`id="activateTrialAccess">Activate free test access`,
@@ -83,6 +88,9 @@ func TestPrimaryModesAndProviderSettingsAreHonest(t *testing.T) {
 	}
 	if strings.Contains(text, `id="modelsTab"`) || strings.Contains(text, `id="connectTab"`) {
 		t.Fatal("the old Models or Connect primary tab is still present")
+	}
+	if strings.Contains(text, `class="wordmark"`) {
+		t.Fatal("the in-page wordmark duplicates the installed app title bar")
 	}
 	if strings.Contains(text, "allow-same-origin") {
 		t.Fatal("the generated-code frame must retain an opaque sandbox origin")

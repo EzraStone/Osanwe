@@ -63,7 +63,6 @@ body{
   display:flex; align-items:center; justify-content:space-between; gap:1rem;
   padding:.75rem 1.1rem; flex:0 0 auto; border-bottom:1px solid var(--line);
 }
-.wordmark{font-family:var(--serif); font-weight:600; font-size:19px; color:var(--gild); letter-spacing:.01em}
 .chrome-actions{display:flex; align-items:center; gap:.15rem}
 .seg{display:flex; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:100px; padding:1px}
 .seg button{
@@ -233,11 +232,47 @@ body[data-mode="code"] .turn.you .body{font-family:var(--mono); font-size:13.5px
 .stop svg{fill:currentColor}
 .send[hidden],.stop[hidden]{display:none}
 .underline{display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:.55rem; padding:0 .2rem}
-.model{
-  font-family:var(--sans); font-size:12.5px; color:var(--faint);
-  background:none; border:none; padding:.1rem .2rem; cursor:pointer; border-radius:5px;
+.model-native{display:none}
+.model-picker{position:relative; min-width:0}
+.model-trigger{
+  display:flex; max-width:min(18rem,48vw); align-items:center; gap:.45rem;
+  overflow:hidden; padding:.2rem .35rem; border:0; border-radius:3px;
+  background:transparent; color:var(--faint); cursor:pointer; font:12.5px var(--sans);
 }
-.model:hover{color:var(--gild)}
+.model-trigger:hover,.model-trigger[aria-expanded="true"]{color:var(--gild)}
+.model-trigger:disabled{cursor:not-allowed; opacity:.5}
+.model-trigger>span:first-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.model-chevron{flex:0 0 auto; font-size:13px}
+.model-menu{
+  position:absolute; z-index:12; bottom:calc(100% + .55rem); left:0;
+  width:min(18rem,calc(100vw - 2.5rem)); overflow:hidden;
+  padding:.35rem; border:1px solid var(--line); border-radius:13px;
+  background:var(--raised); color:var(--ink);
+  box-shadow:0 18px 45px color-mix(in srgb,var(--ink) 18%,transparent);
+}
+.model-menu[hidden],.model-choices[hidden],.model-advanced[hidden]{display:none}
+.model-menu-row,.model-advanced-toggle{
+  display:grid; width:100%; min-height:2rem; grid-template-columns:minmax(0,1fr) auto;
+  align-items:center; gap:.8rem; padding:.38rem .5rem; border:0; border-radius:7px;
+  background:transparent; color:var(--ink); text-align:left; font:12px var(--sans);
+}
+button.model-menu-row,.model-advanced-toggle{cursor:pointer}
+button.model-menu-row:hover,.model-advanced-toggle:hover{background:var(--sunk)}
+.model-menu-trailing{display:flex; min-width:0; align-items:center; gap:.55rem; color:var(--muted)}
+.model-menu-trailing>span:first-child{max-width:10rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.model-menu-static{color:var(--ink)}
+.model-menu-static .model-menu-trailing{font-size:11.5px}
+.model-choices{margin:.15rem .25rem .3rem; padding:.25rem; border:1px solid var(--line); border-radius:8px; background:var(--ground)}
+.model-choice{
+  display:flex; width:100%; align-items:center; justify-content:space-between; gap:.75rem;
+  padding:.4rem .5rem; border:0; border-radius:5px; background:transparent;
+  color:var(--muted); cursor:pointer; text-align:left; font:11.5px var(--sans);
+}
+.model-choice:hover{background:var(--sunk); color:var(--ink)}
+.model-choice[aria-selected="true"]{color:var(--gild); font-weight:650}
+.model-choice[aria-selected="true"]::after{content:"✓"; flex:0 0 auto}
+.model-advanced-toggle{margin-top:.2rem; border-top:1px solid var(--line); border-radius:0; color:var(--muted)}
+.model-advanced{margin:.1rem .5rem .35rem; color:var(--faint); font-size:10.5px; line-height:1.5}
 .state{font-size:12px; color:var(--faint)}
 .state.warn{color:var(--alarm)}
 .composer-state{display:flex; align-items:center; gap:.6rem}
@@ -460,10 +495,9 @@ table.catalog tr.is-selected td{background:var(--gild-soft)}
    Paper, ink and rules do the structural work. Curves are reserved for the
    seal and status marks rather than being applied to every control. */
 .chrome{
-  min-height:4rem; justify-content:flex-start; gap:1.25rem; padding:.65rem 1.45rem;
-  background:var(--ground);
+  min-height:3.35rem; justify-content:flex-start; gap:1.25rem; padding:.55rem 1.45rem .35rem;
+  border-bottom:0; background:var(--ground);
 }
-.wordmark{font-size:21px; color:var(--ink)}
 .seg{gap:0; padding:0; border:0; border-radius:0; background:transparent}
 .seg button{
   min-height:2.05rem; padding:.3rem .9rem; border:1px solid transparent;
@@ -475,6 +509,8 @@ table.catalog tr.is-selected td{background:var(--gild-soft)}
 .ghost{border:1px solid transparent; border-radius:3px; padding:.38rem .65rem}
 .ghost:hover{border-color:var(--line); background:transparent}
 #themeBtn,#newBtn{border-color:var(--line)}
+#settingsBtn{border-color:var(--gild-dim); background:var(--raised); color:var(--ink)}
+#settingsBtn:hover{border-color:var(--gild); color:var(--gild)}
 .workspace-shell{background:var(--ground)}
 .thread{padding-inline:1.5rem}
 .rail,.composer-inner,.storage-warning{max-width:48rem}
@@ -495,7 +531,6 @@ table.catalog tr.is-selected td{background:var(--gild-soft)}
 .composer-wrap{padding:.75rem 1.5rem 1.15rem}
 .composer{border-radius:4px; background:var(--raised); box-shadow:0 8px 24px color-mix(in srgb,var(--ink) 5%,transparent)}
 .send,.stop{border-radius:3px}
-.model{border-radius:2px}
 
 @media(max-width:34rem){
   .chrome{gap:.6rem; padding:.55rem .7rem}

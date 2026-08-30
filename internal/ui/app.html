@@ -11,7 +11,6 @@
 <body>
 
 <div class="chrome">
-  <span class="wordmark">Osanwë</span>
   <div class="seg" role="tablist" aria-label="Mode">
     <button type="button" role="tab" id="chatTab" aria-selected="true" aria-controls="chatView" tabindex="0" data-mode="chat">Chat</button>
     <button type="button" role="tab" id="codeTab" aria-selected="false" aria-controls="chatView" tabindex="-1" data-mode="code">Code</button>
@@ -20,7 +19,7 @@
   <div class="chrome-actions">
     <button type="button" class="ghost" id="codePreviewToggle" hidden>Preview</button>
     <button type="button" class="ghost icon-button" id="themeBtn" aria-label="Switch theme" title="Switch theme"><span id="themeIcon" aria-hidden="true">☾</span></button>
-    <button type="button" class="ghost" id="settingsBtn">Settings</button>
+    <button type="button" class="ghost settings-control" id="settingsBtn">Settings</button>
     <button type="button" class="ghost" id="newBtn">New</button>
   </div>
 </div>
@@ -74,9 +73,35 @@
             </button>
           </div>
           <div class="underline">
-            <select class="model" id="model" aria-label="Model">
-              <option value="claude-sonnet-5">claude-sonnet-5</option>
-            </select>
+            <div class="model-picker" id="modelPicker">
+              <select class="model-native" id="model" aria-hidden="true" tabindex="-1">
+                <option value="claude-sonnet-5">claude-sonnet-5</option>
+              </select>
+              <button type="button" class="model-trigger" id="modelTrigger"
+                      aria-haspopup="dialog" aria-expanded="false" aria-controls="modelMenu">
+                <span id="modelTriggerValue">claude-sonnet-5</span>
+                <span class="model-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <div class="model-menu" id="modelMenu" role="dialog" aria-label="Model selection" hidden>
+                <button type="button" class="model-menu-row" id="modelChoiceToggle"
+                        aria-expanded="false" aria-controls="modelChoices">
+                  <span>Model</span>
+                  <span class="model-menu-trailing"><span id="modelMenuValue">claude-sonnet-5</span><span aria-hidden="true">›</span></span>
+                </button>
+                <div class="model-choices" id="modelChoices" role="listbox" aria-label="Available models" hidden></div>
+                <div class="model-menu-row model-menu-static" aria-label="Effort uses the provider default">
+                  <span>Effort</span><span class="model-menu-trailing">Provider default</span>
+                </div>
+                <div class="model-menu-row model-menu-static" aria-label="Speed uses the provider default">
+                  <span>Speed</span><span class="model-menu-trailing">Provider default</span>
+                </div>
+                <button type="button" class="model-advanced-toggle" id="modelAdvancedToggle"
+                        aria-expanded="false" aria-controls="modelAdvanced">
+                  <span>Advanced</span><span aria-hidden="true">⌄</span>
+                </button>
+                <p class="model-advanced" id="modelAdvanced" hidden>Effort and speed remain provider-controlled in this beta. Available models come from the live route catalog.</p>
+              </div>
+            </div>
             <div class="composer-state">
               <button type="button" class="retention" id="retentionState">Ephemeral</button>
               <span class="state" id="state" role="status" aria-live="polite">Sealed</span>
