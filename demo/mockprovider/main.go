@@ -128,7 +128,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 	// No quotes in the reply text: the demo pulls these deltas out of the SSE
 	// stream with sed, and escaped quotes inside JSON would mangle it.
-	reply := fmt.Sprintf("I read %d bytes and your last message was %s", len(body), prompt)
+	reply := fmt.Sprintf("Local demo only — no external model was called. I read %d bytes and your last message was %s", len(body), prompt)
 
 	if !req.Stream {
 		w.Header().Set("Content-Type", "application/json")
