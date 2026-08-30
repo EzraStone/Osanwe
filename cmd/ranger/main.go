@@ -68,6 +68,7 @@ func run() error {
 	fs.Var(&allow, "allow", "destination this relay may carry traffic to, as host or host:port (repeatable, comma-separated). Required")
 	addr := fs.String("addr", ":8443", "address to listen on")
 	metricsAddr := fs.String("metrics", "127.0.0.1:9464", "address for the metrics endpoint; empty disables it")
+	maxTunnels := fs.Int("max-tunnels", ranger.DefaultMaxTunnels, "maximum connecting and established tunnels across the relay")
 	secret := fs.String("secret", "", "shared secret clients must present (or set OSANWE_RANGER_SECRET)")
 	dir := fs.String("dir", ".", "directory holding the relay's TLS identity")
 	certPath := fs.String("cert", "", "TLS certificate path (default <dir>/ranger.crt)")
@@ -231,6 +232,9 @@ func run() error {
 	if len(allow) == 0 {
 		return errors.New("ranger: no -allow destinations given. A relay must be told what it may carry traffic to; it will not forward to arbitrary hosts")
 	}
+	if *maxTunnels < 1 {
+		return errors.New("ranger: -max-tunnels must be at least 1")
+	}
 	allowlist, err := policy.Parse(allow)
 	if err != nil {
 		return err
@@ -246,6 +250,7 @@ func run() error {
 		Auth:            authenticator,
 		Logger:          log,
 		LogDestinations: *logDest,
+		MaxTunnels:      *maxTunnels,
 	})
 	if err != nil {
 		return err
@@ -306,6 +311,7 @@ func startMetrics(addr string, srv *ranger.Server, log *slog.Logger) *http.Serve
 			{"osanwe_ranger_policy_denied_total", "Requests rejected for an unlisted destination.", m.PolicyDenied.Load()},
 			{"osanwe_ranger_bad_request_total", "Requests that were not usable CONNECTs.", m.BadRequest.Load()},
 			{"osanwe_ranger_dial_failed_total", "Upstream dials that failed.", m.DialFailed.Load()},
+			{"osanwe_ranger_capacity_denied_total", "Requests refused because the global tunnel limit was full.", m.CapacityDenied.Load()},
 			{"osanwe_ranger_tunnels_total", "Tunnels established.", m.Tunnels.Load()},
 			{"osanwe_ranger_tunnels_active", "Tunnels currently open.", m.TunnelsActive.Load()},
 			{"osanwe_ranger_bytes_to_target_total", "Bytes forwarded toward providers.", m.BytesToTarget.Load()},
@@ -318,8 +324,18 @@ func startMetrics(addr string, srv *ranger.Server, log *slog.Logger) *http.Serve
 			}
 			fmt.Fprintf(w, "# TYPE %s %s\n%s %d\n", row.name, kind, row.name, row.value)
 		}
+		used, limit, _ := srv.Capacity()
+		fmt.Fprintf(w, "# HELP osanwe_ranger_tunnels_reserved Connecting and established tunnels holding capacity.\n")
+		fmt.Fprintf(w, "# TYPE osanwe_ranger_tunnels_reserved gauge\nosanwe_ranger_tunnels_reserved %d\n", used)
+		fmt.Fprintf(w, "# HELP osanwe_ranger_tunnels_limit Configured global tunnel ceiling.\n")
+		fmt.Fprintf(w, "# TYPE osanwe_ranger_tunnels_limit gauge\nosanwe_ranger_tunnels_limit %d\n", limit)
 	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		used, limit, accepting := srv.Capacity()
+		if !accepting {
+			http.Error(w, fmt.Sprintf("saturated (%d/%d tunnels)", used, limit), http.StatusServiceUnavailable)
+			return
+		}
 		fmt.Fprintln(w, "ok")
 	})
 

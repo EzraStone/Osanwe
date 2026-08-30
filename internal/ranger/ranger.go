@@ -37,6 +37,11 @@ const (
 	DefaultHandshakeTimeout = 10 * time.Second
 	DefaultDialTimeout      = 10 * time.Second
 	DefaultIdleTimeout      = 10 * time.Minute
+	// DefaultMaxTunnels is deliberately finite. A volunteer relay shares one
+	// access credential with several clients, so authentication alone cannot
+	// stop one accepted client from exhausting every socket on the operator's
+	// machine.
+	DefaultMaxTunnels = 64
 )
 
 // Config configures a Server. Addr, TLS, Allowlist and Auth are required.
@@ -49,6 +54,10 @@ type Config struct {
 	HandshakeTimeout time.Duration
 	DialTimeout      time.Duration
 	IdleTimeout      time.Duration
+	// MaxTunnels is a global ceiling across connecting and established
+	// tunnels. Zero selects DefaultMaxTunnels. The limit is intentionally not
+	// per address: keeping a per-client table would create a correlation log.
+	MaxTunnels int
 
 	Logger *slog.Logger
 
@@ -72,15 +81,16 @@ type Config struct {
 // detail: aggregate counts let an operator see that their relay is working
 // without accumulating anything worth seizing.
 type Metrics struct {
-	Accepted      atomic.Int64
-	AuthFailed    atomic.Int64
-	PolicyDenied  atomic.Int64
-	BadRequest    atomic.Int64
-	DialFailed    atomic.Int64
-	Tunnels       atomic.Int64
-	TunnelsActive atomic.Int64
-	BytesToClient atomic.Int64
-	BytesToTarget atomic.Int64
+	Accepted       atomic.Int64
+	AuthFailed     atomic.Int64
+	PolicyDenied   atomic.Int64
+	BadRequest     atomic.Int64
+	DialFailed     atomic.Int64
+	CapacityDenied atomic.Int64
+	Tunnels        atomic.Int64
+	TunnelsActive  atomic.Int64
+	BytesToClient  atomic.Int64
+	BytesToTarget  atomic.Int64
 }
 
 // Server is a ranger relay.
@@ -99,6 +109,7 @@ type Server struct {
 	// listener and leave every tunnel already open still carrying traffic --
 	// an operator who stopped their relay would still be running one.
 	tunnels  map[net.Conn]struct{}
+	reserved int
 	stopping bool
 }
 
@@ -113,6 +124,8 @@ func New(cfg Config) (*Server, error) {
 		return nil, errors.New("ranger: a non-empty Allowlist is required")
 	case cfg.Auth == nil:
 		return nil, errors.New("ranger: Auth is required; an unauthenticated relay becomes someone else's abuse proxy within hours")
+	case cfg.MaxTunnels < 0:
+		return nil, errors.New("ranger: MaxTunnels cannot be negative")
 	}
 
 	if cfg.HandshakeTimeout <= 0 {
@@ -123,6 +136,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.IdleTimeout <= 0 {
 		cfg.IdleTimeout = DefaultIdleTimeout
+	}
+	if cfg.MaxTunnels == 0 {
+		cfg.MaxTunnels = DefaultMaxTunnels
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -137,6 +153,10 @@ func New(cfg Config) (*Server, error) {
 		Handler:           s,
 		TLSConfig:         cfg.TLS,
 		ReadHeaderTimeout: cfg.HandshakeTimeout,
+		// CONNECT requests need only a host and one credential. Bounding the
+		// header prevents an authenticated or unauthenticated peer from using a
+		// volunteer relay as a large-header memory sink.
+		MaxHeaderBytes: 16 << 10,
 		// A nil ErrorLog falls back to log.Default, and net/http includes the
 		// remote address in TLS handshake failures. That silently creates the
 		// per-client log this relay otherwise goes out of its way not to keep.
@@ -213,6 +233,35 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return err
 }
 
+// reserveTunnel claims one global capacity slot before the upstream dial.
+// This is separate from track: a slow destination dial consumes resources too,
+// and checking only after hijacking would allow an arbitrary number of those.
+func (s *Server) reserveTunnel() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopping || s.reserved >= s.cfg.MaxTunnels {
+		return false
+	}
+	s.reserved++
+	return true
+}
+
+func (s *Server) releaseTunnel() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.reserved > 0 {
+		s.reserved--
+	}
+}
+
+// Capacity reports only aggregate resource state. It intentionally exposes no
+// address, credential, destination, or per-connection timestamps.
+func (s *Server) Capacity() (used, limit int, accepting bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reserved, s.cfg.MaxTunnels, !s.stopping && s.reserved < s.cfg.MaxTunnels
+}
+
 // track registers a tunnel. It reports false once the server is stopping, so a
 // CONNECT that arrives during shutdown is not left running behind it.
 func (s *Server) track(c net.Conn) bool {
@@ -287,6 +336,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "destination not permitted by this relay", http.StatusForbidden)
 		return
 	}
+
+	if !s.reserveTunnel() {
+		s.metrics.CapacityDenied.Add(1)
+		s.log.Warn("rejected connection: relay at configured capacity")
+		http.Error(w, "relay is at its configured tunnel capacity", http.StatusServiceUnavailable)
+		return
+	}
+	defer s.releaseTunnel()
 
 	dialCtx, cancel := context.WithTimeout(r.Context(), s.cfg.DialTimeout)
 	defer cancel()

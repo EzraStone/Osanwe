@@ -47,6 +47,10 @@ func echoServer(t *testing.T) net.Listener {
 
 // startRanger brings up a relay allowing exactly the given destinations.
 func startRanger(t *testing.T, allow []string) (*Server, string, string) {
+	return startRangerWithMax(t, allow, 0)
+}
+
+func startRangerWithMax(t *testing.T, allow []string, maxTunnels int) (*Server, string, string) {
 	t.Helper()
 
 	cert, pin, err := certs.SelfSigned([]string{"localhost", "127.0.0.1"}, time.Hour)
@@ -63,10 +67,11 @@ func startRanger(t *testing.T, allow []string) (*Server, string, string) {
 	}
 
 	srv, err := New(Config{
-		Addr:      "127.0.0.1:0",
-		TLS:       &tls.Config{Certificates: []tls.Certificate{cert}},
-		Allowlist: al,
-		Auth:      au,
+		Addr:       "127.0.0.1:0",
+		TLS:        &tls.Config{Certificates: []tls.Certificate{cert}},
+		Allowlist:  al,
+		Auth:       au,
+		MaxTunnels: maxTunnels,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -177,11 +182,66 @@ func TestNewRejectsUnsafeConfigs(t *testing.T) {
 		"no TLS":       {Addr: "127.0.0.1:0", Allowlist: al, Auth: au},
 		"no allowlist": {Addr: "127.0.0.1:0", TLS: tlsCfg, Auth: au},
 		"no auth":      {Addr: "127.0.0.1:0", TLS: tlsCfg, Allowlist: al},
+		"negative max": {Addr: "127.0.0.1:0", TLS: tlsCfg, Allowlist: al, Auth: au, MaxTunnels: -1},
 	}
 	for name, cfg := range cases {
 		if _, err := New(cfg); err == nil {
 			t.Errorf("New with %s succeeded; unsafe configurations must be refused at construction", name)
 		}
+	}
+}
+
+func TestGlobalTunnelCapacityRefusesBeforeUpstreamDialAndRecovers(t *testing.T) {
+	echo := echoServer(t)
+	srv, addr, pin := startRangerWithMax(t, []string{echo.Addr().String()}, 1)
+
+	first := dialRanger(t, addr, pin)
+	status, _ := connect(t, first, echo.Addr().String(), auth.Header(secret))
+	if !strings.Contains(status, "200") {
+		t.Fatalf("first CONNECT status = %q, want 200", status)
+	}
+	if used, limit, accepting := srv.Capacity(); used != 1 || limit != 1 || accepting {
+		t.Fatalf("Capacity = %d/%d accepting=%v, want 1/1 false", used, limit, accepting)
+	}
+
+	dialsBefore := srv.Metrics().DialFailed.Load()
+	second := dialRanger(t, addr, pin)
+	status, _ = connect(t, second, echo.Addr().String(), auth.Header(secret))
+	if !strings.Contains(status, "503") {
+		t.Fatalf("second CONNECT status = %q, want 503", status)
+	}
+	if got := srv.Metrics().CapacityDenied.Load(); got != 1 {
+		t.Fatalf("CapacityDenied = %d, want 1", got)
+	}
+	if got := srv.Metrics().DialFailed.Load(); got != dialsBefore {
+		t.Fatalf("DialFailed changed from %d to %d; a full relay must refuse before dialing upstream", dialsBefore, got)
+	}
+
+	_ = first.Close()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if used, _, accepting := srv.Capacity(); used == 0 && accepting {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if used, limit, accepting := srv.Capacity(); used != 0 || limit != 1 || !accepting {
+		t.Fatalf("Capacity after close = %d/%d accepting=%v, want 0/1 true", used, limit, accepting)
+	}
+
+	third := dialRanger(t, addr, pin)
+	status, _ = connect(t, third, echo.Addr().String(), auth.Header(secret))
+	if !strings.Contains(status, "200") {
+		t.Fatalf("third CONNECT status = %q, want 200 after the slot was released", status)
+	}
+}
+
+func TestDefaultTunnelCapacityIsFinite(t *testing.T) {
+	echo := echoServer(t)
+	srv, _, _ := startRanger(t, []string{echo.Addr().String()})
+	used, limit, accepting := srv.Capacity()
+	if used != 0 || limit != DefaultMaxTunnels || !accepting {
+		t.Fatalf("Capacity = %d/%d accepting=%v, want 0/%d true", used, limit, accepting, DefaultMaxTunnels)
 	}
 }
 

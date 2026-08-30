@@ -208,6 +208,8 @@ func (e *Error) Error() string {
 		return fmt.Sprintf("relay %s will not carry traffic to %s (403). Its operator must add that destination with -allow", e.Relay, e.Target)
 	case http.StatusBadGateway:
 		return fmt.Sprintf("relay %s could not reach %s (502). The destination may be down, or the relay may have no route to it", e.Relay, e.Target)
+	case http.StatusServiceUnavailable:
+		return fmt.Sprintf("relay %s is at its configured tunnel capacity (503). Try another listed relay", e.Relay)
 	case http.StatusMethodNotAllowed:
 		return fmt.Sprintf("%s does not appear to be an osanwe ranger (405)", e.Relay)
 	default:
