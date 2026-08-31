@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a98f63' stroke-width='1.6'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.4v9.2M8.6 9.6a4.6 4.6 0 0 0 0 4.8M15.4 9.6a4.6 4.6 0 0 1 0 4.8'/%3E%3C/svg%3E">
+<title>Osanwë</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<div class="chrome">
+  <div class="seg" role="tablist" aria-label="Mode">
+    <button type="button" role="tab" id="chatTab" aria-selected="true" aria-controls="chatView" tabindex="0" data-mode="chat">Chat</button>
+    <button type="button" role="tab" id="codeTab" aria-selected="false" aria-controls="chatView" tabindex="-1" data-mode="code">Code</button>
+    <button type="button" role="tab" id="coworkTab" aria-selected="false" aria-controls="chatView" tabindex="-1" disabled aria-disabled="true">Cowork <small>Soon</small></button>
+  </div>
+  <div class="chrome-actions">
+    <button type="button" class="ghost" id="codePreviewToggle" hidden>Preview</button>
+    <button type="button" class="ghost icon-button" id="themeBtn" aria-label="Switch theme" title="Switch theme"><span id="themeIcon" aria-hidden="true">☾</span></button>
+    <button type="button" class="ghost settings-control" id="settingsBtn">Settings</button>
+    <button type="button" class="ghost" id="newBtn">New</button>
+  </div>
+</div>
+
+<div class="view" id="chatView" role="tabpanel" aria-labelledby="chatTab">
+  <div class="workspace-shell">
+    <aside class="code-context" id="codeContext" aria-label="Code workspace" hidden>
+      <p class="eyebrow">Code workspace</p>
+      <div class="workspace-state"><span aria-hidden="true"></span> No folder connected</div>
+      <p>Ask for code, debugging, explanations, or reviews. This beta cannot read files, run commands, or apply changes on your computer yet.</p>
+      <div class="code-capabilities" aria-label="Available code capabilities">
+        <span>Explain</span><span>Generate</span><span>Review</span>
+      </div>
+      <button type="button" class="runner-launch" id="openCodeRunner">Open code runner</button>
+      <p class="runner-boundary">Runs JavaScript and self-contained web previews in an isolated local sandbox. Network, persistent storage, and terminal access stay blocked. A preview has no ambient file access; choose or drop only files you intend its code to read.</p>
+    </aside>
+    <div class="conversation-surface">
+      <div class="thread is-empty" id="thread">
+        <div class="rail" id="rail" role="log" aria-label="Conversation" aria-live="polite"
+             aria-relevant="additions text" aria-busy="false">
+          <div class="opening" id="opening">
+            <p class="mode-kicker" id="modeKicker">Private chat</p>
+            <h2 id="openingTitle">What are you thinking about?</h2>
+            <p id="openingSub">Bring your own provider key. Osanwë does not keep a server-side conversation history.</p>
+            <button type="button" class="opening-action" id="openProviderSettings" hidden>Connect provider in Settings</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer-wrap">
+        <div class="composer-inner">
+          <div class="composer">
+            <textarea id="input" rows="1" placeholder="Ask anything" aria-label="Your message"></textarea>
+            <button type="button" class="seal" id="seal" aria-label="How this is protected"
+                    aria-expanded="false" aria-controls="panel" title="How this is protected">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle class="ring" cx="12" cy="12" r="9"></circle>
+                <path class="mark" d="M12 7.4v9.2M8.6 9.6a4.6 4.6 0 0 0 0 4.8M15.4 9.6a4.6 4.6 0 0 1 0 4.8"></path>
+              </svg>
+            </button>
+            <button type="button" class="send" id="send" disabled aria-label="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V5M5 12l7-7 7 7"></path>
+              </svg>
+            </button>
+            <button type="button" class="stop" id="stop" hidden aria-label="Stop generating">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="7" y="7" width="10" height="10" rx="1"></rect>
+              </svg>
+            </button>
+          </div>
+          <div class="underline">
+            <div class="model-picker" id="modelPicker">
+              <select class="model-native" id="model" aria-hidden="true" tabindex="-1">
+                <option value="openai/gpt-oss-20b">openai/gpt-oss-20b</option>
+              </select>
+              <button type="button" class="model-trigger" id="modelTrigger"
+                      aria-haspopup="dialog" aria-expanded="false" aria-controls="modelMenu">
+                <span id="modelTriggerValue">openai/gpt-oss-20b</span>
+                <span class="model-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <div class="model-menu" id="modelMenu" role="dialog" aria-label="Model selection" hidden>
+                <button type="button" class="model-menu-row" id="modelChoiceToggle"
+                        aria-expanded="false" aria-controls="modelChoices">
+                  <span>Model</span>
+                  <span class="model-menu-trailing"><span id="modelMenuValue">openai/gpt-oss-20b</span><span aria-hidden="true">›</span></span>
+                </button>
+                <div class="model-choices" id="modelChoices" role="listbox" aria-label="Available models" hidden></div>
+                <div class="model-menu-row model-menu-static" aria-label="Effort uses the provider default">
+                  <span>Effort</span><span class="model-menu-trailing">Provider default</span>
+                </div>
+                <div class="model-menu-row model-menu-static" aria-label="Speed uses the provider default">
+                  <span>Speed</span><span class="model-menu-trailing">Provider default</span>
+                </div>
+                <button type="button" class="model-advanced-toggle" id="modelAdvancedToggle"
+                        aria-expanded="false" aria-controls="modelAdvanced">
+                  <span>Advanced</span><span aria-hidden="true">⌄</span>
+                </button>
+                <p class="model-advanced" id="modelAdvanced" hidden>Effort and speed remain provider-controlled in this beta. Suggested models come from Osanwë's fixed provider registry; a custom model ID can be entered in Settings.</p>
+              </div>
+            </div>
+            <div class="composer-state">
+              <button type="button" class="retention" id="retentionState">Ephemeral</button>
+              <span class="state" id="state" role="status" aria-live="polite">Sealed</span>
+            </div>
+          </div>
+        </div>
+        <p class="storage-warning" id="storageWarning" role="alert" hidden></p>
+      </div>
+    </div>
+    <div class="runner-resizer" id="runnerResizer" role="separator" aria-label="Resize live preview"
+         aria-controls="codeRunner" aria-orientation="vertical" aria-valuemin="35" aria-valuemax="72"
+         aria-valuenow="38" aria-valuetext="Preview width 38 percent" tabindex="0" hidden></div>
+    <aside class="code-runner" id="codeRunner" aria-labelledby="runnerTitle" tabindex="-1" hidden>
+      <div class="runner-heading">
+        <div class="runner-title">
+          <span class="live-dot" aria-hidden="true"></span>
+          <div><p class="eyebrow">Local sandbox</p><h2 id="runnerTitle">Live preview</h2></div>
+        </div>
+        <div class="runner-window-actions">
+          <button type="button" id="expandCodeRunner" aria-label="Maximize live preview" title="Maximize live preview">↗</button>
+          <button type="button" class="runner-close" id="closeCodeRunner" aria-label="Close live preview">×</button>
+        </div>
+      </div>
+      <div class="preview-toolbar" aria-label="Preview controls">
+        <button type="button" aria-label="Back" title="Preview navigation is unavailable" disabled>←</button>
+        <button type="button" aria-label="Forward" title="Preview navigation is unavailable" disabled>→</button>
+        <button type="button" id="rerunCode" aria-label="Reload preview" title="Reload preview">↻</button>
+        <div class="preview-address" aria-label="Preview address"><span aria-hidden="true">◇</span> <span id="previewAddress">osanwe://local-preview</span></div>
+        <span class="network-off" id="runnerNetworkState" title="Checking the browser's preview boundary">Checking</span>
+      </div>
+      <div class="runner-display" id="runnerDisplay">
+        <iframe id="runnerPreview" class="runner-preview" title="Sandboxed live preview"
+                sandbox="allow-scripts" src="assets/runner.html"></iframe>
+      </div>
+      <div class="runner-drawer">
+        <div class="runner-tabs" role="tablist" aria-label="Runner workspace">
+          <button type="button" role="tab" id="editorTab" aria-selected="true" aria-controls="runnerEditorPanel" tabindex="0" data-runner-view="editor">Code</button>
+          <button type="button" role="tab" id="resultsTab" aria-selected="false" aria-controls="runnerResults" tabindex="-1" data-runner-view="results">Console</button>
+        </div>
+        <div class="runner-editor-panel" id="runnerEditorPanel" role="tabpanel" aria-labelledby="editorTab">
+          <div class="runner-editor-toolbar">
+            <label for="runnerLanguage">Language</label>
+            <select id="runnerLanguage" class="runner-language">
+              <option value="javascript">JavaScript</option>
+              <option value="html">HTML document</option>
+            </select>
+            <div class="runner-actions">
+              <button type="button" id="runCode">Run in preview</button>
+              <button type="button" class="secondary" id="clearRunner">Clear</button>
+            </div>
+          </div>
+          <textarea id="runnerEditor" class="runner-editor" rows="7" spellcheck="false"
+                    aria-label="Code" placeholder="Generated runnable code appears here."></textarea>
+        </div>
+        <pre id="runnerResults" class="runner-results" role="tabpanel" aria-labelledby="resultsTab" tabindex="0" hidden>No output yet.</pre>
+        <div class="runner-footer">
+          <p class="runner-status" id="runnerStatus" role="status" aria-live="polite">Ready. Nothing has run.</p>
+          <p class="runner-note" title="A preview can read only files you deliberately choose or drop into it.">Explicit runs only · network and storage blocked · selected files are readable by the preview</p>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="veil" id="veil" hidden></div>
+<div class="panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="panelTitle" tabindex="-1" hidden>
+  <div class="panel-inner">
+    <h3 id="panelTitle">What happened to your words</h3>
+    <p class="sub">Shown because you asked. It is never shown on its own.</p>
+    <ul class="told" id="told"></ul>
+    <div class="facts" id="facts"></div>
+    <button type="button" class="close" id="closePanel">Close</button>
+  </div>
+</div>
+
+<dialog class="settings-dialog" id="settingsDialog" aria-labelledby="settingsTitle">
+  <div class="settings-inner">
+    <div class="settings-heading">
+      <div>
+        <p class="eyebrow">Osanwë</p>
+        <h2 id="settingsTitle">Settings</h2>
+      </div>
+      <button type="button" class="settings-close" id="closeSettingsIcon" aria-label="Close settings">×</button>
+    </div>
+
+    <section class="settings-section" id="trialAccessSettings" aria-labelledby="trialAccessTitle" hidden>
+      <h3 id="trialAccessTitle">Free test access</h3>
+      <p id="trialAccessSummary">Choose the invitation JSON file supplied by your beta inviter. It is imported only by this local app and is never sent to Groq, the relay, or the gateway.</p>
+      <div class="trial-access-row" id="trialActivationControls">
+        <label for="inviteBookFile">Invitation file</label>
+        <input type="file" id="inviteBookFile" accept="application/json,.json">
+        <button type="button" id="activateTrialAccess">Activate free test access</button>
+      </div>
+      <div class="status-list" id="trialAccessFacts" hidden>
+        <div><span>Requests available now</span><b id="trialRequestsAvailable">—</b></div>
+        <div><span>Current allowance resets</span><b id="trialEpochEnds">—</b></div>
+        <div><span>Invitation expires</span><b id="trialExpires">—</b></div>
+      </div>
+      <p class="byok-key-status" id="trialAccessStatus" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="settings-section" id="providerSettings" aria-labelledby="providerTitle">
+      <h3 id="providerTitle">Provider access</h3>
+      <p>Choose a provider and model, then load your own API key for this tab. Osanwë does not intentionally save the key, and forgets it when you reload or close the page.</p>
+      <p class="provider-warning">The hosted Osanwë service forwards the key, prompts, and answers. Your provider can associate requests with your account. Use synthetic or deliberately non-sensitive prompts in this beta.</p>
+      <div class="provider-config-grid">
+        <label for="providerSelect">Provider</label>
+        <select id="providerSelect" aria-describedby="providerChoiceNote"></select>
+        <label for="providerModel">Model ID</label>
+        <div class="provider-model-control">
+          <input type="text" id="providerModel" list="providerModelSuggestions" autocomplete="off"
+                 spellcheck="false" maxlength="160" aria-describedby="providerChoiceNote">
+          <datalist id="providerModelSuggestions"></datalist>
+          <button type="button" id="useProviderModel">Use model</button>
+        </div>
+      </div>
+      <p class="aside" id="providerChoiceNote">Choose a suggested model or enter any valid model ID offered by the selected provider. Custom provider URLs are blocked.</p>
+      <label class="byok-consent"><input type="checkbox" id="providerConsent">
+        I understand this test boundary.
+      </label>
+      <div class="byok-key-row">
+        <label for="providerKey">Provider API key</label>
+        <input type="password" id="providerKey" autocomplete="new-password" spellcheck="false"
+               aria-describedby="providerKeyStatus">
+        <button type="button" id="connectProviderKey">Load for this tab</button>
+        <button type="button" id="forgetProviderKey" hidden>Forget key</button>
+      </div>
+      <p class="byok-key-status" id="providerKeyStatus" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="settings-section" aria-labelledby="historyTitle">
+      <h3 id="historyTitle">Conversation history</h3>
+      <p>Osanwë services keep no conversation record. You can optionally save one in this browser profile.</p>
+      <fieldset>
+        <legend>Retention</legend>
+        <label><input type="radio" name="retention" value="ephemeral" checked> Ephemeral</label>
+        <span>Closing or reloading this page loses the conversation.</span>
+        <label><input type="radio" name="retention" value="device"> Save on this device</label>
+        <span>Other people or malware with this browser profile may read it.</span>
+      </fieldset>
+    </section>
+    <section class="history-section" aria-labelledby="historyTitle">
+      <h3>Saved conversations</h3>
+      <div class="history-list" id="historyList"><p>None saved in this browser.</p></div>
+    </section>
+
+    <details class="settings-details">
+      <summary>Models and connection</summary>
+      <div class="settings-detail-body">
+        <div class="catalog-head">
+          <div>
+            <h3>Model catalog</h3>
+            <p class="catalog-state" id="catalogState" role="status">Loading the local catalog…</p>
+          </div>
+          <button type="button" class="ghost" id="reloadCatalog">Reload catalog</button>
+        </div>
+        <p class="catalog-caveat">Labels state observable facts. They do not produce a privacy
+        score. Provider retention and training are unknown unless the route carries a dated,
+        attributable source.</p>
+        <div class="catalog-wrap">
+          <table class="catalog" id="catalogTable">
+            <thead><tr>
+              <th scope="col">Model</th><th scope="col">Availability</th><th scope="col">Request</th>
+              <th scope="col">Our retention</th><th scope="col">Provider retention</th>
+              <th scope="col">Expiry (UTC)</th>
+            </tr></thead>
+            <tbody id="catalogBody" aria-live="polite"></tbody>
+          </table>
+        </div>
+        <p class="catalog-caveat">Image, audio, file, remote-URL, tool-use and browsing are false
+        unless the gateway validates, prices and reports them. An experimental route is refused at
+        its expiry instant; extending it is an affirmative policy review.</p>
+
+        <div class="block" hidden>
+          <h3>Hosted endpoint</h3>
+          <div class="endpoint">
+            <code id="endpointText">…</code>
+            <button type="button" class="copy" id="copyEndpoint">Copy</button>
+          </div>
+        </div>
+        <div class="block" hidden>
+          <h3>Tool connection</h3>
+          <div class="tabs" role="tablist" aria-label="Language">
+            <button type="button" role="tab" id="shellTab" aria-selected="true" aria-controls="snippet" tabindex="0" data-snip="shell">shell</button>
+            <button type="button" role="tab" id="pythonTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="python">python</button>
+            <button type="button" role="tab" id="nodeTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="node">node</button>
+            <button type="button" role="tab" id="curlTab" aria-selected="false" aria-controls="snippet" tabindex="-1" data-snip="curl">curl</button>
+          </div>
+          <pre class="code" id="snippet" role="tabpanel" aria-labelledby="shellTab" tabindex="0"></pre>
+          <p class="aside" id="snipNote"></p>
+        </div>
+        <div class="block" id="walletBlock" hidden>
+          <h3>Tokens</h3>
+          <div class="wallet"><span class="n" id="walletOnHand">—</span><span class="unit" id="walletUnit">on hand</span></div>
+          <div class="status-list"><div><span>Spent this session</span><b id="walletSpent">—</b></div></div>
+        </div>
+        <div class="block">
+          <h3>Connection</h3>
+          <div class="status-list" id="connList"></div>
+          <p class="aside" id="connAside"></p>
+          <div class="status-list">
+            <div><span>Upstream</span><b class="mono" id="upstreamText">—</b></div>
+            <div><span>Operator separation</span><b id="operatorSeparation">unverified</b></div>
+          </div>
+          <p class="aside">A pin or threshold-signed directory authenticates the configured relay
+          key. It does not prove the operator's identity, independence, location, deployment
+          correctness, or non-collusion.</p>
+        </div>
+      </div>
+    </details>
+
+    <p class="settings-status" id="settingsStatus" role="status" aria-live="polite"></p>
+    <div class="settings-actions">
+      <button type="button" class="danger-button" id="deleteConversationBtn">Delete current</button>
+      <button type="button" class="danger-button" id="deleteHistoryBtn">Delete all saved history</button>
+      <button type="button" id="exportConversationBtn">Export current</button>
+      <button type="button" class="close" id="closeSettingsBtn">Done</button>
+    </div>
+  </div>
+</dialog>
+
+<script type="module" src="assets/app.js"></script>
+</body>
+</html>

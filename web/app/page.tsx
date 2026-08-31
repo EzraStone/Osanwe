@@ -1,5 +1,5 @@
-import { OsanweApp } from './osanwe-app';
+import { redirect } from 'next/navigation';
 
 export default function Home() {
-  return <OsanweApp />;
+  redirect('/client/');
 }

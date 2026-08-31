@@ -1,18 +1,81 @@
+export const MAX_REQUEST_BYTES = 64 * 1024;
+
 const MAX_KEY_LENGTH = 512;
-const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_MESSAGES = 32;
 const MAX_MESSAGE_CHARACTERS = 16 * 1024;
 const MAX_CONVERSATION_CHARACTERS = 56 * 1024;
 const MAX_OUTPUT_TOKENS = 2048;
+const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
 
 export const PROVIDER_CATALOG = Object.freeze({
   groq: Object.freeze({
+    label: 'Groq',
+    style: 'openai-chat',
     endpoint: 'https://api.groq.com/openai/v1/chat/completions',
     models: Object.freeze(['openai/gpt-oss-20b', 'openai/gpt-oss-120b']),
   }),
   openai: Object.freeze({
+    label: 'OpenAI',
+    style: 'openai-responses',
     endpoint: 'https://api.openai.com/v1/responses',
-    models: Object.freeze(['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol']),
+    models: Object.freeze(['gpt-5-mini', 'gpt-4.1-mini']),
+  }),
+  anthropic: Object.freeze({
+    label: 'Anthropic',
+    style: 'anthropic',
+    endpoint: 'https://api.anthropic.com/v1/messages',
+    models: Object.freeze(['claude-sonnet-4-5', 'claude-haiku-4-5']),
+  }),
+  google: Object.freeze({
+    label: 'Google Gemini',
+    style: 'gemini',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/',
+    models: Object.freeze(['gemini-3.5-flash', 'gemini-3.5-pro']),
+  }),
+  openrouter: Object.freeze({
+    label: 'OpenRouter',
+    style: 'openai-chat',
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+    models: Object.freeze(['openai/gpt-5-mini', 'anthropic/claude-sonnet-4.5']),
+  }),
+  venice: Object.freeze({
+    label: 'Venice AI',
+    style: 'openai-chat',
+    endpoint: 'https://api.venice.ai/api/v1/chat/completions',
+    models: Object.freeze(['zai-org-glm-5-1', 'venice-uncensored']),
+  }),
+  xai: Object.freeze({
+    label: 'xAI',
+    style: 'openai-chat',
+    endpoint: 'https://api.x.ai/v1/chat/completions',
+    models: Object.freeze(['grok-4', 'grok-code-fast-1']),
+  }),
+  mistral: Object.freeze({
+    label: 'Mistral AI',
+    style: 'openai-chat',
+    endpoint: 'https://api.mistral.ai/v1/chat/completions',
+    models: Object.freeze(['mistral-small-latest', 'mistral-large-latest']),
+  }),
+  deepseek: Object.freeze({
+    label: 'DeepSeek',
+    style: 'openai-chat',
+    endpoint: 'https://api.deepseek.com/chat/completions',
+    models: Object.freeze(['deepseek-v4-flash', 'deepseek-v4-pro']),
+  }),
+  together: Object.freeze({
+    label: 'Together AI',
+    style: 'openai-chat',
+    endpoint: 'https://api.together.ai/v1/chat/completions',
+    models: Object.freeze(['Qwen/Qwen3.5-9B', 'meta-llama/Llama-3.3-70B-Instruct-Turbo']),
+  }),
+  fireworks: Object.freeze({
+    label: 'Fireworks AI',
+    style: 'openai-chat',
+    endpoint: 'https://api.fireworks.ai/inference/v1/chat/completions',
+    models: Object.freeze([
+      'accounts/fireworks/models/gpt-oss-20b',
+      'accounts/fireworks/models/llama-v3p3-70b-instruct',
+    ]),
   }),
 });
 
@@ -20,7 +83,7 @@ const MODE_INSTRUCTIONS = Object.freeze({
   chat:
     'You are Osanwë, a thoughtful general-purpose assistant. Be accurate, direct, and honest about uncertainty. Do not claim access to tools, files, or current information that was not provided.',
   code:
-    'You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. Prefer concise, directly usable answers. You cannot access the user’s files, terminal, or deployed systems, so state that limitation when it matters.',
+    'You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. Prefer concise, directly usable answers. You cannot access the user’s files, terminal, or deployed systems, so state that limitation when it matters. When a self-contained browser preview is useful, return fenced HTML, CSS, and JavaScript.',
 });
 
 function plainObject(value) {
@@ -31,9 +94,17 @@ function exactKeys(value, allowed) {
   return Object.keys(value).every((key) => allowed.includes(key));
 }
 
+export function publicProviderCatalog() {
+  return Object.entries(PROVIDER_CATALOG).map(([id, provider]) => ({
+    id,
+    label: provider.label,
+    models: [...provider.models],
+  }));
+}
+
 export function normalizeProviderKey(authorization) {
   if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ')) {
-    throw new TypeError('Connect a provider API key in Settings.');
+    throw new TypeError('Load a provider API key in Settings.');
   }
   const key = authorization.slice('Bearer '.length);
   const hasUnsafeCharacter = Array.from(key).some((character) => {
@@ -57,10 +128,9 @@ export function normalizeChatPayload(value) {
   }
 
   const { provider, model, mode, messages } = value;
-  const providerConfig = PROVIDER_CATALOG[provider];
-  if (!providerConfig) throw new TypeError('The selected provider is not supported.');
-  if (typeof model !== 'string' || !providerConfig.models.includes(model)) {
-    throw new TypeError('The selected model is not available for this provider.');
+  if (!PROVIDER_CATALOG[provider]) throw new TypeError('The selected provider is not supported.');
+  if (typeof model !== 'string' || !MODEL_ID_PATTERN.test(model)) {
+    throw new TypeError('Enter a valid model ID from the selected provider.');
   }
   if (mode !== 'chat' && mode !== 'code') throw new TypeError('The selected mode is not supported.');
   if (!Array.isArray(messages) || messages.length < 1 || messages.length > MAX_MESSAGES) {
@@ -96,29 +166,34 @@ export function normalizeChatPayload(value) {
   return { provider, model, mode, messages: normalizedMessages };
 }
 
-export function buildUpstreamRequest(payload, apiKey) {
-  const config = PROVIDER_CATALOG[payload.provider];
-  const instructions = MODE_INSTRUCTIONS[payload.mode];
-  const headers = {
+function bearerHeaders(apiKey) {
+  return {
     authorization: `Bearer ${apiKey}`,
     'content-type': 'application/json',
     accept: 'application/json',
   };
+}
+
+function openAIChatRequest(payload, apiKey, config, instructions) {
+  const body = {
+    model: payload.model,
+    messages: [{ role: 'system', content: instructions }, ...payload.messages],
+    max_tokens: MAX_OUTPUT_TOKENS,
+    stream: false,
+  };
 
   if (payload.provider === 'groq') {
-    return {
-      url: config.endpoint,
-      init: {
-        method: 'POST',
-        headers,
-        redirect: 'manual',
-        body: JSON.stringify({
-          model: payload.model,
-          messages: [{ role: 'system', content: instructions }, ...payload.messages],
-          max_completion_tokens: MAX_OUTPUT_TOKENS,
-          stream: false,
-        }),
-      },
+    delete body.max_tokens;
+    body.max_completion_tokens = MAX_OUTPUT_TOKENS;
+    if (payload.model.startsWith('openai/gpt-oss-')) body.reasoning_effort = 'low';
+  }
+  if (payload.provider === 'venice') {
+    delete body.max_tokens;
+    body.max_completion_tokens = MAX_OUTPUT_TOKENS;
+    body.venice_parameters = {
+      include_venice_system_prompt: false,
+      enable_web_search: 'off',
+      enable_web_scraping: false,
     };
   }
 
@@ -126,25 +201,111 @@ export function buildUpstreamRequest(payload, apiKey) {
     url: config.endpoint,
     init: {
       method: 'POST',
-      headers,
+      headers: bearerHeaders(apiKey),
+      redirect: 'manual',
+      body: JSON.stringify(body),
+    },
+  };
+}
+
+export function buildUpstreamRequest(payload, apiKey) {
+  const config = PROVIDER_CATALOG[payload.provider];
+  const instructions = MODE_INSTRUCTIONS[payload.mode];
+
+  if (config.style === 'openai-chat') {
+    return openAIChatRequest(payload, apiKey, config, instructions);
+  }
+
+  if (config.style === 'openai-responses') {
+    const body = {
+      model: payload.model,
+      instructions,
+      input: payload.messages,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
+      store: false,
+    };
+    if (/^(gpt-[56]|o\d)/.test(payload.model)) body.reasoning = { effort: 'low' };
+    return {
+      url: config.endpoint,
+      init: {
+        method: 'POST',
+        headers: bearerHeaders(apiKey),
+        redirect: 'manual',
+        body: JSON.stringify(body),
+      },
+    };
+  }
+
+  if (config.style === 'anthropic') {
+    return {
+      url: config.endpoint,
+      init: {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        redirect: 'manual',
+        body: JSON.stringify({
+          model: payload.model,
+          system: instructions,
+          messages: payload.messages,
+          max_tokens: MAX_OUTPUT_TOKENS,
+          stream: false,
+        }),
+      },
+    };
+  }
+
+  const contents = payload.messages.map((message) => ({
+    role: message.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: message.content }],
+  }));
+  return {
+    url: `${config.endpoint}${encodeURIComponent(payload.model)}:generateContent`,
+    init: {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': apiKey,
+        'content-type': 'application/json',
+        accept: 'application/json',
+      },
       redirect: 'manual',
       body: JSON.stringify({
-        model: payload.model,
-        instructions,
-        input: payload.messages,
-        max_output_tokens: MAX_OUTPUT_TOKENS,
-        store: false,
+        system_instruction: { parts: [{ text: instructions }] },
+        contents,
+        generation_config: { max_output_tokens: MAX_OUTPUT_TOKENS },
       }),
     },
   };
 }
 
+function textParts(value) {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value
+    .map((part) => {
+      if (!plainObject(part)) return '';
+      return typeof part.text === 'string' ? part.text : '';
+    })
+    .join('');
+}
+
 export function extractProviderOutput(provider, value) {
   if (!plainObject(value)) throw new TypeError('The provider returned an unreadable response.');
+  const style = PROVIDER_CATALOG[provider]?.style;
 
-  if (provider === 'groq') {
-    const content = value.choices?.[0]?.message?.content;
-    if (typeof content === 'string' && content.trim()) return content;
+  if (style === 'openai-chat') {
+    const content = textParts(value.choices?.[0]?.message?.content);
+    if (content.trim()) return content;
+  } else if (style === 'anthropic') {
+    const content = textParts(value.content);
+    if (content.trim()) return content;
+  } else if (style === 'gemini') {
+    const content = textParts(value.candidates?.[0]?.content?.parts);
+    if (content.trim()) return content;
   } else {
     if (typeof value.output_text === 'string' && value.output_text.trim()) return value.output_text;
     if (Array.isArray(value.output)) {
@@ -160,6 +321,9 @@ export function extractProviderOutput(provider, value) {
       const joined = parts.join('');
       if (joined.trim()) return joined;
     }
+    if (value.status === 'incomplete') {
+      throw new TypeError('The provider used the output limit before returning visible text. Try again or choose a non-reasoning model.');
+    }
   }
 
   throw new TypeError('The provider returned no text output.');
@@ -167,15 +331,17 @@ export function extractProviderOutput(provider, value) {
 
 export function safeProviderError(status) {
   if (status === 401 || status === 403) return 'The provider rejected that API key.';
+  if (status === 402) return 'The provider account has no available credit.';
   if (status === 404) return 'The selected model is not available for this provider account.';
-  if (status === 408) return 'The provider timed out before answering.';
+  if (status === 408 || status === 504) return 'The provider timed out before answering.';
+  if (status === 413) return 'The provider says this conversation is too large.';
   if (status === 429) return 'The provider rate limit or spending limit was reached.';
   if (status >= 500) return 'The provider is temporarily unavailable.';
-  return 'The provider rejected this request.';
+  return 'The provider rejected this request. Check the model ID and account permissions.';
 }
 
-export function requestIsTooLarge(request, rawBody) {
+export function requestIsTooLarge(request, byteLength = 0) {
   const declared = Number(request.headers.get('content-length') || 0);
   if (Number.isFinite(declared) && declared > MAX_REQUEST_BYTES) return true;
-  return new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES;
+  return byteLength > MAX_REQUEST_BYTES;
 }

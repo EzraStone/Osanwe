@@ -1,14 +1,13 @@
 import type { Metadata } from 'next';
-import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Osanwë — Hosted compatibility beta',
-  description: 'A private-minded AI interface for testing your own Groq or OpenAI API key.',
+  title: 'Osanwë — Hosted bring-your-own-key beta',
+  description: 'The Osanwë interface with session-only API keys for a fixed registry of AI providers.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <body>{children}</body>
     </html>
   );
