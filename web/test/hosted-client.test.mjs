@@ -68,4 +68,5 @@ test('the hosted shell retains the original navigation and runnable code display
   const app = await readFile(new URL('../public/client/assets/app.js', import.meta.url), 'utf8');
   assert.match(app, /thread\.addEventListener\("scroll"/);
   assert.match(app, /scrollConversation\(true\)/);
+  assert.match(app, /if\(runnable\)loadRunnerCode\(runnable\.language,runnable\.code,true,null,false\)/);
 });

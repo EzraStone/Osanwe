@@ -64,3 +64,14 @@ export function buildPreviewBundle(parts) {
   }
   return { language: "html", code };
 }
+
+export function selectRunnableCode(parts) {
+  if (!Array.isArray(parts)) throw new TypeError("preview parts must be an array");
+  const preview = buildPreviewBundle(parts);
+  if (preview) return preview;
+
+  const runnable = parts.find(
+    (part) => part && part.kind === "code" && ["html", "javascript"].includes(part.runnerLanguage),
+  );
+  return runnable ? { language: runnable.runnerLanguage, code: runnable.content } : null;
+}

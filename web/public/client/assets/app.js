@@ -1,5 +1,5 @@
 import { activateInviteBook, loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
-import { buildPreviewBundle, parseCodeFences } from "./code.js";
+import { buildPreviewBundle, parseCodeFences, selectRunnableCode } from "./code.js";
 import { appendTurn, conversationTitle, conversationTurnText, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
 import { disclosureNarrative } from "./disclosure.js";
 import { isNearConversationEnd } from "./follow-scroll.js";
@@ -33,7 +33,7 @@ var modeCopy={
   chat:{kicker:"Bring your own key",title:"What are you thinking about?",placeholder:"Ask anything",assistant:"Osanwë",system:""},
   code:{
     kicker:"Code assistant",title:"What should we build?",placeholder:"Describe a coding task",assistant:"Osanwë Code",
-    system:"You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. You cannot access the user's local files, run commands, or apply changes, so state that limitation whenever it matters. Prefer concise, directly usable code or patches. When a self-contained web preview can demonstrate the answer, return fenced HTML, CSS, and JavaScript. JavaScript may include tests with test(name, fn) and assert(condition, message) for the local sandbox. The preview has no network, persistent storage, terminal, or ambient file access. A person may deliberately choose a file inside the preview, so never request sensitive files."
+    system:"You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. You cannot access the user's local files, run commands, or apply changes, so state that limitation whenever it matters. Prefer concise, directly usable code or patches. When creating or revising a web interface, return a complete runnable preview using fenced HTML, CSS, and JavaScript; Osanwë combines those blocks and runs them automatically after the response completes. Fence executable standalone JavaScript as javascript. JavaScript may include tests with test(name, fn) and assert(condition, message) for the local sandbox. The preview has no network, persistent storage, terminal, or ambient file access. A person may deliberately choose a file inside the preview, so never request sensitive files."
   }
 };
 document.body.dataset.mode=activeMode;
@@ -300,6 +300,7 @@ function renderAssistantContent(body,text,withRunner){
     var pre=document.createElement("pre"),code=document.createElement("code");
     code.textContent=part.content;pre.appendChild(code);block.appendChild(head);block.appendChild(pre);body.appendChild(block);
   });
+  return selectRunnableCode(parts);
 }
 
 function refresh(){
@@ -385,7 +386,10 @@ function stream(resp,body,caret,reply,requestConversation,requestMode){
   }).then(function(){
 	reply.status="complete";
 	caret.remove();
-	if(requestMode==="code")renderAssistantContent(body,reply.content,true);
+	if(requestMode==="code"){
+	  var runnable=renderAssistantContent(body,reply.content,true);
+	  if(runnable)loadRunnerCode(runnable.language,runnable.code,true,null,false);
+	}
 	completedRequestHere=true;
 	return persistConversation(requestConversation);
   });
@@ -469,12 +473,12 @@ function setRunnerOpen(open,opener){
   }
 }
 
-function loadRunnerCode(language,code,runNow,opener){
+function loadRunnerCode(language,code,runNow,opener,moveFocus){
   $("runnerLanguage").value=language;$("runnerEditor").value=code;
   runnerLines=[];$("runnerResults").textContent="No output yet.";
-  $("runnerStatus").classList.remove("warn");$("runnerStatus").textContent="Loaded. Nothing runs until you choose Run in preview.";
+  $("runnerStatus").classList.remove("warn");$("runnerStatus").textContent=runNow?"Loading generated code into the sandbox…":"Loaded. Nothing runs until you choose Run in preview.";
   runnerOpen=true;runnerReturnFocus=opener||document.activeElement;render();
-  if(runNow){$("closeCodeRunner").focus();runEditorCode()}else $("runnerEditor").focus();
+  if(runNow)startRunnerRun(language,code,moveFocus!==false);else $("runnerEditor").focus();
 }
 
 function addRunnerLine(kind,text){
@@ -499,7 +503,7 @@ function requestRunnerCapabilities(){
   if(runnerFrame.contentWindow)runnerFrame.contentWindow.postMessage({type:"osanwe-runner-capabilities"},"*");
 }
 
-function startRunnerRun(language,code){
+function startRunnerRun(language,code,moveFocus){
   if(!code.trim()){
     $("runnerStatus").textContent="Add code before running.";$("runnerStatus").classList.add("warn");$("runnerEditor").focus();return;
   }
@@ -507,8 +511,8 @@ function startRunnerRun(language,code){
   runnerChannel=crypto.randomUUID();runnerLines=[];runnerHadError=false;setRunnerExecutionBusy(true);
   $("runnerResults").textContent="Waiting for output…";$("runnerStatus").textContent="Running in the isolated sandbox…";
   $("runnerStatus").classList.remove("warn");$("rerunCode").disabled=true;
-  if(language==="javascript"){showRunnerView("results");$("resultsTab").focus()}
-  else $("closeCodeRunner").focus();
+  if(language==="javascript"){showRunnerView("results");if(moveFocus!==false)$("resultsTab").focus()}
+  else if(moveFocus!==false)$("closeCodeRunner").focus();
   $("previewAddress").textContent=language==="html"?"osanwe://local-preview/index.html":"osanwe://local-preview/console";
   pendingRunnerRun={type:"osanwe-run",channel:runnerChannel,language:language,code:code};
   var expectedChannel=runnerChannel;
@@ -521,14 +525,14 @@ function startRunnerRun(language,code){
 }
 
 function runEditorCode(){
-  startRunnerRun($("runnerLanguage").value,$("runnerEditor").value);
+  startRunnerRun($("runnerLanguage").value,$("runnerEditor").value,true);
 }
 
 function rerunLastSnapshot(){
   if(!runnerLastSnapshot){
     $("runnerStatus").textContent="Nothing has run yet. Choose Run in preview first.";$("runnerStatus").classList.add("warn");return;
   }
-  startRunnerRun(runnerLastSnapshot.language,runnerLastSnapshot.code);
+  startRunnerRun(runnerLastSnapshot.language,runnerLastSnapshot.code,true);
 }
 
 window.addEventListener("message",function(event){
