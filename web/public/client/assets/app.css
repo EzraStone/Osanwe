@@ -20,6 +20,7 @@
   --ground:#fff3e4; --raised:#fffaf1; --sunk:#f5e5cf;
   --ink:#3a270d; --muted:#604d34; --faint:#6d593d;
   --line:#d8c6aa; --gild:#9a681d; --gild-soft:#f5e5cf; --gild-dim:#b68235;
+  --scroll-thumb:#92918d; --scroll-thumb-hover:#74736f;
   --alarm:#a33f31;
   --serif:"Cormorant Garamond","Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
   --sans:"Lora",Georgia,"Iowan Old Style","Times New Roman",serif;
@@ -34,6 +35,7 @@
     --ground:#16140f; --raised:#1d1a14; --sunk:#100e0a;
     --ink:#efe9dc; --muted:#a89e8c; --faint:#b0a795;
     --line:#332e25; --gild:#d9b06b; --gild-soft:#2b2418; --gild-dim:#8f7444;
+    --scroll-thumb:#777874; --scroll-thumb-hover:#999a95;
     --alarm:#df776b;
   }
 }
@@ -41,20 +43,22 @@
   --ground:#16140f; --raised:#1d1a14; --sunk:#100e0a;
   --ink:#efe9dc; --muted:#a89e8c; --faint:#b0a795;
   --line:#332e25; --gild:#d9b06b; --gild-soft:#2b2418; --gild-dim:#8f7444;
+  --scroll-thumb:#777874; --scroll-thumb-hover:#999a95;
   --alarm:#df776b;
 }
 :root[data-theme="light"]{
   --ground:#fff3e4; --raised:#fffaf1; --sunk:#f5e5cf;
   --ink:#3a270d; --muted:#604d34; --faint:#6d593d;
   --line:#d8c6aa; --gild:#9a681d; --gild-soft:#f5e5cf; --gild-dim:#b68235;
+  --scroll-thumb:#92918d; --scroll-thumb-hover:#74736f;
   --alarm:#a33f31;
 }
 *{box-sizing:border-box}
-*{scrollbar-width:thin; scrollbar-color:color-mix(in srgb,var(--gild-dim) 72%,transparent) transparent}
+*{scrollbar-width:thin; scrollbar-color:var(--scroll-thumb) transparent}
 *::-webkit-scrollbar{width:.7rem; height:.7rem}
 *::-webkit-scrollbar-track{background:transparent}
-*::-webkit-scrollbar-thumb{border:.2rem solid transparent; border-radius:999px; background:color-mix(in srgb,var(--gild-dim) 72%,transparent); background-clip:padding-box}
-*::-webkit-scrollbar-thumb:hover{background:var(--gild-dim); background-clip:padding-box}
+*::-webkit-scrollbar-thumb{border:.2rem solid transparent; border-radius:999px; background:var(--scroll-thumb); background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover); background-clip:padding-box}
 *::-webkit-scrollbar-corner{background:transparent}
 html,body{height:100%; max-width:100%; overflow-x:hidden}
 body{

@@ -63,7 +63,7 @@ test('the hosted shell retains the original navigation and runnable code display
   assert.doesNotMatch(html, /(?:href|src)="assets\//);
   assert.match(css, /\.settings-inner \.provider-config-grid>label\{grid-column:1;/);
   assert.match(css, /\.provider-config-grid select,\.provider-model-control\{grid-column:1; width:100%; min-width:0\}/);
-  assert.match(css, /scrollbar-color:color-mix\(in srgb,var\(--gild-dim\) 72%,transparent\) transparent/);
+  assert.match(css, /scrollbar-color:var\(--scroll-thumb\) transparent/);
   assert.match(css, /\*::-webkit-scrollbar-thumb/);
   const app = await readFile(new URL('../public/client/assets/app.js', import.meta.url), 'utf8');
   assert.match(app, /thread\.addEventListener\("scroll"/);
