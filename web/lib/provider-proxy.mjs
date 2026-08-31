@@ -38,11 +38,11 @@ export const PROVIDER_CATALOG = Object.freeze({
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
     models: Object.freeze(['openai/gpt-5-mini', 'anthropic/claude-sonnet-4.5']),
   }),
-  venice: Object.freeze({
-    label: 'Venice AI',
+  tokenrouter: Object.freeze({
+    label: 'TokenRouter',
     style: 'openai-chat',
-    endpoint: 'https://api.venice.ai/api/v1/chat/completions',
-    models: Object.freeze(['zai-org-glm-5-1', 'venice-uncensored']),
+    endpoint: 'https://api.tokenrouter.com/v1/chat/completions',
+    models: Object.freeze(['z-ai/glm-5.3-flash', 'z-ai/glm-5.3', 'z-ai/glm-5.2']),
   }),
   xai: Object.freeze({
     label: 'xAI',
@@ -187,16 +187,6 @@ function openAIChatRequest(payload, apiKey, config, instructions) {
     body.max_completion_tokens = MAX_OUTPUT_TOKENS;
     if (payload.model.startsWith('openai/gpt-oss-')) body.reasoning_effort = 'low';
   }
-  if (payload.provider === 'venice') {
-    delete body.max_tokens;
-    body.max_completion_tokens = MAX_OUTPUT_TOKENS;
-    body.venice_parameters = {
-      include_venice_system_prompt: false,
-      enable_web_search: 'off',
-      enable_web_scraping: false,
-    };
-  }
-
   return {
     url: config.endpoint,
     init: {
