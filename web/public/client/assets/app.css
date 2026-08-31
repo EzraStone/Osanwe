@@ -50,6 +50,12 @@
   --alarm:#a33f31;
 }
 *{box-sizing:border-box}
+*{scrollbar-width:thin; scrollbar-color:color-mix(in srgb,var(--gild-dim) 72%,transparent) transparent}
+*::-webkit-scrollbar{width:.7rem; height:.7rem}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{border:.2rem solid transparent; border-radius:999px; background:color-mix(in srgb,var(--gild-dim) 72%,transparent); background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background:var(--gild-dim); background-clip:padding-box}
+*::-webkit-scrollbar-corner{background:transparent}
 html,body{height:100%; max-width:100%; overflow-x:hidden}
 body{
   margin:0; background:var(--ground); color:var(--ink);
