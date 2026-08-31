@@ -30,8 +30,14 @@ npm run build
 npm run dev
 ```
 
-Open `http://localhost:3000`. It redirects to the exact hosted client at `/client/`. A live
+Open `http://localhost:3000`. It redirects to the exact hosted client at `/client`. A live
 provider call requires the visitor's own key and may incur charges on that provider account.
+
+## Hosting
+
+The app uses standard Next.js so the static client and same-origin provider proxy can be
+deployed together on Vercel. Keep the project root set to `web`; no shared provider key or
+server-side secret is required because each visitor supplies a session-only key in Settings.
 
 The default test suite never spends provider credit. An intentionally awkward opt-in smoke test
 exists for release verification and runs only when all four variables are set:

@@ -8,6 +8,9 @@ import {
   safeProviderError,
 } from '../../../lib/provider-proxy.mjs';
 
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 const JSON_HEADERS = Object.freeze({
   'cache-control': 'no-store, max-age=0',
   'content-type': 'application/json; charset=utf-8',
