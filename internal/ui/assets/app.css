@@ -508,9 +508,8 @@ table.catalog tr.is-selected td{background:var(--gild-soft)}
 .chrome-actions{margin-left:auto; gap:.35rem}
 .ghost{border:1px solid transparent; border-radius:3px; padding:.38rem .65rem}
 .ghost:hover{border-color:var(--line); background:transparent}
-#themeBtn,#newBtn{border-color:var(--line)}
-#settingsBtn{border-color:var(--gild-dim); background:var(--raised); color:var(--ink)}
-#settingsBtn:hover{border-color:var(--gild); color:var(--gild)}
+#themeBtn,#settingsBtn,#newBtn{border-color:var(--line); background:transparent; color:var(--muted)}
+#themeBtn:hover,#settingsBtn:hover,#newBtn:hover{border-color:var(--line); background:var(--raised); color:var(--ink)}
 .workspace-shell{background:var(--ground)}
 .thread{padding-inline:1.5rem}
 .rail,.composer-inner,.storage-warning{max-width:48rem}
