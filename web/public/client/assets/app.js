@@ -2,6 +2,7 @@ import { activateInviteBook, loadModels as fetchModels, loadStatus as fetchStatu
 import { buildPreviewBundle, parseCodeFences } from "./code.js";
 import { appendTurn, conversationTitle, conversationTurnText, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
 import { disclosureNarrative } from "./disclosure.js";
+import { isNearConversationEnd } from "./follow-scroll.js";
 import { ConversationLifecycle } from "./lifecycle.js";
 import { buildIdentityLabel, catalogRow, humanize, normalizeCatalog, relayVerificationLabel } from "./models.js";
 import { connectionSnippets } from "./snippets.js";
@@ -241,7 +242,20 @@ function keepDialogFocus(e){
 
 // ---- chat -----------------------------------------------------------
 function autosize(){input.style.height="auto";input.style.height=Math.min(input.scrollHeight,128)+"px"}
-function scroll(){thread.scrollTop=thread.scrollHeight}
+var followingConversation=true,conversationScrollFrame=0;
+function scrollConversation(force){
+  if(force)followingConversation=true;
+  if(!followingConversation)return;
+  if(conversationScrollFrame)cancelAnimationFrame(conversationScrollFrame);
+  conversationScrollFrame=requestAnimationFrame(function(){
+    conversationScrollFrame=0;
+    if(!followingConversation&&!force)return;
+    thread.scrollTop=thread.scrollHeight;
+  });
+}
+thread.addEventListener("scroll",function(){
+  followingConversation=isNearConversationEnd(thread);
+},{passive:true});
 function setEmpty(is){thread.classList.toggle("is-empty",is);opening.hidden=!is}
 
 function stopActiveRequest(){
@@ -304,7 +318,7 @@ function fail(body,message){
   broken=true;seal.classList.add("broken");
   body.parentElement.className="turn err";
   body.textContent=message;
-  refresh();scroll();
+  refresh();scrollConversation();
 }
 
 function submit(){
@@ -318,7 +332,7 @@ function submit(){
   appendTurn(requestConversation,"user",text);
   persistConversation(requestConversation);
   turn("you","You").textContent=text;
-  input.value="";autosize();scroll();
+  input.value="";autosize();scrollConversation(true);
 
   broken=false;seal.classList.remove("broken","pressing");
   void seal.offsetWidth;seal.classList.add("pressing");
@@ -327,6 +341,7 @@ function submit(){
   var body=turn("reply",modeCopy[requestMode].assistant);
   var caret=document.createElement("span");caret.className="caret";
   body.appendChild(caret);
+  scrollConversation(true);
   var request={controller:new AbortController(),conversation:requestConversation,done:null};
   activeRequest=request;
 	busy=true;stopping=false;refresh();
@@ -366,7 +381,7 @@ function stream(resp,body,caret,reply,requestConversation,requestMode){
 	caret.remove();
 	body.appendChild(document.createTextNode(text));
 	body.appendChild(caret);
-	scroll();
+	scrollConversation();
   }).then(function(){
 	reply.status="complete";
 	caret.remove();
@@ -1005,7 +1020,7 @@ function renderConversation(){
   setEmpty(conversation.turns.length===0);
   if(catalogModels.some(function(item){return item.id===conversation.model}))model.value=conversation.model;
   syncModelPicker();
-  scroll();refresh();
+  scrollConversation(true);refresh();
 }
 
 function refreshHistory(){
