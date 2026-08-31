@@ -296,9 +296,11 @@ button.model-menu-row:hover,.model-advanced-toggle:hover{background:var(--sunk)}
 .byok-key-row label{grid-column:1 / -1; color:var(--faint); font-size:11px; letter-spacing:.06em; text-transform:uppercase}
 .byok-key-row input{min-width:0; padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:var(--raised); color:var(--ink); font:13px var(--mono)}
 .byok-key-row button{padding:.55rem .75rem; border:1px solid var(--gild-dim); border-radius:7px; background:var(--gild-soft); color:var(--gild); cursor:pointer; font:600 12px var(--sans)}
-.provider-config-grid{display:grid; grid-template-columns:7rem minmax(0,1fr); gap:.6rem .8rem; align-items:center; margin:.9rem 0 .4rem}
-.provider-config-grid>label{color:var(--faint); font-size:11px; letter-spacing:.06em; text-transform:uppercase}
-.provider-config-grid select,.provider-config-grid input{width:100%; min-width:0; padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:var(--raised); color:var(--ink); font:13px var(--mono)}
+.provider-config-grid{display:grid; grid-template-columns:minmax(0,1fr); gap:.4rem; align-items:stretch; margin:.9rem 0 .4rem}
+.settings-inner .provider-config-grid>label{grid-column:1; margin-top:.45rem; color:var(--faint); font-size:11px; letter-spacing:.06em; text-transform:uppercase}
+.settings-inner .provider-config-grid>label:first-child{margin-top:0}
+.provider-config-grid select,.provider-config-grid input{box-sizing:border-box; width:100%; min-width:0; padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:var(--raised); color:var(--ink); font:13px var(--mono)}
+.provider-config-grid select,.provider-model-control{grid-column:1; width:100%; min-width:0}
 .provider-model-control{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.5rem}
 .provider-model-control button{padding:.55rem .75rem; border:1px solid var(--gild-dim); border-radius:7px; background:var(--gild-soft); color:var(--gild); cursor:pointer; font:600 12px var(--sans)}
 .trial-access-row{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.5rem; align-items:end; margin-top:.75rem}
@@ -306,7 +308,7 @@ button.model-menu-row:hover,.model-advanced-toggle:hover{background:var(--sunk)}
 .trial-access-row input{min-width:0; padding:.5rem; border:1px solid var(--line); border-radius:7px; background:var(--raised); color:var(--ink); font:12px var(--sans)}
 .trial-access-row button{padding:.55rem .75rem; border:1px solid var(--gild-dim); border-radius:7px; background:var(--gild-soft); color:var(--gild); cursor:pointer; font:600 12px var(--sans)}
 .byok-key-status{min-height:1.4em; color:var(--faint); font-size:12px}
-@media(max-width:36rem){.byok-key-row{grid-template-columns:1fr}.byok-key-row button{width:100%}.provider-config-grid{grid-template-columns:1fr}.provider-model-control{grid-template-columns:1fr}.provider-model-control button{width:100%}}
+@media(max-width:36rem){.byok-key-row{grid-template-columns:1fr}.byok-key-row button{width:100%}.provider-model-control{grid-template-columns:1fr}.provider-model-control button{width:100%}}
 @media(max-width:36rem){.trial-access-row{grid-template-columns:1fr}.trial-access-row button{width:100%}}
 
 /* models */
