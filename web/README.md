@@ -6,7 +6,7 @@ static public site in `docs/` and from the downloadable local client.
 ## Privacy boundary
 
 The hosted app preserves the same Osanwë interface and local code runner as the downloadable
-client. A visitor can choose Groq, OpenAI, Anthropic, Google Gemini, OpenRouter, Venice AI, xAI,
+client. A visitor can choose Groq, OpenAI, Anthropic, Google Gemini, OpenRouter, TokenRouter, xAI,
 Mistral AI, DeepSeek, Together AI, or Fireworks AI, enter a model ID, and load that provider's
 API key for one browser tab. The key is sent to the same-origin `/api/chat` route for each
 request and is not written by the app to browser storage, cookies, D1, R2, or application logs.

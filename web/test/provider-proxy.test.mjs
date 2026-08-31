@@ -42,7 +42,8 @@ test('provider keys require one clean Bearer credential', () => {
 test('the public catalog exposes fixed providers without endpoint URLs', () => {
   const providers = publicProviderCatalog();
   assert.ok(providers.length >= 10);
-  assert.ok(providers.some((item) => item.id === 'venice'));
+  assert.ok(providers.some((item) => item.id === 'tokenrouter'));
+  assert.ok(providers.every((item) => item.id !== 'venice'));
   assert.ok(providers.every((item) => !('endpoint' in item) && !('style' in item)));
 });
 
@@ -79,6 +80,23 @@ test('Groq requests use only the fixed chat endpoint and a bounded body', () => 
   assert.equal(body.model, 'openai/gpt-oss-20b');
   assert.equal(body.max_completion_tokens, 2048);
   assert.equal(body.reasoning_effort, 'low');
+  assert.equal(body.stream, false);
+  assert.deepEqual(body.messages.at(-1), { role: 'user', content: 'hello' });
+});
+
+test('TokenRouter requests use its fixed OpenAI-compatible endpoint and GLM model ID', () => {
+  const payload = normalizeChatPayload({
+    ...groqPayload,
+    provider: 'tokenrouter',
+    model: 'z-ai/glm-5.3-flash',
+  });
+  const upstream = buildUpstreamRequest(payload, 'tokenrouter-secret');
+  assert.equal(upstream.url, 'https://api.tokenrouter.com/v1/chat/completions');
+  assert.equal(upstream.init.headers.authorization, 'Bearer tokenrouter-secret');
+  assert.equal(upstream.init.redirect, 'manual');
+  const body = JSON.parse(upstream.init.body);
+  assert.equal(body.model, 'z-ai/glm-5.3-flash');
+  assert.equal(body.max_tokens, 2048);
   assert.equal(body.stream, false);
   assert.deepEqual(body.messages.at(-1), { role: 'user', content: 'hello' });
 });
