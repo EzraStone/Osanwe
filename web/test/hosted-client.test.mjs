@@ -49,6 +49,7 @@ test('hosted client sends provider, model, mode, and messages to one fixed endpo
 
 test('the hosted shell retains the original navigation and runnable code display', async () => {
   const html = await readFile(new URL('../public/client/index.html', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../public/client/assets/app.css', import.meta.url), 'utf8');
   assert.match(html, /id="chatTab"/);
   assert.match(html, /id="codeTab"/);
   assert.match(html, /id="settingsBtn"/);
@@ -60,4 +61,6 @@ test('the hosted shell retains the original navigation and runnable code display
   assert.match(html, /src="\/client\/assets\/app\.js"/);
   assert.match(html, /src="\/client\/assets\/runner\.html"/);
   assert.doesNotMatch(html, /(?:href|src)="assets\//);
+  assert.match(css, /\.settings-inner \.provider-config-grid>label\{grid-column:1;/);
+  assert.match(css, /\.provider-config-grid select,\.provider-model-control\{grid-column:1; width:100%; min-width:0\}/);
 });
