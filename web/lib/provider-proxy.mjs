@@ -42,7 +42,12 @@ export const PROVIDER_CATALOG = Object.freeze({
     label: 'TokenRouter',
     style: 'openai-chat',
     endpoint: 'https://api.tokenrouter.com/v1/chat/completions',
-    models: Object.freeze(['z-ai/glm-5.3-flash', 'z-ai/glm-5.3', 'z-ai/glm-5.2']),
+    models: Object.freeze([
+      'z-ai/glm-5.3-free',
+      'z-ai/glm-5.3-flash',
+      'z-ai/glm-5.3',
+      'z-ai/glm-5.2',
+    ]),
   }),
   xai: Object.freeze({
     label: 'xAI',
@@ -320,7 +325,8 @@ export function extractProviderOutput(provider, value) {
 }
 
 export function safeProviderError(status) {
-  if (status === 401 || status === 403) return 'The provider rejected that API key.';
+  if (status === 401) return 'The provider rejected that API key.';
+  if (status === 403) return 'The provider denied access. Check that this API key can use the selected model.';
   if (status === 402) return 'The provider account has no available credit.';
   if (status === 404) return 'The selected model is not available for this provider account.';
   if (status === 408 || status === 504) return 'The provider timed out before answering.';
