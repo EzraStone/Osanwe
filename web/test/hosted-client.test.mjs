@@ -7,7 +7,7 @@ import { loadModels, loadStatus, sendMessages } from '../public/client/assets/ap
 const catalog = {
   providers: [
     { id: 'groq', label: 'Groq', models: ['openai/gpt-oss-20b'] },
-    { id: 'tokenrouter', label: 'TokenRouter', models: ['z-ai/glm-5.3-flash'] },
+    { id: 'tokenrouter', label: 'TokenRouter', models: ['z-ai/glm-5.3-free'] },
   ],
 };
 
@@ -28,7 +28,7 @@ test('hosted client sends provider, model, mode, and messages to one fixed endpo
     status: 200,
     headers: { 'content-type': 'text/event-stream' },
   });
-  await sendMessages({ model: 'z-ai/glm-5.3-flash', messages: [{ role: 'user', content: 'hello' }] }, {
+  await sendMessages({ model: 'z-ai/glm-5.3-free', messages: [{ role: 'user', content: 'hello' }] }, {
     provider: 'tokenrouter',
     mode: 'code',
     apiKey: 'tokenrouter-test-key',
@@ -41,7 +41,7 @@ test('hosted client sends provider, model, mode, and messages to one fixed endpo
   assert.equal(seen.options.headers.authorization, 'Bearer tokenrouter-test-key');
   assert.deepEqual(JSON.parse(seen.options.body), {
     provider: 'tokenrouter',
-    model: 'z-ai/glm-5.3-flash',
+    model: 'z-ai/glm-5.3-free',
     mode: 'code',
     messages: [{ role: 'user', content: 'hello' }],
   });

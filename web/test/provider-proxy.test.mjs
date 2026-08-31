@@ -41,8 +41,9 @@ test('provider keys require one clean Bearer credential', () => {
 
 test('the public catalog exposes fixed providers without endpoint URLs', () => {
   const providers = publicProviderCatalog();
+  const tokenRouter = providers.find((item) => item.id === 'tokenrouter');
   assert.ok(providers.length >= 10);
-  assert.ok(providers.some((item) => item.id === 'tokenrouter'));
+  assert.equal(tokenRouter?.models[0], 'z-ai/glm-5.3-free');
   assert.ok(providers.every((item) => item.id !== 'venice'));
   assert.ok(providers.every((item) => !('endpoint' in item) && !('style' in item)));
 });
@@ -88,14 +89,14 @@ test('TokenRouter requests use its fixed OpenAI-compatible endpoint and GLM mode
   const payload = normalizeChatPayload({
     ...groqPayload,
     provider: 'tokenrouter',
-    model: 'z-ai/glm-5.3-flash',
+    model: 'z-ai/glm-5.3-free',
   });
   const upstream = buildUpstreamRequest(payload, 'tokenrouter-secret');
   assert.equal(upstream.url, 'https://api.tokenrouter.com/v1/chat/completions');
   assert.equal(upstream.init.headers.authorization, 'Bearer tokenrouter-secret');
   assert.equal(upstream.init.redirect, 'manual');
   const body = JSON.parse(upstream.init.body);
-  assert.equal(body.model, 'z-ai/glm-5.3-flash');
+  assert.equal(body.model, 'z-ai/glm-5.3-free');
   assert.equal(body.max_tokens, 2048);
   assert.equal(body.stream, false);
   assert.deepEqual(body.messages.at(-1), { role: 'user', content: 'hello' });
@@ -185,6 +186,16 @@ test('chat handler does not reflect sensitive provider error bodies', async () =
   );
   assert.equal(response.status, 502);
   assert.deepEqual(await response.json(), { error: { message: 'The provider rejected that API key.' } });
+});
+
+test('provider permission errors distinguish model access from invalid credentials', async () => {
+  const response = await handleChatRequest(request(groqPayload), async () =>
+    Response.json({ error: { message: 'internal provider detail' } }, { status: 403 }),
+  );
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), {
+    error: { message: 'The provider denied access. Check that this API key can use the selected model.' },
+  });
 });
 
 test('declared oversized bodies are rejected before provider forwarding', async () => {

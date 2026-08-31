@@ -11,6 +11,7 @@ Mistral AI, DeepSeek, Together AI, or Fireworks AI, enter a model ID, and load t
 API key for one browser tab. The key is sent to the same-origin `/api/chat` route for each
 request and is not written by the app to browser storage, cookies, D1, R2, or application logs.
 The route forwards it only to the selected provider's fixed HTTPS endpoint.
+TokenRouter lists `z-ai/glm-5.3-free` first so testers can deliberately choose its free GLM route.
 
 Arbitrary provider URLs are deliberately unsupported. Accepting a visitor-supplied upstream URL
 would turn the hosted function into an SSRF and open-proxy surface. New providers belong in the
