@@ -56,4 +56,8 @@ test('the hosted shell retains the original navigation and runnable code display
   assert.match(html, /id="runnerPreview"/);
   assert.match(html, /sandbox="allow-scripts"/);
   assert.doesNotMatch(html, /allow-same-origin/);
+  assert.match(html, /href="\/client\/assets\/app\.css"/);
+  assert.match(html, /src="\/client\/assets\/app\.js"/);
+  assert.match(html, /src="\/client\/assets\/runner\.html"/);
+  assert.doesNotMatch(html, /(?:href|src)="assets\//);
 });
