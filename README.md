@@ -5,9 +5,6 @@
 > central doctrine is that a mind, open by nature, may close itself against intrusion and that no
 > power can rightfully force it open. A prompt is a thought in transit. This network is the barrier.
 
-[Project website](https://ezrastone.github.io/Osanwe/) · [Technical beta charter](docs/beta.md) ·
-[Current Phase 0 evidence](docs/phase0-results.md)
-
 The runnable bring-your-own-key path is designed to keep prompts unreadable to a pinned relay and,
 when that relay has a separate operator, to avoid directly giving the provider the user's source IP.
 The provider still sees the user's own API account, prompt content and timing; no independently
