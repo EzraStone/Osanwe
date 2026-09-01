@@ -21,14 +21,45 @@ synthetic or deliberately non-sensitive prompts. The public website is an explan
 front door, not a hosted chat service: invited archives open the app on the tester's own loopback
 interface and keep relay secrets out of the website.
 
+## What it looks like
+
+![The Osanwë client on opening](docs/img/app-chat.png)
+
+Every image on this page is the real client, photographed from `./demo/ui.sh`. That script
+starts a stand-in provider, a mint, a gateway, a relay and the client on one machine, generates
+its own keys, and deletes them on Ctrl-C. The replies are canned and say so on their face; no
+external model is called and no money moves.
+
+| A completed exchange | The same, dark |
+|---|---|
+| ![A completed exchange in the light theme](docs/img/app-reply.png) | ![The same exchange in the dark theme](docs/img/app-dark.png) |
+
+### What happened to your words
+
+The disclosure panel opens only when asked for, and it is written to say what the client cannot
+prove as readily as what it can. Here it declines to claim a verified relay connection, states
+that the gateway could read the words, and volunteers that writing style and timing still
+identify a person.
+
+![The disclosure panel, listing what each party saw and what the client cannot verify](docs/img/app-seal.png)
+
+### The model catalog
+
+Labels are read live from the connected gateway and state observable facts only. Provider
+retention stays **Unknown** unless the route carries a dated, attributable source; the interface
+never converts an unknown policy into a privacy score.
+
+![The model catalog, the local endpoint, and the token balance](docs/img/app-models.png)
+
 ## Accountless local client
 
-The bearer binary now embeds a dependency-free local web client with Chat, Models, and Connect
-views. Chat sends genuine multi-turn context, streams responses, and starts with ephemeral history.
+The bearer binary now embeds a dependency-free local web client with Chat and Code modes; the
+model catalog and connection details live in Settings, as shown above. Chat sends genuine
+multi-turn context, streams responses, and starts with ephemeral history.
 People may explicitly save conversations in their browser's IndexedDB, restore them, export a
 plaintext JSON copy, or delete them. No conversation-history endpoint exists on an Osanwë service.
 
-The Models view reads the connected gateway's live catalog and shows enforced text capabilities,
+The model catalog reads the connected gateway's live catalog and shows enforced text capabilities,
 request limits, and factual privacy labels. Provider retention and training remain **unknown** unless
 the gateway has sourced metadata; the interface does not turn unknown policy into a privacy score.
 
