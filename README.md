@@ -1,5 +1,9 @@
 # Osanwë
 
+> In Tolkien's *Ósanwe-kenta*, *ósanwë* is the direct transmission of thought between minds. Its
+> central doctrine is that a mind, open by nature, may close itself against intrusion and that no
+> power can rightfully force it open. A prompt is a thought in transit. This network is the barrier.
+
 **An encrypted relay for AI inference, and an experimental blind-signed token gateway.**
 
 [Project website](https://ezrastone.github.io/Osanwe/) · [Technical beta charter](docs/beta.md) ·
@@ -70,7 +74,3 @@ should precede an external review of interrupted and concurrent issuance.
 
 See the [v0.1 scope](docs/product/v0.1-scope.md), [privacy boundaries](docs/product/privacy-boundaries.md),
 and [payment notes](docs/payments.md) for what is and is not promised.
-
-> In Tolkien's *Ósanwe-kenta*, *ósanwë* is the direct transmission of thought between minds. Its
-> central doctrine is that a mind, open by nature, may close itself against intrusion and that no
-> power can rightfully force it open. A prompt is a thought in transit. This network is the barrier.
