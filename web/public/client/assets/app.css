@@ -306,6 +306,9 @@ button.model-menu-row:hover,.model-advanced-toggle:hover{background:var(--sunk)}
 .byok-key-row label{grid-column:1 / -1; color:var(--faint); font-size:11px; letter-spacing:.06em; text-transform:uppercase}
 .byok-key-row input{min-width:0; padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:var(--raised); color:var(--ink); font:13px var(--mono)}
 .byok-key-row button{padding:.55rem .75rem; border:1px solid var(--gild-dim); border-radius:7px; background:var(--gild-soft); color:var(--gild); cursor:pointer; font:600 12px var(--sans)}
+.byok-key-row button:disabled{cursor:wait; opacity:.58}
+.byok-key-row #testProviderKey{border-color:var(--line); background:var(--raised); color:var(--ink)}
+.provider-test-note{margin:.55rem 0 0; color:var(--faint); font-size:11.5px; line-height:1.5}
 .provider-config-grid{display:grid; grid-template-columns:minmax(0,1fr); gap:.4rem; align-items:stretch; margin:.9rem 0 .4rem}
 .settings-inner .provider-config-grid>label{grid-column:1; margin-top:.45rem; color:var(--faint); font-size:11px; letter-spacing:.06em; text-transform:uppercase}
 .settings-inner .provider-config-grid>label:first-child{margin-top:0}
@@ -317,7 +320,7 @@ button.model-menu-row:hover,.model-advanced-toggle:hover{background:var(--sunk)}
 .trial-access-row label{grid-column:1 / -1; color:var(--faint); font-size:11px; letter-spacing:.06em; text-transform:uppercase}
 .trial-access-row input{min-width:0; padding:.5rem; border:1px solid var(--line); border-radius:7px; background:var(--raised); color:var(--ink); font:12px var(--sans)}
 .trial-access-row button{padding:.55rem .75rem; border:1px solid var(--gild-dim); border-radius:7px; background:var(--gild-soft); color:var(--gild); cursor:pointer; font:600 12px var(--sans)}
-.byok-key-status{min-height:1.4em; color:var(--faint); font-size:12px}
+.byok-key-status{min-height:1.4em; color:var(--faint); font-size:12px; line-height:1.45}
 @media(max-width:36rem){.byok-key-row{grid-template-columns:1fr}.byok-key-row button{width:100%}.provider-model-control{grid-template-columns:1fr}.provider-model-control button{width:100%}}
 @media(max-width:36rem){.trial-access-row{grid-template-columns:1fr}.trial-access-row button{width:100%}}
 
