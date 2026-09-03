@@ -4,6 +4,8 @@ import {
   normalizeProviderKey,
   providerFailure,
 } from '../../../../lib/provider-proxy.mjs';
+import { ephemeralClientIdentity } from '../../../../lib/client-identity.mjs';
+import { RequestCapacity } from '../../../../lib/request-capacity.mjs';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -13,6 +15,13 @@ const HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   pragma: 'no-cache',
   'x-content-type-options': 'nosniff',
+});
+
+const checkCapacity = new RequestCapacity({
+  maxConcurrent: 1,
+  maxRequests: 5,
+  windowMs: 60_000,
+  maxClients: 2048,
 });
 
 function json(status, value) {
@@ -49,6 +58,13 @@ export async function handleProviderCheck(request, fetchImpl = fetch) {
     return errorResponse(400, error instanceof Error ? error.message : 'The connection test is invalid.');
   }
 
+  const release = checkCapacity.acquire(ephemeralClientIdentity(request));
+  if (!release) {
+    return errorResponse(429, 'Too many connection tests were requested. Try again in a minute.', {
+      code: 'connection_check_limited',
+      retryable: true,
+    });
+  }
   const upstream = buildProviderProbe(payload, apiKey);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
@@ -72,6 +88,7 @@ export async function handleProviderCheck(request, fetchImpl = fetch) {
   } finally {
     clearTimeout(timeout);
     request.signal.removeEventListener('abort', abortUpstream);
+    release();
   }
 }
 

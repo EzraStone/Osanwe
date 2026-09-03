@@ -11,6 +11,7 @@ function request(body, headers = {}) {
       'content-type': 'application/json',
       origin: 'https://chat.osanwe.test',
       'sec-fetch-site': 'same-origin',
+      'x-forwarded-for': `provider-check-${Math.random()}`,
       ...headers,
     },
     body: JSON.stringify(body),
@@ -54,4 +55,15 @@ test('provider check refuses cross-site requests before forwarding credentials',
   );
   assert.equal(response.status, 403);
   assert.equal(called, false);
+});
+
+test('provider check limits repeated synthetic requests from one connection', async () => {
+  const sameClient = () => request(payload, { 'x-forwarded-for': 'provider-check-limit-test' });
+  for (let index = 0; index < 5; index += 1) {
+    const accepted = await handleProviderCheck(sameClient(), async () => Response.json({ ok: true }));
+    assert.equal(accepted.status, 200);
+  }
+  const refused = await handleProviderCheck(sameClient(), async () => Response.json({ ok: true }));
+  assert.equal(refused.status, 429);
+  assert.equal((await refused.json()).error.code, 'connection_check_limited');
 });
