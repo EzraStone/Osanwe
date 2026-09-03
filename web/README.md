@@ -49,3 +49,6 @@ OSANWE_LIVE_MODEL=openai/gpt-oss-20b
 OSANWE_LIVE_API_KEY=...
 OSANWE_LIVE_CONFIRM=YES
 ```
+
+The Settings connection check and release procedure are documented in
+[`docs/hosted-provider-validation.md`](../docs/hosted-provider-validation.md).
