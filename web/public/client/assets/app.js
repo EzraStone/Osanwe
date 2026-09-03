@@ -1,4 +1,4 @@
-import { activateInviteBook, loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
+import { activateInviteBook, loadModels as fetchModels, loadStatus as fetchStatus, sendMessages, testProviderConnection } from "./api.js";
 import { buildPreviewBundle, parseCodeFences, selectRunnableCode } from "./code.js";
 import { appendTurn, conversationTitle, conversationTurnText, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
 import { disclosureNarrative } from "./disclosure.js";
@@ -657,16 +657,30 @@ function connectProviderKey(){
   providerKey=candidate;
   providerKeyInput.value="";
   providerKeyInput.disabled=true;providerConsent.disabled=true;
-  $("connectProviderKey").hidden=true;$("forgetProviderKey").hidden=false;
+  $("connectProviderKey").hidden=true;$("testProviderKey").hidden=false;$("forgetProviderKey").hidden=false;
   $("providerKeyStatus").textContent="Key loaded for "+providerLabel()+" in this tab. It is sent through this host with each request; reload or choose Forget key to clear it.";
   render();$("settingsDialog").close();input.focus();
 }
 
 function forgetProviderKey(){
   providerKey="";providerKeyInput.value="";providerKeyInput.disabled=false;providerConsent.disabled=false;
-  $("connectProviderKey").hidden=false;$("forgetProviderKey").hidden=true;
+  $("connectProviderKey").hidden=false;$("testProviderKey").hidden=true;$("forgetProviderKey").hidden=true;
   $("providerKeyStatus").textContent="The tab released its reference to the provider key.";
   render();providerKeyInput.focus();
+}
+
+async function checkProviderConnection(){
+  var button=$("testProviderKey"),message=$("providerKeyStatus");
+  if(!providerKey){message.textContent="Load a provider key before testing the connection.";providerKeyInput.focus();return}
+  if(!applyProviderModel())return;
+  button.disabled=true;message.textContent="Testing "+providerLabel()+" with a bounded synthetic request…";
+  try{
+    var result=await testProviderConnection({provider:providerId,model:model.value,apiKey:providerKey});
+    message.textContent="Connection verified. "+providerLabel()+" accepted "+result.model+".";
+  }catch(error){
+    var retry=error&&error.retryable?" You can try again.":"";
+    message.textContent=(error&&error.message?error.message:"Connection test failed.")+retry;
+  }finally{button.disabled=false}
 }
 
 async function activateSelectedInvite(){
@@ -689,6 +703,7 @@ async function activateSelectedInvite(){
 }
 
 $("connectProviderKey").addEventListener("click",connectProviderKey);
+$("testProviderKey").addEventListener("click",function(){checkProviderConnection()});
 $("forgetProviderKey").addEventListener("click",forgetProviderKey);
 $("useProviderModel").addEventListener("click",applyProviderModel);
 providerModel.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();applyProviderModel()}});
@@ -698,7 +713,7 @@ providerSelect.addEventListener("change",function(){
   runTransition(async function(){
     await stopActiveRequest();
     providerKey="";providerKeyInput.value="";providerKeyInput.disabled=false;providerConsent.disabled=false;
-    $("connectProviderKey").hidden=false;$("forgetProviderKey").hidden=true;
+    $("connectProviderKey").hidden=false;$("testProviderKey").hidden=true;$("forgetProviderKey").hidden=true;
     providerId=next;preferredModel="";
     try{localStorage.setItem("osanwe-provider",providerId);localStorage.removeItem("osanwe-model")}catch(e){}
     if(status)status.selected_provider=providerLabel();
