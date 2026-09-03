@@ -46,10 +46,25 @@ function openAIResponsesEvent(event) {
   return [];
 }
 
+function geminiEvent(event) {
+  const value = parseObject(event.data);
+  if (!value) return [];
+  const candidate = Array.isArray(value.candidates) ? value.candidates[0] : null;
+  if (!candidate || typeof candidate !== 'object') return [];
+  const parts = candidate.content && Array.isArray(candidate.content.parts) ? candidate.content.parts : [];
+  const text = parts
+    .map((part) => (part && typeof part === 'object' && typeof part.text === 'string' ? part.text : ''))
+    .join('');
+  const events = textDelta(text);
+  if (candidate.finishReason) events.push(...stop());
+  return events;
+}
+
 export function normalizeProviderEvent(providerStyle, event) {
   if (providerStyle === 'openai-chat') return openAIChatEvent(event);
   if (providerStyle === 'anthropic') return anthropicEvent(event);
   if (providerStyle === 'openai-responses') return openAIResponsesEvent(event);
+  if (providerStyle === 'gemini') return geminiEvent(event);
   return [];
 }
 

@@ -46,6 +46,23 @@ test('OpenAI Responses text and completion events are normalized', () => {
   }), [{ type: 'message_stop' }]);
 });
 
+test('Gemini streaming candidates expose only text and completion', () => {
+  const events = normalizeProviderEvent('gemini', {
+    event: 'message',
+    data: JSON.stringify({
+      candidates: [{
+        content: { parts: [{ text: 'Gemini text' }, { thoughtSignature: 'discarded' }] },
+        finishReason: 'STOP',
+      }],
+      usageMetadata: { promptTokenCount: 12 },
+    }),
+  });
+  assert.deepEqual(events, [
+    { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Gemini text' } },
+    { type: 'message_stop' },
+  ]);
+});
+
 test('normalized events use one data record and never preserve provider fields', () => {
   const encoded = encodeNormalizedEvent({
     type: 'content_block_delta',
