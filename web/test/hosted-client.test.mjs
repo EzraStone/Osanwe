@@ -111,5 +111,7 @@ test('the hosted shell retains the original navigation and runnable code display
   assert.match(app, /testProviderConnection/);
   assert.match(app, /Test the connection before closing Settings/);
   assert.match(app, /requestPhase==="connecting"\?"Connecting":"Generating"/);
+  assert.match(app, /ms TTFT/);
+  assert.match(app, /firstTextAt=performance\.now\(\)/);
   assert.match(app, /if\(runnable\)loadRunnerCode\(runnable\.language,runnable\.code,true,null,false\)/);
 });

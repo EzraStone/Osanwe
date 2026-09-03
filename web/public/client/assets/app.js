@@ -22,7 +22,7 @@ var thread=$("thread"),rail=$("rail"),opening=$("opening"),
     providerModel=$("providerModel"),providerModelSuggestions=$("providerModelSuggestions"),
     panel=$("panel"),veil=$("veil"),providerSettings=$("providerSettings"),runnerFrame=$("runnerPreview");
 
-var status=null,busy=false,stopping=false,broken=false,requestPhase="idle",activeRequest=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
+var status=null,busy=false,stopping=false,broken=false,requestPhase="idle",lastTTFT=null,activeRequest=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
     providerKey="",providerId="groq",providers=[],activeMode="chat",runnerOpen=false,runnerChannel="",runnerLines=[],runnerBusy=false,runnerHadError=false,
     pendingRunnerRun=null,runnerStartupTimer=null,runnerLastSnapshot=null,runnerActiveSnapshot=null,runnerReturnFocus=null,runnerModal=false,
     completedRequestHere=false,catalogRequest=0,transitionTail=Promise.resolve(),lifecycle=new ConversationLifecycle(),
@@ -312,7 +312,7 @@ function refresh(){
   rail.setAttribute("aria-busy",String(busy));
   if(broken){state.textContent="Seal broken";state.classList.add("warn");return}
   state.classList.remove("warn");
-	state.textContent=busy?(stopping?"Stopping":(requestPhase==="connecting"?"Connecting":"Generating")):(hasCredential?(modelsReady&&activeModel?"Ready":(modelsReady?"Model needed":"Checking models")):"Key needed");
+	state.textContent=busy?(stopping?"Stopping":(requestPhase==="connecting"?"Connecting":"Generating")):(hasCredential?(modelsReady&&activeModel?(lastTTFT===null?"Ready":"Ready · "+lastTTFT+" ms TTFT"):(modelsReady?"Model needed":"Checking models")):"Key needed");
 }
 
 function fail(body,message){
@@ -343,7 +343,7 @@ function submit(){
   var caret=document.createElement("span");caret.className="caret";
   body.appendChild(caret);
   scrollConversation(true);
-  var request={controller:new AbortController(),conversation:requestConversation,done:null};
+  var request={controller:new AbortController(),conversation:requestConversation,done:null,startedAt:performance.now(),firstTextAt:null};
   activeRequest=request;
 	busy=true;stopping=false;requestPhase="connecting";refresh();
   request.done=sendMessages({
@@ -357,7 +357,7 @@ function submit(){
     mode:requestMode
   }).then(function(resp){
     requestPhase="streaming";refresh();
-    return stream(resp,body,caret,reply,requestConversation,requestMode);
+    return stream(resp,body,caret,reply,requestConversation,requestMode,request);
   }).catch(function(e){
     if(e.name==="AbortError"){
       reply.status="stopped";caret.remove();
@@ -377,8 +377,9 @@ function submit(){
 //
 // Everything else on the wire -- message_start, usage records, ping -- carries
 // no words. Appending them would put JSON in the middle of a sentence.
-function stream(resp,body,caret,reply,requestConversation,requestMode){
+function stream(resp,body,caret,reply,requestConversation,requestMode,request){
   return readProviderTextStream(resp.body,function(text){
+	if(request.firstTextAt===null){request.firstTextAt=performance.now();lastTTFT=Math.max(0,Math.round(request.firstTextAt-request.startedAt))}
 	reply.content+=text;
 	caret.remove();
 	body.appendChild(document.createTextNode(text));
