@@ -106,9 +106,19 @@ export async function responseError(response, fallback) {
     const parsed = JSON.parse(text);
     const error = parsed && parsed.error;
     const message = typeof error === 'string' ? error : error && error.message;
-    if (typeof message === 'string' && message) return new Error(message);
+    if (typeof message === 'string' && message) {
+      const result = new Error(message);
+      result.status = response.status;
+      if (error && typeof error === 'object') {
+        if (typeof error.code === 'string') result.code = error.code;
+        if (typeof error.retryable === 'boolean') result.retryable = error.retryable;
+      }
+      return result;
+    }
   } catch {
     // Plain text is still more useful than a generic status.
   }
-  return new Error(text.trim() || fallback);
+  const result = new Error(text.trim() || fallback);
+  result.status = response.status;
+  return result;
 }

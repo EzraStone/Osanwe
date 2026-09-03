@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { loadModels, loadStatus, sendMessages } from '../public/client/assets/api.js';
+import { loadModels, loadStatus, responseError, sendMessages } from '../public/client/assets/api.js';
 
 const catalog = {
   providers: [
@@ -45,6 +45,17 @@ test('hosted client sends provider, model, mode, and messages to one fixed endpo
     mode: 'code',
     messages: [{ role: 'user', content: 'hello' }],
   });
+});
+
+test('hosted client retains safe provider diagnostics for the interface', async () => {
+  const response = Response.json({
+    error: { message: 'The provider rate limit was reached.', code: 'provider_limit_reached', retryable: true },
+  }, { status: 429 });
+  const error = await responseError(response, 'fallback');
+  assert.equal(error.message, 'The provider rate limit was reached.');
+  assert.equal(error.code, 'provider_limit_reached');
+  assert.equal(error.retryable, true);
+  assert.equal(error.status, 429);
 });
 
 test('the hosted shell retains the original navigation and runnable code display', async () => {
