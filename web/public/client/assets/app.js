@@ -22,7 +22,7 @@ var thread=$("thread"),rail=$("rail"),opening=$("opening"),
     providerModel=$("providerModel"),providerModelSuggestions=$("providerModelSuggestions"),
     panel=$("panel"),veil=$("veil"),providerSettings=$("providerSettings"),runnerFrame=$("runnerPreview");
 
-var status=null,busy=false,stopping=false,broken=false,activeRequest=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
+var status=null,busy=false,stopping=false,broken=false,requestPhase="idle",activeRequest=null,dialogOpener=null,catalogModels=[],modelsReady=false,preferredModel="",
     providerKey="",providerId="groq",providers=[],activeMode="chat",runnerOpen=false,runnerChannel="",runnerLines=[],runnerBusy=false,runnerHadError=false,
     pendingRunnerRun=null,runnerStartupTimer=null,runnerLastSnapshot=null,runnerActiveSnapshot=null,runnerReturnFocus=null,runnerModal=false,
     completedRequestHere=false,catalogRequest=0,transitionTail=Promise.resolve(),lifecycle=new ConversationLifecycle(),
@@ -312,7 +312,7 @@ function refresh(){
   rail.setAttribute("aria-busy",String(busy));
   if(broken){state.textContent="Seal broken";state.classList.add("warn");return}
   state.classList.remove("warn");
-	state.textContent=busy?(stopping?"Stopping":"Answering"):(hasCredential?(modelsReady&&activeModel?"Ready":(modelsReady?"Model needed":"Checking models")):"Key needed");
+	state.textContent=busy?(stopping?"Stopping":(requestPhase==="connecting"?"Connecting":"Generating")):(hasCredential?(modelsReady&&activeModel?"Ready":(modelsReady?"Model needed":"Checking models")):"Key needed");
 }
 
 function fail(body,message){
@@ -345,7 +345,7 @@ function submit(){
   scrollConversation(true);
   var request={controller:new AbortController(),conversation:requestConversation,done:null};
   activeRequest=request;
-	busy=true;stopping=false;refresh();
+	busy=true;stopping=false;requestPhase="connecting";refresh();
   request.done=sendMessages({
     model:model.value,
     system:modeCopy[requestMode].system,
@@ -356,6 +356,7 @@ function submit(){
     provider:providerId,
     mode:requestMode
   }).then(function(resp){
+    requestPhase="streaming";refresh();
     return stream(resp,body,caret,reply,requestConversation,requestMode);
   }).catch(function(e){
     if(e.name==="AbortError"){
@@ -367,7 +368,7 @@ function submit(){
     caret.remove();
     fail(body,reply.content);return persistConversation(requestConversation);
   }).finally(function(){
-	if(activeRequest===request){busy=false;stopping=false;activeRequest=null;refresh();input.focus()}
+	if(activeRequest===request){busy=false;stopping=false;requestPhase="idle";activeRequest=null;refresh();input.focus()}
 	render();
   });
 }
