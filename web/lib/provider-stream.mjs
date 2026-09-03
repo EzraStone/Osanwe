@@ -72,7 +72,7 @@ export function encodeNormalizedEvent(event) {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
 
-export function normalizeProviderStream(providerStyle, upstream, { maxBytes } = {}) {
+export function normalizeProviderStream(providerStyle, upstream, { maxBytes, onFinalize } = {}) {
   if (!upstream || typeof upstream.getReader !== 'function') {
     throw new TypeError('The provider response did not contain a readable stream.');
   }
@@ -80,6 +80,13 @@ export function normalizeProviderStream(providerStyle, upstream, { maxBytes } = 
   const decoder = new SSEDecoder({ maxBytes });
   const encoder = new TextEncoder();
   let stopped = false;
+  let finalized = false;
+
+  function finalize() {
+    if (finalized) return;
+    finalized = true;
+    if (typeof onFinalize === 'function') onFinalize();
+  }
 
   function write(events, controller) {
     for (const event of events) {
@@ -110,10 +117,12 @@ export function normalizeProviderStream(providerStyle, upstream, { maxBytes } = 
         controller.error(error);
       } finally {
         try { reader.releaseLock(); } catch { /* stream cleanup only */ }
+        finalize();
       }
     },
     async cancel(reason) {
       try { await reader.cancel(reason); } catch { /* cancellation is best effort */ }
+      finalize();
     },
   });
 }

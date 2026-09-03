@@ -104,3 +104,13 @@ test('provider stream emits only one terminal event', async () => {
   const body = await response.text();
   assert.equal(body.match(/message_stop/g)?.length, 1);
 });
+
+test('provider stream finalizes its request lifecycle once', async () => {
+  let finalized = 0;
+  const upstream = new Response('data: [DONE]\n\n').body;
+  const response = new Response(normalizeProviderStream('openai-chat', upstream, {
+    onFinalize() { finalized += 1; },
+  }));
+  await response.text();
+  assert.equal(finalized, 1);
+});

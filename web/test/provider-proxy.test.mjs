@@ -221,6 +221,30 @@ test('chat handler forwards the key once and returns normalized provider events'
   assert.match(response.headers.get('content-type'), /text\/event-stream/);
 });
 
+test('chat handler forwards provider text before a streamed response completes', async () => {
+  let finish;
+  const upstream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(
+        'data: {"choices":[{"delta":{"content":"first chunk"},"finish_reason":null}]}\n\n',
+      ));
+      finish = () => {
+        controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+        controller.close();
+      };
+    },
+  });
+  const response = await handleChatRequest(request(groqPayload), async () => new Response(upstream, {
+    headers: { 'content-type': 'text/event-stream' },
+  }));
+  const reader = response.body.getReader();
+  const first = await reader.read();
+  assert.match(new TextDecoder().decode(first.value), /first chunk/);
+  finish();
+  const second = await reader.read();
+  assert.match(new TextDecoder().decode(second.value), /message_stop/);
+});
+
 test('chat handler blocks cross-site calls before forwarding the key', async () => {
   let called = false;
   const response = await handleChatRequest(

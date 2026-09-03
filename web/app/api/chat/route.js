@@ -5,8 +5,10 @@ import {
   normalizeChatPayload,
   normalizeProviderKey,
   providerFailure,
+  providerStyle,
   requestIsTooLarge,
 } from '../../../lib/provider-proxy.mjs';
+import { normalizeProviderStream } from '../../../lib/provider-stream.mjs';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -125,6 +127,7 @@ export async function handleChatRequest(request, fetchImpl = fetch) {
 
   const release = acquireCapacity(request);
   if (!release) return errorResponse(429, 'Too many requests are active from this connection. Try again shortly.');
+  let streamOwnsCleanup = false;
 
   try {
     let rawBody;
@@ -161,6 +164,20 @@ export async function handleChatRequest(request, fetchImpl = fetch) {
         });
       }
 
+      if (response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
+        const cleanup = () => {
+          clearTimeout(timeout);
+          request.signal.removeEventListener('abort', abortUpstream);
+          release();
+        };
+        const body = normalizeProviderStream(providerStyle(payload.provider), response.body, {
+          maxBytes: 2 * 1024 * 1024,
+          onFinalize: cleanup,
+        });
+        streamOwnsCleanup = true;
+        return new Response(body, { status: 200, headers: STREAM_HEADERS });
+      }
+
       let value;
       try {
         const rawResponse = await readBoundedText(response.body, 1024 * 1024);
@@ -178,11 +195,13 @@ export async function handleChatRequest(request, fetchImpl = fetch) {
           : 'The provider could not be reached.';
       return errorResponse(502, message);
     } finally {
-      clearTimeout(timeout);
-      request.signal.removeEventListener('abort', abortUpstream);
+      if (!streamOwnsCleanup) {
+        clearTimeout(timeout);
+        request.signal.removeEventListener('abort', abortUpstream);
+      }
     }
   } finally {
-    release();
+    if (!streamOwnsCleanup) release();
   }
 }
 
