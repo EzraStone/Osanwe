@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { encodeNormalizedEvent, normalizeProviderEvent } from '../lib/provider-stream.mjs';
+import {
+  encodeNormalizedEvent,
+  normalizeProviderEvent,
+  normalizeProviderStream,
+} from '../lib/provider-stream.mjs';
 
 test('OpenAI-compatible stream deltas become Osanwe text events', () => {
   const events = normalizeProviderEvent('openai-chat', {
@@ -70,4 +74,33 @@ test('normalized events use one data record and never preserve provider fields',
   });
   assert.equal(encoded, 'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"safe text"}}\n\n');
   assert.doesNotMatch(encoded, /request_id|usage|account/);
+});
+
+test('provider stream emits text before the upstream response completes', async () => {
+  let finish;
+  const upstream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"first"},"finish_reason":null}]}\n\n'));
+      finish = () => {
+        controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+        controller.close();
+      };
+    },
+  });
+  const reader = normalizeProviderStream('openai-chat', upstream).getReader();
+  const first = await reader.read();
+  assert.match(new TextDecoder().decode(first.value), /first/);
+  finish();
+  const rest = await reader.read();
+  assert.match(new TextDecoder().decode(rest.value), /message_stop/);
+});
+
+test('provider stream emits only one terminal event', async () => {
+  const upstream = new Response([
+    'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+    'data: [DONE]\n\n',
+  ].join('')).body;
+  const response = new Response(normalizeProviderStream('openai-chat', upstream));
+  const body = await response.text();
+  assert.equal(body.match(/message_stop/g)?.length, 1);
 });

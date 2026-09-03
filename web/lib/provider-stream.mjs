@@ -71,3 +71,50 @@ export function normalizeProviderEvent(providerStyle, event) {
 export function encodeNormalizedEvent(event) {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
+
+export function normalizeProviderStream(providerStyle, upstream, { maxBytes } = {}) {
+  if (!upstream || typeof upstream.getReader !== 'function') {
+    throw new TypeError('The provider response did not contain a readable stream.');
+  }
+  const reader = upstream.getReader();
+  const decoder = new SSEDecoder({ maxBytes });
+  const encoder = new TextEncoder();
+  let stopped = false;
+
+  function write(events, controller) {
+    for (const event of events) {
+      if (event.type === 'message_stop') {
+        if (stopped) continue;
+        stopped = true;
+      }
+      if (stopped && event.type !== 'message_stop') continue;
+      controller.enqueue(encoder.encode(encodeNormalizedEvent(event)));
+    }
+  }
+
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        while (true) {
+          const item = await reader.read();
+          if (item.done) break;
+          for (const event of decoder.push(item.value)) {
+            write(normalizeProviderEvent(providerStyle, event), controller);
+          }
+        }
+        for (const event of decoder.finish()) {
+          write(normalizeProviderEvent(providerStyle, event), controller);
+        }
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      } finally {
+        try { reader.releaseLock(); } catch { /* stream cleanup only */ }
+      }
+    },
+    async cancel(reason) {
+      try { await reader.cancel(reason); } catch { /* cancellation is best effort */ }
+    },
+  });
+}
+import { SSEDecoder } from './sse-decoder.mjs';
