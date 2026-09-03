@@ -54,5 +54,8 @@ OSANWE_LIVE_API_KEY=...
 OSANWE_LIVE_CONFIRM=YES
 ```
 
+Set `OSANWE_LIVE_CHECK_CONFIRM=YES` as well to authorize one additional bounded connection-check
+request. This is separate so a normal live chat verification never silently doubles provider use.
+
 The Settings connection check and release procedure are documented in
 [`docs/hosted-provider-validation.md`](../docs/hosted-provider-validation.md).
