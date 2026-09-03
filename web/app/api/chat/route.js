@@ -9,6 +9,7 @@ import {
   requestIsTooLarge,
 } from '../../../lib/provider-proxy.mjs';
 import { normalizeProviderStream } from '../../../lib/provider-stream.mjs';
+import { RequestCapacity } from '../../../lib/request-capacity.mjs';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -28,10 +29,12 @@ const STREAM_HEADERS = Object.freeze({
   'x-content-type-options': 'nosniff',
 });
 
-const activeByClient = new Map();
-const recentByClient = new Map();
-const MAX_CONCURRENT_PER_CLIENT = 3;
-const MAX_REQUESTS_PER_MINUTE = 30;
+const chatCapacity = new RequestCapacity({
+  maxConcurrent: 3,
+  maxRequests: 30,
+  windowMs: 60_000,
+  maxClients: 2048,
+});
 
 function json(status, value) {
   return new Response(JSON.stringify(value), { status, headers: JSON_HEADERS });
@@ -53,28 +56,6 @@ function clientIdentity(request) {
   if (cloudflare) return cloudflare.slice(0, 80);
   const forwarded = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
   return (forwarded || 'local').slice(0, 80);
-}
-
-function acquireCapacity(request, now = Date.now()) {
-  const client = clientIdentity(request);
-  const active = activeByClient.get(client) || 0;
-  if (active >= MAX_CONCURRENT_PER_CLIENT) return null;
-
-  const cutoff = now - 60_000;
-  const recent = (recentByClient.get(client) || []).filter((value) => value > cutoff);
-  if (recent.length >= MAX_REQUESTS_PER_MINUTE) {
-    recentByClient.set(client, recent);
-    return null;
-  }
-
-  recent.push(now);
-  recentByClient.set(client, recent);
-  activeByClient.set(client, active + 1);
-  return () => {
-    const remaining = (activeByClient.get(client) || 1) - 1;
-    if (remaining > 0) activeByClient.set(client, remaining);
-    else activeByClient.delete(client);
-  };
 }
 
 async function readBoundedText(body, limit) {
@@ -125,7 +106,7 @@ export async function handleChatRequest(request, fetchImpl = fetch) {
     return errorResponse(401, error instanceof Error ? error.message : 'Load a provider key.');
   }
 
-  const release = acquireCapacity(request);
+  const release = chatCapacity.acquire(clientIdentity(request));
   if (!release) return errorResponse(429, 'Too many requests are active from this connection. Try again shortly.');
   let streamOwnsCleanup = false;
 

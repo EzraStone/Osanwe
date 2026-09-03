@@ -305,3 +305,22 @@ test('declared oversized bodies are rejected before provider forwarding', async 
   assert.equal(response.status, 413);
   assert.equal(called, false);
 });
+
+test('chat handler bounds concurrent streams and releases cancelled capacity', async () => {
+  const pendingFetch = async () => new Response(new ReadableStream({ start() {} }), {
+    headers: { 'content-type': 'text/event-stream' },
+  });
+  const sameClient = () => request(groqPayload, { 'x-forwarded-for': 'capacity-test-client' });
+  const active = await Promise.all([
+    handleChatRequest(sameClient(), pendingFetch),
+    handleChatRequest(sameClient(), pendingFetch),
+    handleChatRequest(sameClient(), pendingFetch),
+  ]);
+  const refused = await handleChatRequest(sameClient(), pendingFetch);
+  assert.equal(refused.status, 429);
+
+  await active[0].body.cancel();
+  const replacement = await handleChatRequest(sameClient(), pendingFetch);
+  assert.equal(replacement.status, 200);
+  await Promise.all([...active.slice(1), replacement].map((response) => response.body.cancel()));
+});
