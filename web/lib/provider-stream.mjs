@@ -95,6 +95,7 @@ export function normalizeProviderStream(providerStyle, upstream, { maxBytes, onF
   const encoder = new TextEncoder();
   let stopped = false;
   let finalized = false;
+  let cancelled = false;
 
   function finalize() {
     if (finalized) return;
@@ -133,14 +134,18 @@ export function normalizeProviderStream(providerStyle, upstream, { maxBytes, onF
           write(normalizeProviderEvent(providerStyle, event), controller);
         }
         controller.close();
-      } catch (error) {
-        controller.error(error);
+      } catch {
+        if (!cancelled) {
+          write(streamFailure(), controller);
+          controller.close();
+        }
       } finally {
         try { reader.releaseLock(); } catch { /* stream cleanup only */ }
         finalize();
       }
     },
     async cancel(reason) {
+      cancelled = true;
       try { await reader.cancel(reason); } catch { /* cancellation is best effort */ }
       finalize();
     },

@@ -127,3 +127,11 @@ test('provider stream finalizes its request lifecycle once', async () => {
   await response.text();
   assert.equal(finalized, 1);
 });
+
+test('provider stream byte overflow becomes a safe incomplete answer', async () => {
+  const upstream = new Response('data: {"private":"provider detail"}\n\n').body;
+  const body = await new Response(normalizeProviderStream('openai-chat', upstream, { maxBytes: 8 })).text();
+  assert.match(body, /provider_stream_failed/);
+  assert.doesNotMatch(body, /private|provider detail|too large/);
+  assert.doesNotMatch(body, /message_stop/);
+});
