@@ -37,9 +37,19 @@ function anthropicEvent(event) {
   return textDelta(value.delta && typeof value.delta === 'object' ? value.delta.text : '');
 }
 
+function openAIResponsesEvent(event) {
+  const value = parseObject(event.data);
+  if (!value) return [];
+  const type = typeof value.type === 'string' ? value.type : event.event;
+  if (type === 'response.output_text.delta') return textDelta(value.delta);
+  if (type === 'response.completed') return stop();
+  return [];
+}
+
 export function normalizeProviderEvent(providerStyle, event) {
   if (providerStyle === 'openai-chat') return openAIChatEvent(event);
   if (providerStyle === 'anthropic') return anthropicEvent(event);
+  if (providerStyle === 'openai-responses') return openAIResponsesEvent(event);
   return [];
 }
 

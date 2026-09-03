@@ -35,6 +35,17 @@ test('Anthropic content deltas and stop events use the same client protocol', ()
   }), [{ type: 'message_stop' }]);
 });
 
+test('OpenAI Responses text and completion events are normalized', () => {
+  assert.deepEqual(normalizeProviderEvent('openai-responses', {
+    event: 'response.output_text.delta',
+    data: JSON.stringify({ type: 'response.output_text.delta', delta: 'response text' }),
+  }), [{ type: 'content_block_delta', delta: { type: 'text_delta', text: 'response text' } }]);
+  assert.deepEqual(normalizeProviderEvent('openai-responses', {
+    event: 'response.completed',
+    data: JSON.stringify({ type: 'response.completed', response: { id: 'discarded' } }),
+  }), [{ type: 'message_stop' }]);
+});
+
 test('normalized events use one data record and never preserve provider fields', () => {
   const encoded = encodeNormalizedEvent({
     type: 'content_block_delta',
