@@ -198,7 +198,9 @@ test('chat handler does not reflect sensitive provider error bodies', async () =
     Response.json({ error: { message: 'account owner ezra@example.test secret detail' } }, { status: 401 }),
   );
   assert.equal(response.status, 502);
-  assert.deepEqual(await response.json(), { error: { message: 'The provider rejected that API key.' } });
+  assert.deepEqual(await response.json(), {
+    error: { message: 'The provider rejected that API key.', code: 'invalid_key', retryable: false },
+  });
 });
 
 test('provider permission errors distinguish model access from invalid credentials', async () => {
@@ -207,7 +209,25 @@ test('provider permission errors distinguish model access from invalid credentia
   );
   assert.equal(response.status, 502);
   assert.deepEqual(await response.json(), {
-    error: { message: 'The provider denied access. Check that this API key can use the selected model.' },
+    error: {
+      message: 'The provider denied access. Check that this API key can use the selected model.',
+      code: 'model_access_denied',
+      retryable: false,
+    },
+  });
+});
+
+test('provider capacity failures remain retryable and keep their public status', async () => {
+  const response = await handleChatRequest(request(groqPayload), async () =>
+    Response.json({ error: { message: 'private quota detail' } }, { status: 429 }),
+  );
+  assert.equal(response.status, 429);
+  assert.deepEqual(await response.json(), {
+    error: {
+      message: 'The provider rate limit or spending limit was reached.',
+      code: 'provider_limit_reached',
+      retryable: true,
+    },
   });
 });
 

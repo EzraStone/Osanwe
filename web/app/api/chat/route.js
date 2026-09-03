@@ -4,8 +4,8 @@ import {
   extractProviderOutput,
   normalizeChatPayload,
   normalizeProviderKey,
+  providerFailure,
   requestIsTooLarge,
-  safeProviderError,
 } from '../../../lib/provider-proxy.mjs';
 
 export const runtime = 'nodejs';
@@ -35,8 +35,8 @@ function json(status, value) {
   return new Response(JSON.stringify(value), { status, headers: JSON_HEADERS });
 }
 
-function errorResponse(status, message) {
-  return json(status, { error: { message } });
+function errorResponse(status, message, details = {}) {
+  return json(status, { error: { message, ...details } });
 }
 
 function sameOriginRequest(request) {
@@ -154,7 +154,11 @@ export async function handleChatRequest(request, fetchImpl = fetch) {
       const response = await fetchImpl(upstream.url, { ...upstream.init, signal: controller.signal });
       if (!response.ok) {
         try { await response.body?.cancel(); } catch { /* nothing to retain */ }
-        return errorResponse(response.status === 429 ? 429 : 502, safeProviderError(response.status));
+        const failure = providerFailure(response.status);
+        return errorResponse(response.status === 429 ? 429 : 502, failure.message, {
+          code: failure.code,
+          retryable: failure.retryable,
+        });
       }
 
       let value;
