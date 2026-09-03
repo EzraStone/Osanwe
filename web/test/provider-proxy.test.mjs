@@ -8,6 +8,7 @@ import {
   extractProviderOutput,
   normalizeChatPayload,
   normalizeProviderKey,
+  providerFailure,
   publicProviderCatalog,
 } from '../lib/provider-proxy.mjs';
 
@@ -37,6 +38,18 @@ test('provider keys require one clean Bearer credential', () => {
   assert.equal(normalizeProviderKey('Bearer abcdefgh'), 'abcdefgh');
   assert.throws(() => normalizeProviderKey('Bearer abc\ndef'), /malformed/);
   assert.throws(() => normalizeProviderKey('Basic abcdefgh'), /Load/);
+});
+
+test('provider failures expose stable diagnostics without upstream details', () => {
+  assert.deepEqual(providerFailure(401), {
+    code: 'invalid_key',
+    message: 'The provider rejected that API key.',
+    retryable: false,
+  });
+  assert.equal(providerFailure(429).code, 'provider_limit_reached');
+  assert.equal(providerFailure(429).retryable, true);
+  assert.equal(providerFailure(503).code, 'provider_unavailable');
+  assert.equal(providerFailure(400).code, 'provider_rejected_request');
 });
 
 test('the public catalog exposes fixed providers without endpoint URLs', () => {

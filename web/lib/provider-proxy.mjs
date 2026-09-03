@@ -324,16 +324,60 @@ export function extractProviderOutput(provider, value) {
   throw new TypeError('The provider returned no text output.');
 }
 
+export function providerFailure(status) {
+  if (status === 401) {
+    return { code: 'invalid_key', message: 'The provider rejected that API key.', retryable: false };
+  }
+  if (status === 403) {
+    return {
+      code: 'model_access_denied',
+      message: 'The provider denied access. Check that this API key can use the selected model.',
+      retryable: false,
+    };
+  }
+  if (status === 402) {
+    return { code: 'credit_unavailable', message: 'The provider account has no available credit.', retryable: false };
+  }
+  if (status === 404) {
+    return {
+      code: 'model_unavailable',
+      message: 'The selected model is not available for this provider account.',
+      retryable: false,
+    };
+  }
+  if (status === 408 || status === 504) {
+    return { code: 'provider_timeout', message: 'The provider timed out before answering.', retryable: true };
+  }
+  if (status === 413) {
+    return {
+      code: 'provider_request_too_large',
+      message: 'The provider says this conversation is too large.',
+      retryable: false,
+    };
+  }
+  if (status === 429) {
+    return {
+      code: 'provider_limit_reached',
+      message: 'The provider rate limit or spending limit was reached.',
+      retryable: true,
+    };
+  }
+  if (status >= 500) {
+    return {
+      code: 'provider_unavailable',
+      message: 'The provider is temporarily unavailable.',
+      retryable: true,
+    };
+  }
+  return {
+    code: 'provider_rejected_request',
+    message: 'The provider rejected this request. Check the model ID and account permissions.',
+    retryable: false,
+  };
+}
+
 export function safeProviderError(status) {
-  if (status === 401) return 'The provider rejected that API key.';
-  if (status === 403) return 'The provider denied access. Check that this API key can use the selected model.';
-  if (status === 402) return 'The provider account has no available credit.';
-  if (status === 404) return 'The selected model is not available for this provider account.';
-  if (status === 408 || status === 504) return 'The provider timed out before answering.';
-  if (status === 413) return 'The provider says this conversation is too large.';
-  if (status === 429) return 'The provider rate limit or spending limit was reached.';
-  if (status >= 500) return 'The provider is temporarily unavailable.';
-  return 'The provider rejected this request. Check the model ID and account permissions.';
+  return providerFailure(status).message;
 }
 
 export function requestIsTooLarge(request, byteLength = 0) {
