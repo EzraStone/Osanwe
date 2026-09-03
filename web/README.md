@@ -21,6 +21,10 @@ The hosting platform necessarily handles the API key and conversation in plainte
 This is a compatibility path, not the anonymous Osanwë relay path. The UI states this before a
 key can be connected.
 
+Provider responses are streamed through a bounded normalizer described in
+[`docs/hosted-streaming.md`](../docs/hosted-streaming.md). Only text deltas, a terminal marker, or a
+sanitized error reach the browser.
+
 ## Local verification
 
 ```text
