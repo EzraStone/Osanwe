@@ -13,6 +13,23 @@ The embedded browser client is allowed to keep conversation text only when the p
 selects device-only history. That text never belongs in localStorage, logs, URLs, status responses,
 or exported diagnostics.
 
+## Hosted BYOK preview
+
+The optional hosted preview is a convenience path, not the relay design. Its server function
+receives the visitor's provider key, prompt, selected model, and answer in plaintext while the
+request is active. The application does not intentionally write those values to a database,
+conversation-history service, cookie, analytics event, or application log, but the hosting platform
+remains part of the runtime trust boundary.
+
+The preview forwards requests only to reviewed provider endpoints from a fixed registry. It uses an
+ephemeral, process-salted representation of a source address for short-lived abuse limits and does
+not expose that value to the browser. Provider keys remain in page memory and are resent for each
+request; closing or reloading the page releases the application's reference to the key.
+
+The preview does not provide source-address separation, operator separation, blind authorization,
+or an accountless provider request. Its purpose is to test the interface and provider compatibility
+before a person installs the relay client.
+
 ## Relay
 
 A relay sees the connecting network address and the encrypted destination flow. In the intended
@@ -58,3 +75,4 @@ buyer according to the chosen rail, but the gateway must not receive that paymen
 - Every provider deletes or declines to train on prompts.
 - A single operator running both relay and gateway provides the intended separation.
 - Anonymous access is immune to traffic analysis or abuse-driven shutdown.
+- The hosted BYOK preview provides the relay path's privacy properties.
