@@ -110,6 +110,8 @@ test('the hosted shell retains the original navigation and runnable code display
   assert.match(css, /\*::-webkit-scrollbar-thumb/);
   assert.match(css, /#testProviderKey/);
   assert.match(css, /\.provider-test-note/);
+  assert.match(css, /\.opening \.hosted-boundary/);
+  assert.match(css, /\.local-client-link/);
   const app = await readFile(new URL('../public/client/assets/app.js', import.meta.url), 'utf8');
   assert.match(app, /thread\.addEventListener\("scroll"/);
   assert.match(app, /scrollConversation\(true\)/);
