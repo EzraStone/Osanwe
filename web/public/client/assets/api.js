@@ -39,7 +39,7 @@ export async function loadModels(provider = 'groq', fetchImpl = globalThis.fetch
     data: models.map((id) => ({
       id,
       type: 'model',
-      capabilities: { text: true, streaming: false, tools: false, images: false },
+      capabilities: { text: true, streaming: true, tools: false, images: false },
       limits: { max_request_bytes: 65536, max_output_tokens: 2048 },
       osanwe: {
         provider_account: 'your_provider_account',

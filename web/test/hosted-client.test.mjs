@@ -25,7 +25,9 @@ test('hosted status and model suggestions come only from the same-origin registr
   const status = await loadStatus(catalogFetch);
   assert.equal(status.paying, 'byok');
   assert.equal(status.providers[1].label, 'TokenRouter');
-  assert.deepEqual((await loadModels('groq', catalogFetch)).data.map((item) => item.id), ['openai/gpt-oss-20b']);
+  const models = (await loadModels('groq', catalogFetch)).data;
+  assert.deepEqual(models.map((item) => item.id), ['openai/gpt-oss-20b']);
+  assert.equal(models[0].capabilities.streaming, true);
 });
 
 test('hosted client sends provider, model, mode, and messages to one fixed endpoint', async () => {
