@@ -16,10 +16,15 @@ prompts until attested execution is implemented, and production controls are sti
 Start with the [quickstart](docs/quickstart.md), read [who runs what](docs/who-runs-what.md), and do
 not expose the token gateway before following the warnings in the [deployment guide](docs/deploying.md).
 
-The first beta is being prepared for ten invited testers. It is free, text-only, and limited to
-synthetic or deliberately non-sensitive prompts. The public website is an explanation and download
-front door, not a hosted chat service: invited archives open the app on the tester's own loopback
-interface and keep relay secrets out of the website.
+The first relay beta is being prepared for ten invited testers. It is free, text-only, and limited
+to synthetic or deliberately non-sensitive prompts. The public promotional website remains an
+explanation and download front door. A separate hosted BYOK preview offers a lower-friction interface
+test, but its host processes the visitor's API key, prompt, and answer at runtime and it does not
+provide the relay path's privacy properties. Invited relay-beta archives open the app on the tester's
+own loopback interface and keep relay secrets out of either public site.
+
+See the [hosted-preview decision](docs/decisions/0004-hosted-byok-preview.md) before describing or
+testing the Vercel application.
 
 ## What it looks like
 
