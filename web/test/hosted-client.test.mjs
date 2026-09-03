@@ -117,3 +117,13 @@ test('the hosted shell retains the original navigation and runnable code display
   assert.match(app, /firstTextAt=performance\.now\(\)/);
   assert.match(app, /if\(runnable\)loadRunnerCode\(runnable\.language,runnable\.code,true,null,false\)/);
 });
+
+test('the hosted deployment isolates its browser context', async () => {
+  const config = await readFile(new URL('../next.config.ts', import.meta.url), 'utf8');
+  assert.match(config, /Cross-Origin-Opener-Policy/);
+  assert.match(config, /Cross-Origin-Resource-Policy/);
+  assert.match(config, /Origin-Agent-Cluster/);
+  assert.match(config, /Strict-Transport-Security/);
+  assert.match(config, /X-Frame-Options.*DENY/s);
+  assert.match(config, /X-Permitted-Cross-Domain-Policies.*none/s);
+});
