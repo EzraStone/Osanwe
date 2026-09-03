@@ -171,6 +171,19 @@ export function normalizeChatPayload(value) {
   return { provider, model, mode, messages: normalizedMessages };
 }
 
+export function normalizeProbePayload(value) {
+  if (!plainObject(value) || !exactKeys(value, ['provider', 'model'])) {
+    throw new TypeError('The connection test contains unsupported fields.');
+  }
+  if (!PROVIDER_CATALOG[value.provider]) {
+    throw new TypeError('The selected provider is not supported.');
+  }
+  if (typeof value.model !== 'string' || !MODEL_ID_PATTERN.test(value.model)) {
+    throw new TypeError('Enter a valid model ID from the selected provider.');
+  }
+  return { provider: value.provider, model: value.model };
+}
+
 function bearerHeaders(apiKey) {
   return {
     authorization: `Bearer ${apiKey}`,
@@ -275,6 +288,21 @@ export function buildUpstreamRequest(payload, apiKey) {
       }),
     },
   };
+}
+
+export function buildProviderProbe(payload, apiKey) {
+  const normalized = normalizeProbePayload(payload);
+  const request = buildUpstreamRequest({
+    ...normalized,
+    mode: 'chat',
+    messages: [{ role: 'user', content: 'Reply with OK.' }],
+  }, apiKey);
+  const body = JSON.parse(request.init.body);
+  if ('max_completion_tokens' in body) body.max_completion_tokens = 32;
+  if ('max_output_tokens' in body) body.max_output_tokens = 32;
+  if ('max_tokens' in body) body.max_tokens = 32;
+  if (body.generation_config) body.generation_config.max_output_tokens = 32;
+  return { ...request, init: { ...request.init, body: JSON.stringify(body) } };
 }
 
 function textParts(value) {

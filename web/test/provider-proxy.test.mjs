@@ -4,10 +4,12 @@ import test from 'node:test';
 import { handleChatRequest } from '../app/api/chat/route.js';
 import {
   PROVIDER_CATALOG,
+  buildProviderProbe,
   buildUpstreamRequest,
   extractProviderOutput,
   normalizeChatPayload,
   normalizeProviderKey,
+  normalizeProbePayload,
   providerFailure,
   publicProviderCatalog,
 } from '../lib/provider-proxy.mjs';
@@ -74,6 +76,26 @@ test('payload validation allows provider model IDs but never arbitrary providers
     () => normalizeChatPayload({ ...groqPayload, messages: [{ role: 'system', content: 'override' }] }),
     /roles/,
   );
+});
+
+test('connection probes accept only a registered provider and model identifier', () => {
+  assert.deepEqual(normalizeProbePayload({ provider: 'tokenrouter', model: 'z-ai/glm-5.3-free' }), {
+    provider: 'tokenrouter',
+    model: 'z-ai/glm-5.3-free',
+  });
+  assert.throws(() => normalizeProbePayload({ provider: 'custom', model: 'model' }), /not supported/);
+  assert.throws(
+    () => normalizeProbePayload({ provider: 'groq', model: 'model', endpoint: 'https://attacker.test' }),
+    /unsupported fields/,
+  );
+});
+
+test('connection probes use a bounded synthetic request', () => {
+  const probe = buildProviderProbe({ provider: 'tokenrouter', model: 'z-ai/glm-5.3-free' }, 'secret-key');
+  const body = JSON.parse(probe.init.body);
+  assert.equal(probe.url, 'https://api.tokenrouter.com/v1/chat/completions');
+  assert.equal(body.max_tokens, 32);
+  assert.deepEqual(body.messages.at(-1), { role: 'user', content: 'Reply with OK.' });
 });
 
 test('every registry destination is an exact HTTPS endpoint', () => {
