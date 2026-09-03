@@ -11,6 +11,7 @@ import {
   normalizeProviderKey,
   normalizeProbePayload,
   providerFailure,
+  providerStyle,
   publicProviderCatalog,
 } from '../lib/provider-proxy.mjs';
 
@@ -107,6 +108,12 @@ test('every registry destination is an exact HTTPS endpoint', () => {
   }
 });
 
+test('provider styles are available without exposing registry configuration', () => {
+  assert.equal(providerStyle('tokenrouter'), 'openai-chat');
+  assert.equal(providerStyle('openai'), 'openai-responses');
+  assert.equal(providerStyle('unknown'), null);
+});
+
 test('Groq requests use only the fixed chat endpoint and a bounded body', () => {
   const upstream = buildUpstreamRequest(normalizeChatPayload(groqPayload), 'secret-key');
   assert.equal(upstream.url, 'https://api.groq.com/openai/v1/chat/completions');
@@ -116,7 +123,7 @@ test('Groq requests use only the fixed chat endpoint and a bounded body', () => 
   assert.equal(body.model, 'openai/gpt-oss-20b');
   assert.equal(body.max_completion_tokens, 2048);
   assert.equal(body.reasoning_effort, 'low');
-  assert.equal(body.stream, false);
+  assert.equal(body.stream, true);
   assert.deepEqual(body.messages.at(-1), { role: 'user', content: 'hello' });
 });
 
@@ -133,7 +140,7 @@ test('TokenRouter requests use its fixed OpenAI-compatible endpoint and GLM mode
   const body = JSON.parse(upstream.init.body);
   assert.equal(body.model, 'z-ai/glm-5.3-free');
   assert.equal(body.max_tokens, 2048);
-  assert.equal(body.stream, false);
+  assert.equal(body.stream, true);
   assert.deepEqual(body.messages.at(-1), { role: 'user', content: 'hello' });
 });
 
@@ -148,6 +155,7 @@ test('OpenAI requests use Responses with storage disabled and bounded reasoning'
   assert.equal(upstream.url, 'https://api.openai.com/v1/responses');
   const body = JSON.parse(upstream.init.body);
   assert.equal(body.store, false);
+  assert.equal(body.stream, true);
   assert.equal(body.max_output_tokens, 2048);
   assert.equal(body.reasoning.effort, 'low');
   assert.match(body.instructions, /coding assistant/);
@@ -162,15 +170,26 @@ test('Anthropic and Gemini use their native authentication and request shapes', 
   }), 'anthropic-key');
   assert.equal(anthropic.init.headers['x-api-key'], 'anthropic-key');
   assert.equal(anthropic.init.headers.authorization, undefined);
+  assert.equal(JSON.parse(anthropic.init.body).stream, true);
 
   const gemini = buildUpstreamRequest(normalizeChatPayload({
     ...groqPayload,
     provider: 'google',
     model: 'owner/model:one',
   }), 'google-key');
-  assert.equal(gemini.url, 'https://generativelanguage.googleapis.com/v1beta/models/owner%2Fmodel%3Aone:generateContent');
+  assert.equal(gemini.url, 'https://generativelanguage.googleapis.com/v1beta/models/owner%2Fmodel%3Aone:streamGenerateContent?alt=sse');
   assert.equal(gemini.init.headers['x-goog-api-key'], 'google-key');
   assert.equal(JSON.parse(gemini.init.body).contents[0].role, 'user');
+});
+
+test('connection probes remain non-streaming and discard their response content', () => {
+  const openai = buildProviderProbe({ provider: 'openai', model: 'gpt-5-mini' }, 'secret-key');
+  assert.equal(JSON.parse(openai.init.body).stream, false);
+  assert.equal(openai.init.headers.accept, 'application/json');
+
+  const gemini = buildProviderProbe({ provider: 'google', model: 'gemini-3.5-flash' }, 'secret-key');
+  assert.match(gemini.url, /:generateContent$/);
+  assert.doesNotMatch(gemini.url, /streamGenerateContent/);
 });
 
 test('provider output extraction supports all normalized response families', () => {

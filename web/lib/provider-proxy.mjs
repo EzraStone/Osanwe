@@ -188,7 +188,7 @@ function bearerHeaders(apiKey) {
   return {
     authorization: `Bearer ${apiKey}`,
     'content-type': 'application/json',
-    accept: 'application/json',
+    accept: 'text/event-stream',
   };
 }
 
@@ -197,7 +197,7 @@ function openAIChatRequest(payload, apiKey, config, instructions) {
     model: payload.model,
     messages: [{ role: 'system', content: instructions }, ...payload.messages],
     max_tokens: MAX_OUTPUT_TOKENS,
-    stream: false,
+    stream: true,
   };
 
   if (payload.provider === 'groq') {
@@ -231,6 +231,7 @@ export function buildUpstreamRequest(payload, apiKey) {
       input: payload.messages,
       max_output_tokens: MAX_OUTPUT_TOKENS,
       store: false,
+      stream: true,
     };
     if (/^(gpt-[56]|o\d)/.test(payload.model)) body.reasoning = { effort: 'low' };
     return {
@@ -253,7 +254,7 @@ export function buildUpstreamRequest(payload, apiKey) {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
-          accept: 'application/json',
+          accept: 'text/event-stream',
         },
         redirect: 'manual',
         body: JSON.stringify({
@@ -261,7 +262,7 @@ export function buildUpstreamRequest(payload, apiKey) {
           system: instructions,
           messages: payload.messages,
           max_tokens: MAX_OUTPUT_TOKENS,
-          stream: false,
+          stream: true,
         }),
       },
     };
@@ -272,13 +273,13 @@ export function buildUpstreamRequest(payload, apiKey) {
     parts: [{ text: message.content }],
   }));
   return {
-    url: `${config.endpoint}${encodeURIComponent(payload.model)}:generateContent`,
+    url: `${config.endpoint}${encodeURIComponent(payload.model)}:streamGenerateContent?alt=sse`,
     init: {
       method: 'POST',
       headers: {
         'x-goog-api-key': apiKey,
         'content-type': 'application/json',
-        accept: 'application/json',
+        accept: 'text/event-stream',
       },
       redirect: 'manual',
       body: JSON.stringify({
@@ -302,7 +303,21 @@ export function buildProviderProbe(payload, apiKey) {
   if ('max_output_tokens' in body) body.max_output_tokens = 32;
   if ('max_tokens' in body) body.max_tokens = 32;
   if (body.generation_config) body.generation_config.max_output_tokens = 32;
-  return { ...request, init: { ...request.init, body: JSON.stringify(body) } };
+  if ('stream' in body) body.stream = false;
+  const url = request.url.replace(':streamGenerateContent?alt=sse', ':generateContent');
+  return {
+    ...request,
+    url,
+    init: {
+      ...request.init,
+      headers: { ...request.init.headers, accept: 'application/json' },
+      body: JSON.stringify(body),
+    },
+  };
+}
+
+export function providerStyle(provider) {
+  return PROVIDER_CATALOG[provider]?.style || null;
 }
 
 function textParts(value) {
