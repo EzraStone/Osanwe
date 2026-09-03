@@ -100,6 +100,25 @@ export async function sendMessages(input, {
   return response;
 }
 
+export async function testProviderConnection({ provider, model, apiKey }, fetchImpl = globalThis.fetch) {
+  if (typeof provider !== 'string' || !provider) throw new TypeError('a provider is required');
+  if (typeof model !== 'string' || !model.trim()) throw new TypeError('a model is required');
+  if (typeof apiKey !== 'string' || apiKey !== apiKey.trim() || /[\r\n\0]/.test(apiKey)) {
+    throw new TypeError('the provider key is malformed');
+  }
+  const response = await fetchImpl('/api/providers/check', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({ provider, model: model.trim() }),
+  });
+  if (!response.ok) throw await responseError(response, `connection test failed with status ${response.status}`);
+  return response.json();
+}
+
 export async function responseError(response, fallback) {
   const text = await response.text();
   try {

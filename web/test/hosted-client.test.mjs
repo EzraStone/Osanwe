@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { loadModels, loadStatus, responseError, sendMessages } from '../public/client/assets/api.js';
+import {
+  loadModels,
+  loadStatus,
+  responseError,
+  sendMessages,
+  testProviderConnection,
+} from '../public/client/assets/api.js';
 
 const catalog = {
   providers: [
@@ -56,6 +62,25 @@ test('hosted client retains safe provider diagnostics for the interface', async 
   assert.equal(error.code, 'provider_limit_reached');
   assert.equal(error.retryable, true);
   assert.equal(error.status, 429);
+});
+
+test('provider connection test sends only the selected provider, model, and transient key', async () => {
+  let seen;
+  const result = await testProviderConnection({
+    provider: 'tokenrouter',
+    model: 'z-ai/glm-5.3-free',
+    apiKey: 'tokenrouter-test-key',
+  }, async (url, options) => {
+    seen = { url, options };
+    return Response.json({ ok: true, provider: 'tokenrouter', model: 'z-ai/glm-5.3-free' });
+  });
+  assert.equal(seen.url, '/api/providers/check');
+  assert.equal(seen.options.headers.authorization, 'Bearer tokenrouter-test-key');
+  assert.deepEqual(JSON.parse(seen.options.body), {
+    provider: 'tokenrouter',
+    model: 'z-ai/glm-5.3-free',
+  });
+  assert.equal(result.ok, true);
 });
 
 test('the hosted shell retains the original navigation and runnable code display', async () => {
