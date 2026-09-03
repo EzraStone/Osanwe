@@ -53,17 +53,23 @@ Provider permission, security review, and privacy correctness outrank any free-c
 deadline. Missing a temporary credit costs convenience; rushing an unresolved data or money path
 can permanently cost trust.
 
-## Website and local app boundary
+## Website, hosted preview, and local app boundary
 
-The public website should explain the project, publish downloads and checksums, show current
-limitations, and collect beta interest. The current interest link requires GitHub sign-in and
-creates a public issue tied to the applicant's GitHub username; that identity disclosure must appear
-beside the call to action. The website should not host the chat. The chat remains on `127.0.0.1`, and
-the static website has no prompt field or application path that receives prompts, API keys, tokens,
-or local history. A downloaded launcher should start the local client and open that loopback page.
+The public promotional website explains the project, publishes downloads and checksums, shows
+current limitations, and collects beta interest. The current interest link requires GitHub sign-in
+and creates a public issue tied to the applicant's GitHub username; that identity disclosure must
+appear beside the call to action. The promotional site has no prompt field or application path that
+receives prompts, API keys, tokens, or local history.
+
+A separately labeled hosted BYOK preview may provide a low-friction compatibility test. Its hosting
+platform necessarily processes the visitor's provider key, prompt, and answer in plaintext at
+runtime. It is not the relay path, does not use blind-signed tokens, and must never be presented as
+evidence that the relay privacy properties are working. The privacy beta chat remains in the
+downloadable client on `127.0.0.1`; its launcher starts the local client and opens that loopback page.
 
 Until checksummed archives, documented unsigned OS-warning paths, and an approved provider route
-exist, the website must say **Join the technical beta**, not **Start chatting**.
+exist, the promotional website must say **Join the technical beta**, not **Start chatting**. The
+hosted compatibility path may say **Try the hosted BYOK preview** only beside its runtime disclosure.
 
 ## What each tester does
 
