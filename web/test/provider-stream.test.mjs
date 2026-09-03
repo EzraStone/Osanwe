@@ -76,6 +76,19 @@ test('normalized events use one data record and never preserve provider fields',
   assert.doesNotMatch(encoded, /request_id|usage|account/);
 });
 
+test('provider stream errors are sanitized and terminal', async () => {
+  const upstream = new Response([
+    'event: error\n',
+    'data: {"type":"error","error":{"message":"account ezra@example.test request req_secret"}}\n\n',
+    'event: content_block_delta\n',
+    'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"must not appear"}}\n\n',
+  ].join('')).body;
+  const body = await new Response(normalizeProviderStream('anthropic', upstream)).text();
+  assert.match(body, /provider_stream_failed/);
+  assert.doesNotMatch(body, /ezra@example|req_secret|must not appear/);
+  assert.equal(body.match(/provider_stream_failed/g)?.length, 1);
+});
+
 test('provider stream emits text before the upstream response completes', async () => {
   let finish;
   const upstream = new ReadableStream({
