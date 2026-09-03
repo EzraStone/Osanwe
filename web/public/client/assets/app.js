@@ -658,8 +658,8 @@ function connectProviderKey(){
   providerKeyInput.value="";
   providerKeyInput.disabled=true;providerConsent.disabled=true;
   $("connectProviderKey").hidden=true;$("testProviderKey").hidden=false;$("forgetProviderKey").hidden=false;
-  $("providerKeyStatus").textContent="Key loaded for "+providerLabel()+" in this tab. It is sent through this host with each request; reload or choose Forget key to clear it.";
-  render();$("settingsDialog").close();input.focus();
+  $("providerKeyStatus").textContent="Key loaded for "+providerLabel()+" in this tab. Test the connection before closing Settings. Reload or choose Forget key to clear it.";
+  render();$("testProviderKey").focus();
 }
 
 function forgetProviderKey(){
