@@ -28,8 +28,18 @@ function openAIChatEvent(event) {
   return events;
 }
 
+function anthropicEvent(event) {
+  if (event.event === 'message_stop') return stop();
+  const value = parseObject(event.data);
+  if (!value) return [];
+  if (value.type === 'message_stop') return stop();
+  if (value.type !== 'content_block_delta') return [];
+  return textDelta(value.delta && typeof value.delta === 'object' ? value.delta.text : '');
+}
+
 export function normalizeProviderEvent(providerStyle, event) {
   if (providerStyle === 'openai-chat') return openAIChatEvent(event);
+  if (providerStyle === 'anthropic') return anthropicEvent(event);
   return [];
 }
 

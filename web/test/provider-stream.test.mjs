@@ -24,6 +24,17 @@ test('OpenAI-compatible finish markers stop the normalized stream', () => {
   }), [{ type: 'message_stop' }]);
 });
 
+test('Anthropic content deltas and stop events use the same client protocol', () => {
+  assert.deepEqual(normalizeProviderEvent('anthropic', {
+    event: 'content_block_delta',
+    data: JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'answer' } }),
+  }), [{ type: 'content_block_delta', delta: { type: 'text_delta', text: 'answer' } }]);
+  assert.deepEqual(normalizeProviderEvent('anthropic', {
+    event: 'message_stop',
+    data: JSON.stringify({ type: 'message_stop' }),
+  }), [{ type: 'message_stop' }]);
+});
+
 test('normalized events use one data record and never preserve provider fields', () => {
   const encoded = encodeNormalizedEvent({
     type: 'content_block_delta',
