@@ -113,8 +113,10 @@ test('the hosted shell retains the original navigation and runnable code display
   assert.match(css, /\*::-webkit-scrollbar-thumb/);
   assert.match(css, /#testProviderKey/);
   assert.match(css, /\.provider-test-note/);
-  assert.match(css, /\.opening \.hosted-boundary/);
-  assert.match(css, /\.local-client-link/);
+  assert.match(css, /\.opening \.hosted-boundary\{[^}]*border-top:1px solid var\(--line\)[^}]*background:transparent[^}]*text-align:left/);
+  assert.match(css, /\.local-client-link\{[^}]*display:inline[^}]*white-space:nowrap/);
+  assert.match(css, /\.opening-action\{[^}]*min-height:2\.65rem/);
+  assert.match(css, /\.opening::before\{left:auto; right:0;[^}]*font-size:10\.5rem; opacity:\.045/);
   const app = await readFile(new URL('../public/client/assets/app.js', import.meta.url), 'utf8');
   assert.match(app, /thread\.addEventListener\("scroll"/);
   assert.match(app, /scrollConversation\(true\)/);
