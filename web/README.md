@@ -32,11 +32,16 @@ npm install
 npm test
 npm run lint
 npm run build
+npx playwright install chromium
+npm run test:browser
 npm run dev
 ```
 
 Open `http://localhost:3000`. It redirects to the exact hosted client at `/client`. A live
 provider call requires the visitor's own key and may incur charges on that provider account.
+The browser suite uses a synthetic provider response and never spends provider credit. It proves
+that generated JavaScript runs automatically and that interactive HTML either remains inside the
+enforced no-network boundary or fails closed on browsers that do not yet support that boundary.
 
 ## Hosting
 
