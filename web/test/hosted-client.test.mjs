@@ -129,6 +129,10 @@ test('the hosted deployment isolates its browser context', async () => {
   assert.match(config, /Cross-Origin-Resource-Policy/);
   assert.match(config, /Origin-Agent-Cluster/);
   assert.match(config, /Strict-Transport-Security/);
-  assert.match(config, /X-Frame-Options.*DENY/s);
+  assert.match(config, /clientDocumentHeaders[\s\S]*frame-ancestors 'none'/);
+  assert.match(config, /clientDocumentHeaders[\s\S]*X-Frame-Options'[\s\S]*DENY/);
+  assert.match(config, /runnerHeaders[\s\S]*frame-ancestors 'self'/);
+  assert.match(config, /runnerHeaders[\s\S]*worker-src blob:/);
+  assert.match(config, /runnerHeaders[\s\S]*X-Frame-Options'[\s\S]*SAMEORIGIN/);
   assert.match(config, /X-Permitted-Cross-Domain-Policies.*none/s);
 });
