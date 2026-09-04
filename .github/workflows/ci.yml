@@ -101,6 +101,38 @@ jobs:
             exit 1
           }
 
+  hosted-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: install hosted client dependencies
+        run: npm ci
+
+      - name: hosted client tests
+        run: npm test
+
+      - name: hosted client lint
+        run: npm run lint
+
+      - name: hosted production build
+        run: npm run build
+
+      - name: install test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: real-browser sandbox checks
+        run: npm run test:browser
+
   go:
     runs-on: ubuntu-latest
     timeout-minutes: 30
