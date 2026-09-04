@@ -46,9 +46,14 @@ export async function handleProviderCheck(request, fetchImpl = fetch) {
   }
 
   let apiKey;
-  let payload;
   try {
     apiKey = normalizeProviderKey(request.headers.get('authorization'));
+  } catch (error) {
+    return errorResponse(401, error instanceof Error ? error.message : 'Load a provider key.');
+  }
+
+  let payload;
+  try {
     const body = await request.text();
     if (new TextEncoder().encode(body).byteLength > 4096) {
       return errorResponse(413, 'The connection test is too large.');

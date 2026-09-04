@@ -33,6 +33,14 @@ test('provider check verifies the selected fixed endpoint without returning cont
   assert.equal(JSON.parse(seen.init.body).max_tokens, 32);
 });
 
+test('provider check identifies a missing key as an authentication failure', async () => {
+  const response = await handleProviderCheck(request(payload, { authorization: '' }), async () => {
+    throw new Error('provider must not be called');
+  });
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: { message: 'Load a provider API key in Settings.' } });
+});
+
 test('provider check reports invalid credentials without reflecting provider details', async () => {
   const response = await handleProviderCheck(request(payload), async () =>
     Response.json({ error: { message: 'private account detail' } }, { status: 401 }),
