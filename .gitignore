@@ -16,6 +16,10 @@ results/
 *.key
 .DS_Store
 
+# Browser test output
+web/playwright-report/
+web/test-results/
+
 # Local component identities, copied from a server for testing
 ranger.crt
 gateway.crt
