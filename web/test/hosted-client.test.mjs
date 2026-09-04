@@ -94,9 +94,12 @@ test('the hosted shell retains the original navigation and runnable code display
   assert.match(html, /id="providerSelect"/);
   assert.match(html, /id="testProviderKey"/);
   assert.match(html, /32-token maximum/);
-  assert.match(html, /Hosted BYOK preview/);
+  assert.match(html, /Hosted preview/);
   assert.match(html, /host processes your key, prompt, and answer in transit/);
-  assert.match(html, /Understand the relay client/);
+  assert.match(html, /How the relay differs/);
+  assert.match(html, /Connect a provider/);
+  assert.doesNotMatch(html, /id="modeKicker"/);
+  assert.doesNotMatch(html, /Connect provider in Settings/);
   assert.match(html, /id="runnerPreview"/);
   assert.match(html, /sandbox="allow-scripts"/);
   assert.doesNotMatch(html, /allow-same-origin/);

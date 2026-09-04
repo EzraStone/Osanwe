@@ -30,9 +30,9 @@ var status=null,busy=false,stopping=false,broken=false,requestPhase="idle",lastT
     conversation=createConversation({model:model.value});
 var modeConversations={chat:conversation,code:createConversation({model:model.value})};
 var modeCopy={
-  chat:{kicker:"Bring your own key",title:"What are you thinking about?",placeholder:"Ask anything",assistant:"Osanwë",system:""},
+  chat:{title:"What are you thinking about?",placeholder:"Ask anything",assistant:"Osanwë",system:""},
   code:{
-    kicker:"Code assistant",title:"What should we build?",placeholder:"Describe a coding task",assistant:"Osanwë Code",
+    title:"What should we build?",placeholder:"Describe a coding task",assistant:"Osanwë Code",
     system:"You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. You cannot access the user's local files, run commands, or apply changes, so state that limitation whenever it matters. Prefer concise, directly usable code or patches. When creating or revising a web interface, return a complete runnable preview using fenced HTML, CSS, and JavaScript; Osanwë combines those blocks and runs them automatically after the response completes. Fence executable standalone JavaScript as javascript. JavaScript may include tests with test(name, fn) and assert(condition, message) for the local sandbox. The preview has no network, persistent storage, terminal, or ambient file access. A person may deliberately choose a file inside the preview, so never request sensitive files."
   }
 };
@@ -120,14 +120,13 @@ function render(){
   input.disabled=!chatAvailable;
 	input.placeholder=!providerKey?"Load a provider key in Settings":(!modelsReady?"Checking suggested models":"No model selected");
 	if(chatAvailable)input.placeholder=modeCopy[activeMode].placeholder;
-  $("modeKicker").textContent=modeCopy[activeMode].kicker;
   $("openingTitle").textContent=modeCopy[activeMode].title;
   if(tokens&&!trialReady){
 	$("openingSub").textContent="Open Settings and activate the invitation file supplied by your beta inviter.";
   }else if(tokens&&!trialAvailable){
 	$("openingSub").textContent="The current free test allowance is exhausted. The exact reset time is shown in Settings.";
   }else if(!providerKey){
-    $("openingSub").textContent="Choose a provider and model, then load a key in Settings to begin.";
+    $("openingSub").textContent="Choose a provider and model to begin.";
   }else if(!chatAvailable){
     $("openingSub").textContent="Choose a model ID available to your "+providerLabel()+" account.";
   }else if(activeMode==="code"){
