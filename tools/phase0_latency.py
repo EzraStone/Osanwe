@@ -111,15 +111,15 @@ def run_trial(
     last_token_at: float | None = None
     gaps: list[float] = []
     tokens = 0
+    resp = None
 
     try:
         resp = session.post(
             url, headers=headers, json=body, stream=True,
-            proxies=proxies, timeout=timeout,
+            proxies=proxies, timeout=timeout, allow_redirects=False,
         )
         if resp.status_code != 200:
-            detail = resp.text[:200].replace("\n", " ")
-            return Trial(arm, 0.0, 0.0, error=f"HTTP {resp.status_code}: {detail}")
+            return Trial(arm, 0.0, 0.0, error=f"HTTP {resp.status_code}")
 
         for raw in resp.iter_lines(decode_unicode=True):
             if not raw or not raw.startswith("data:"):
@@ -145,8 +145,11 @@ def run_trial(
 
         finished = time.perf_counter()
 
-    except requests.RequestException as exc:
-        return Trial(arm, 0.0, 0.0, error=f"{type(exc).__name__}: {exc}")
+    except requests.RequestException:
+        return Trial(arm, 0.0, 0.0, error="request transport failed")
+    finally:
+        if resp is not None:
+            resp.close()
 
     if first_token_at is None:
         return Trial(arm, 0.0, 0.0, error="stream produced no text tokens")
@@ -298,6 +301,10 @@ def main() -> int:
     ap.add_argument("--list-providers", action="store_true", help="show the provider presets and exit")
     ap.add_argument("--self-test", action="store_true",
                     help="verify every stream adapter against recorded fixtures and exit. No key or network needed")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="print planned request count and public settings without keys or network access")
+    ap.add_argument("--client-region", help="coarse client region, never a street address")
+    ap.add_argument("--relay-region", help="coarse relay region for campaign comparison")
     ap.add_argument("--api-key", help="credential (default: read the provider's env var)")
     ap.add_argument("--delay", type=float, default=None,
                     help="seconds to pause between trials. Free tiers are rate limited; "
@@ -330,6 +337,22 @@ def main() -> int:
     provider = providers.resolve(args.provider, args.base_url)
     base_url = args.base_url or provider.base_url
     model = args.model or provider.model
+
+    if args.runs < 5:
+        return _fail("Use at least 5 runs per arm; percentiles are meaningless below that.")
+    if args.max_tokens < 1 or args.max_tokens > 2048:
+        return _fail("Use an output limit from 1 to 2048 tokens.")
+    if args.dry_run:
+        print(json.dumps({
+            "dry_run": True, "provider": provider.name, "model": model,
+            "runs_per_arm": args.runs, "arms": 2 if args.proxy else 1,
+            "requests_including_warmup": (args.runs + 1) * (2 if args.proxy else 1),
+            "max_tokens_per_request": args.max_tokens,
+            "client_region": args.client_region, "relay_region": args.relay_region,
+            "warm": not args.cold,
+            "note": "No requests sent. This is not a price quote or spending authorization.",
+        }, indent=2))
+        return 0
 
     api_key = args.api_key
     if not api_key and provider.key_env:
@@ -366,13 +389,17 @@ def main() -> int:
 
     def do(arm: str) -> Trial:
         sess = sessions[arm] if warm else requests.Session()
-        return run_trial(
-            arm, sess,
-            provider=provider, base_url=base_url, model=model, api_key=api_key,
-            max_tokens=args.max_tokens,
-            proxies=proxies if arm == "proxied" else None,
-            timeout=args.timeout,
-        )
+        try:
+            return run_trial(
+                arm, sess,
+                provider=provider, base_url=base_url, model=model, api_key=api_key,
+                max_tokens=args.max_tokens,
+                proxies=proxies if arm == "proxied" else None,
+                timeout=args.timeout,
+            )
+        finally:
+            if not warm:
+                sess.close()
 
     # Discarded warmup: first request pays TLS handshake and provider cold-start.
     print("  warmup...", file=sys.stderr)
@@ -409,6 +436,9 @@ def main() -> int:
         "warm": warm,
         "proxy": safe_proxy,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "client_region": args.client_region,
+        "relay_region": args.relay_region,
+        "delay_seconds": delay,
     }
 
     print(render_markdown(direct, proxied, meta))

@@ -78,6 +78,12 @@ PROVIDERS: dict[str, Provider] = {
         "meta-llama/llama-3.1-8b-instruct", "OPENROUTER_API_KEY",
         "some models free"),
 
+    "tokenrouter": Provider(
+        "tokenrouter", "chat", "https://api.tokenrouter.com",
+        "z-ai/glm-5.3-free", "TOKENROUTER_API_KEY",
+        "verify this exact route's zero price and account quota before every campaign",
+        suggested_delay=3.0),
+
     "together": Provider(
         "together", "chat", "https://api.together.xyz",
         "meta-llama/Llama-3.1-8B-Instruct-Turbo", "TOGETHER_API_KEY"),

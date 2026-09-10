@@ -66,6 +66,9 @@ jobs:
       - name: relay authentication, allowlist, and tunnel tests
         run: python -m unittest discover -s tools -p 'test_phase0_tools.py' -v
 
+      - name: latency evidence safety and dry-run tests
+        run: python -m unittest discover -s tools -p 'test_phase0_safety.py' -v
+
   windows-client:
     runs-on: windows-latest
     timeout-minutes: 15
