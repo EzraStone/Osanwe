@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 param([string]$BaseUrl = 'https://osanwe.vercel.app')
 $ErrorActionPreference = 'Stop'
 $nodePath = (Get-Command node -ErrorAction Stop).Source

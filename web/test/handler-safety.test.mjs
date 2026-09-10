@@ -12,7 +12,10 @@ function request(body, extra = {}) {
   });
 }
 
-for (const [name, handler, payload] of [['chat', handleChatRequest, chat], ['check', handleProviderCheck, probe]]) {
+for (const { name, handler, payload } of [
+  { name: 'chat', handler: handleChatRequest, payload: chat },
+  { name: 'check', handler: handleProviderCheck, payload: probe },
+]) {
   test(`${name} does not reflect JSON fragments or upstream exception details`, async () => {
     for (const [body, fetcher] of [
       [`{"${secret}`, () => { throw new Error('must not call'); }],
