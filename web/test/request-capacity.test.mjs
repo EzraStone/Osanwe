@@ -28,11 +28,12 @@ test('request capacity removes expired identities and bounds memory', () => {
   const capacity = new RequestCapacity({ maxClients: 2, windowMs: 1000 });
   capacity.acquire('oldest', 1000)();
   capacity.acquire('newer', 1100)();
-  capacity.acquire('third', 1200)();
-  assert.equal(capacity.clients.has('oldest'), false);
+  assert.equal(capacity.acquire('third', 1200), null);
+  assert.equal(capacity.clients.has('oldest'), true);
   assert.equal(capacity.clients.size, 2);
   capacity.prune(2201);
   assert.equal(capacity.clients.size, 0);
+  assert.equal(typeof capacity.acquire('third', 2201), 'function');
 });
 
 test('request capacity fails closed when every bounded entry is active', () => {

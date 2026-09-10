@@ -11,7 +11,8 @@ export class RequestCapacity {
     this.prune(now);
     let entry = this.clients.get(client);
     if (!entry) {
-      if (this.clients.size >= this.maxClients) this.#evictOldestInactive();
+      // Keep recent accounting until expiry. Evicting inactive clients here lets
+      // address churn erase their rate limits before the window is over.
       if (this.clients.size >= this.maxClients) return null;
       entry = { active: 0, recent: [], lastSeen: now };
       this.clients.set(client, entry);
@@ -41,12 +42,4 @@ export class RequestCapacity {
     }
   }
 
-  #evictOldestInactive() {
-    let candidate = null;
-    for (const [client, entry] of this.clients) {
-      if (entry.active !== 0) continue;
-      if (!candidate || entry.lastSeen < candidate.entry.lastSeen) candidate = { client, entry };
-    }
-    if (candidate) this.clients.delete(candidate.client);
-  }
 }
