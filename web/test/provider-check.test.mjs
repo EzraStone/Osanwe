@@ -68,10 +68,24 @@ test('provider check refuses cross-site requests before forwarding credentials',
 test('provider check limits repeated synthetic requests from one connection', async () => {
   const sameClient = () => request(payload, { 'x-forwarded-for': 'provider-check-limit-test' });
   for (let index = 0; index < 5; index += 1) {
-    const accepted = await handleProviderCheck(sameClient(), async () => Response.json({ ok: true }));
+    const accepted = await handleProviderCheck(sameClient(), async () => Response.json({ choices: [{ message: { content: 'OK' } }] }));
     assert.equal(accepted.status, 200);
   }
   const refused = await handleProviderCheck(sameClient(), async () => Response.json({ ok: true }));
   assert.equal(refused.status, 429);
   assert.equal((await refused.json()).error.code, 'connection_check_limited');
 });
+
+for (const body of [
+  '{}', '{"choices":[{"message":{"content":"  "}}]}',
+  '{"error":{"message":"private account"},"choices":[{"message":{"content":"OK"}}]}',
+  'invalid JSON private account', 'x'.repeat(65537),
+]) {
+  test(`provider check rejects false-success body (${body.length} bytes)`, async () => {
+    const response = await handleProviderCheck(request(payload), async () => new Response(body));
+    assert.equal(response.status, 502);
+    const text = await response.text();
+    assert.match(text, /provider_output_missing/);
+    assert.doesNotMatch(text, /private account|invalid JSON/);
+  });
+}

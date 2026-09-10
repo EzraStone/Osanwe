@@ -333,6 +333,7 @@ function textParts(value) {
 
 export function extractProviderOutput(provider, value) {
   if (!plainObject(value)) throw new TypeError('The provider returned an unreadable response.');
+  if (value.error) throw new TypeError('The provider returned an error instead of text.');
   const style = PROVIDER_CATALOG[provider]?.style;
 
   if (style === 'openai-chat') {

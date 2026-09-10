@@ -1,11 +1,13 @@
 import {
   buildProviderProbe,
+  extractProviderOutput,
   normalizeProbePayload,
   normalizeProviderKey,
   providerFailure,
 } from '../../../../lib/provider-proxy.mjs';
 import { ephemeralClientIdentity } from '../../../../lib/client-identity.mjs';
 import { RequestCapacity } from '../../../../lib/request-capacity.mjs';
+import { readBoundedText } from '../../../../lib/bounded-body.mjs';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -52,17 +54,9 @@ export async function handleProviderCheck(request, fetchImpl = fetch) {
     return errorResponse(401, error instanceof Error ? error.message : 'Load a provider key.');
   }
 
-  let payload;
-  try {
-    const body = await request.text();
-    if (new TextEncoder().encode(body).byteLength > 4096) {
-      return errorResponse(413, 'The connection test is too large.');
-    }
-    payload = normalizeProbePayload(JSON.parse(body));
-  } catch (error) {
-    return errorResponse(400, error instanceof Error ? error.message : 'The connection test is invalid.');
+  if (Number(request.headers.get('content-length')) > 4096) {
+    return errorResponse(413, 'The connection test is too large.');
   }
-
   const release = checkCapacity.acquire(ephemeralClientIdentity(request));
   if (!release) {
     return errorResponse(429, 'Too many connection tests were requested. Try again in a minute.', {
@@ -70,19 +64,39 @@ export async function handleProviderCheck(request, fetchImpl = fetch) {
       retryable: true,
     });
   }
-  const upstream = buildProviderProbe(payload, apiKey);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
   const abortUpstream = () => controller.abort();
   request.signal.addEventListener('abort', abortUpstream, { once: true });
+  if (request.signal.aborted) abortUpstream();
   try {
+    let value;
+    try {
+      value = JSON.parse(await readBoundedText(request.body, 4096, { signal: controller.signal }));
+    } catch (error) {
+      return errorResponse(error instanceof RangeError ? 413 : 400,
+        error instanceof RangeError ? 'The connection test is too large.' : 'The connection test must contain valid JSON.');
+    }
+    let payload;
+    try { payload = normalizeProbePayload(value); } catch (error) {
+      return errorResponse(400, error.message);
+    }
+    const upstream = buildProviderProbe(payload, apiKey);
+    controller.signal.throwIfAborted();
     const response = await fetchImpl(upstream.url, { ...upstream.init, signal: controller.signal });
     if (!response.ok) {
       try { await response.body?.cancel(); } catch { /* nothing to retain */ }
       const failure = providerFailure(response.status);
       return errorResponse(response.status === 429 ? 429 : 502, failure.message, failure);
     }
-    try { await response.body?.cancel(); } catch { /* the status is sufficient */ }
+    try {
+      const raw = await readBoundedText(response.body, 64 * 1024, { signal: controller.signal });
+      extractProviderOutput(payload.provider, JSON.parse(raw));
+    } catch {
+      return errorResponse(502, 'The provider did not return readable text. Try another model or check its output limit.', {
+        code: 'provider_output_missing', retryable: false,
+      });
+    }
     return json(200, { ok: true, provider: payload.provider, model: payload.model });
   } catch (error) {
     const timedOut = error instanceof Error && error.name === 'AbortError';
