@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { handleChatRequest } from '../app/api/chat/route.js';
 import { handleProviderCheck } from '../app/api/providers/check/route.js';
+import { readProviderTextStream } from '../public/client/assets/sse.js';
 
 const provider = process.env.OSANWE_LIVE_PROVIDER;
 const model = process.env.OSANWE_LIVE_MODEL;
@@ -29,10 +30,10 @@ test('opt-in live provider smoke test returns visible text', { skip: !enabled },
     }),
   });
   const response = await handleChatRequest(request);
-  const body = await response.text();
-  assert.equal(response.status, 200, body);
-  assert.match(body, /content_block_delta/);
-  assert.match(body, /message_stop/);
+  assert.equal(response.status, 200, 'Provider request did not succeed.');
+  let answer = '';
+  await readProviderTextStream(response.body, (text) => { answer += text; });
+  assert.ok(answer.trim().length > 0, 'No readable answer was returned.');
 });
 
 test('opt-in live provider connection check accepts the selected key and model', { skip: !checkEnabled }, async () => {
@@ -48,6 +49,6 @@ test('opt-in live provider connection check accepts the selected key and model',
   });
   const response = await handleProviderCheck(request);
   const body = await response.text();
-  assert.equal(response.status, 200, body);
+  assert.equal(response.status, 200, 'Provider check did not succeed.');
   assert.deepEqual(JSON.parse(body), { ok: true, provider, model });
 });

@@ -677,7 +677,7 @@ async function checkProviderConnection(){
   button.disabled=true;message.textContent="Testing "+providerLabel()+" with a bounded synthetic request…";
   try{
     var result=await testProviderConnection({provider:providerId,model:model.value,apiKey:providerKey});
-    message.textContent="Connection verified. "+providerLabel()+" accepted "+result.model+".";
+    message.textContent="Connection verified. "+providerLabel()+" returned text from "+result.model+".";
   }catch(error){
     var retry=error&&error.retryable?" You can try again.":"";
     message.textContent=(error&&error.message?error.message:"Connection test failed.")+retry;
