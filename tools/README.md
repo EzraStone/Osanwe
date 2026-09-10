@@ -1,5 +1,10 @@
 # Phase 0 tooling
 
+For the next zero-spend campaign, start with
+[`phase0-next-campaign.md`](../docs/phase0-next-campaign.md). The harness now
+supports `--dry-run`, coarse client/relay region metadata, and a TokenRouter
+candidate preset. A dry run reads no key and sends no provider requests.
+
 Two throwaway programs whose only job is to answer the question that gates the whole project
 (design document §9):
 
