@@ -11,6 +11,7 @@ import {
 import { normalizeProviderStream } from '../../../lib/provider-stream.mjs';
 import { RequestCapacity } from '../../../lib/request-capacity.mjs';
 import { ephemeralClientIdentity } from '../../../lib/client-identity.mjs';
+import { readBoundedText } from '../../../lib/bounded-body.mjs';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -52,30 +53,6 @@ function sameOriginRequest(request) {
   return !origin || origin === new URL(request.url).origin;
 }
 
-async function readBoundedText(body, limit) {
-  if (!body || typeof body.getReader !== 'function') return '';
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let bytes = 0;
-  let text = '';
-  try {
-    while (true) {
-      const item = await reader.read();
-      if (item.done) break;
-      bytes += item.value.byteLength;
-      if (bytes > limit) {
-        try { await reader.cancel(); } catch { /* cleanup only */ }
-        throw new RangeError('body too large');
-      }
-      text += decoder.decode(item.value, { stream: true });
-    }
-    text += decoder.decode();
-    return text;
-  } finally {
-    try { reader.releaseLock(); } catch { /* cleanup only */ }
-  }
-}
-
 function providerStream(output) {
   const body = [
     `data: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: output } })}\n\n`,
@@ -107,7 +84,7 @@ export async function handleChatRequest(request, fetchImpl = fetch) {
   try {
     let rawBody;
     try {
-      rawBody = await readBoundedText(request.body, MAX_REQUEST_BYTES);
+      rawBody = await readBoundedText(request.body, MAX_REQUEST_BYTES, { signal: request.signal });
     } catch (error) {
       const message = error instanceof RangeError
         ? 'The conversation is too large for this beta.'
@@ -116,8 +93,12 @@ export async function handleChatRequest(request, fetchImpl = fetch) {
     }
 
     let payload;
+    let value;
+    try { value = JSON.parse(rawBody); } catch {
+      return errorResponse(400, 'The request must contain valid JSON.');
+    }
     try {
-      payload = normalizeChatPayload(JSON.parse(rawBody));
+      payload = normalizeChatPayload(value);
     } catch (error) {
       return errorResponse(400, error instanceof Error ? error.message : 'The request is invalid.');
     }
@@ -127,8 +108,10 @@ export async function handleChatRequest(request, fetchImpl = fetch) {
     const timeout = setTimeout(() => controller.abort(), 60_000);
     const abortUpstream = () => controller.abort();
     request.signal.addEventListener('abort', abortUpstream, { once: true });
+    if (request.signal.aborted) abortUpstream();
 
     try {
+      controller.signal.throwIfAborted();
       const response = await fetchImpl(upstream.url, { ...upstream.init, signal: controller.signal });
       if (!response.ok) {
         try { await response.body?.cancel(); } catch { /* nothing to retain */ }
@@ -141,6 +124,7 @@ export async function handleChatRequest(request, fetchImpl = fetch) {
 
       if (response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
         const cleanup = () => {
+          controller.abort();
           clearTimeout(timeout);
           request.signal.removeEventListener('abort', abortUpstream);
           release();
@@ -153,24 +137,29 @@ export async function handleChatRequest(request, fetchImpl = fetch) {
         return new Response(body, { status: 200, headers: STREAM_HEADERS });
       }
 
-      let value;
+      let output;
       try {
-        const rawResponse = await readBoundedText(response.body, 1024 * 1024);
-        value = JSON.parse(rawResponse);
+        const rawResponse = await readBoundedText(response.body, 1024 * 1024, { signal: controller.signal });
+        let responseValue;
+        try { responseValue = JSON.parse(rawResponse); } catch {
+          return errorResponse(502, 'The provider returned an unreadable response.');
+        }
+        try { output = extractProviderOutput(payload.provider, responseValue); } catch (error) {
+          return errorResponse(502, error.message);
+        }
       } catch (error) {
         if (error instanceof RangeError) return errorResponse(502, 'The provider response was unexpectedly large.');
         throw error;
       }
-      return providerStream(extractProviderOutput(payload.provider, value));
+      return providerStream(output);
     } catch (error) {
       const message = error instanceof Error && error.name === 'AbortError'
         ? 'The provider took too long to answer.'
-        : error instanceof Error && error.message
-          ? error.message
-          : 'The provider could not be reached.';
+        : 'The provider could not be reached.';
       return errorResponse(502, message);
     } finally {
       if (!streamOwnsCleanup) {
+        controller.abort();
         clearTimeout(timeout);
         request.signal.removeEventListener('abort', abortUpstream);
       }
