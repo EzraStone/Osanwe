@@ -96,6 +96,7 @@ export function normalizeProviderStream(providerStyle, upstream, { maxBytes, onF
   let stopped = false;
   let finalized = false;
   let cancelled = false;
+  let visibleText = false;
 
   function finalize() {
     if (finalized) return;
@@ -114,8 +115,13 @@ export function normalizeProviderStream(providerStyle, upstream, { maxBytes, onF
       if (event.type === 'message_stop') {
         if (stopped) continue;
         stopped = true;
+        if (!visibleText) {
+          controller.enqueue(encoder.encode(encodeNormalizedEvent(streamFailure()[0])));
+          continue;
+        }
       }
       if (stopped && event.type !== 'message_stop') continue;
+      if (event.delta?.text?.trim()) visibleText = true;
       controller.enqueue(encoder.encode(encodeNormalizedEvent(event)));
     }
   }
@@ -129,10 +135,16 @@ export function normalizeProviderStream(providerStyle, upstream, { maxBytes, onF
           for (const event of decoder.push(item.value)) {
             write(normalizeProviderEvent(providerStyle, event), controller);
           }
+          if (stopped) {
+            void reader.cancel().catch(() => {});
+            break;
+          }
         }
+        if (cancelled) return;
         for (const event of decoder.finish()) {
           write(normalizeProviderEvent(providerStyle, event), controller);
         }
+        if (!stopped) write(streamFailure(), controller);
         controller.close();
       } catch {
         if (!cancelled) {
@@ -140,6 +152,7 @@ export function normalizeProviderStream(providerStyle, upstream, { maxBytes, onF
           controller.close();
         }
       } finally {
+        void reader.cancel().catch(() => {});
         try { reader.releaseLock(); } catch { /* stream cleanup only */ }
         finalize();
       }

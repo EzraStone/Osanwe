@@ -110,12 +110,32 @@ test('provider stream emits text before the upstream response completes', async 
 
 test('provider stream emits only one terminal event', async () => {
   const upstream = new Response([
+    'data: {"choices":[{"delta":{"content":"answer"}}]}\n\n',
     'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
     'data: [DONE]\n\n',
   ].join('')).body;
   const response = new Response(normalizeProviderStream('openai-chat', upstream));
   const body = await response.text();
   assert.equal(body.match(/message_stop/g)?.length, 1);
+});
+
+test('a terminal marker without readable text is a failure, not an empty answer', async () => {
+  for (const stream of ['data: [DONE]\n\n', 'data: {"choices":[{"delta":{"content":" "}}]}\n\ndata: [DONE]\n\n']) {
+    const body = await new Response(normalizeProviderStream('openai-chat', new Response(stream).body)).text();
+    assert.match(body, /provider_stream_failed/);
+    assert.doesNotMatch(body, /message_stop/);
+  }
+});
+
+test('an explicit terminal closes and cancels an upstream that stays open', async () => {
+  let cancelled = false;
+  const source = new ReadableStream({
+    start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n')); },
+    cancel() { cancelled = true; },
+  });
+  const body = await new Response(normalizeProviderStream('openai-chat', source)).text();
+  assert.match(body, /message_stop/);
+  assert.equal(cancelled, true);
 });
 
 test('provider stream finalizes its request lifecycle once', async () => {
