@@ -128,12 +128,15 @@ export function normalizeProviderKey(authorization) {
 }
 
 export function normalizeChatPayload(value) {
-  if (!plainObject(value) || !exactKeys(value, ['provider', 'model', 'mode', 'messages'])) {
+  if (!plainObject(value) || !exactKeys(value, ['provider', 'model', 'mode', 'messages', 'max_output_tokens'])) {
     throw new TypeError('The request contains unsupported fields.');
   }
 
   const { provider, model, mode, messages } = value;
-  if (!PROVIDER_CATALOG[provider]) throw new TypeError('The selected provider is not supported.');
+  if (typeof provider !== 'string' || !Object.hasOwn(PROVIDER_CATALOG, provider)) throw new TypeError('The selected provider is not supported.');
+  if (value.max_output_tokens !== undefined && (!Number.isInteger(value.max_output_tokens) || value.max_output_tokens < 1 || value.max_output_tokens > MAX_OUTPUT_TOKENS)) {
+    throw new TypeError('The output limit must be an integer from 1 to 2048.');
+  }
   if (typeof model !== 'string' || !MODEL_ID_PATTERN.test(model)) {
     throw new TypeError('Enter a valid model ID from the selected provider.');
   }
@@ -168,14 +171,16 @@ export function normalizeChatPayload(value) {
     throw new TypeError('The final conversation message must be from the user.');
   }
 
-  return { provider, model, mode, messages: normalizedMessages };
+  return { provider, model, mode, messages: normalizedMessages,
+    ...(value.max_output_tokens === undefined ? {} : { max_output_tokens: value.max_output_tokens }),
+  };
 }
 
 export function normalizeProbePayload(value) {
   if (!plainObject(value) || !exactKeys(value, ['provider', 'model'])) {
     throw new TypeError('The connection test contains unsupported fields.');
   }
-  if (!PROVIDER_CATALOG[value.provider]) {
+  if (typeof value.provider !== 'string' || !Object.hasOwn(PROVIDER_CATALOG, value.provider)) {
     throw new TypeError('The selected provider is not supported.');
   }
   if (typeof value.model !== 'string' || !MODEL_ID_PATTERN.test(value.model)) {
@@ -196,13 +201,13 @@ function openAIChatRequest(payload, apiKey, config, instructions) {
   const body = {
     model: payload.model,
     messages: [{ role: 'system', content: instructions }, ...payload.messages],
-    max_tokens: MAX_OUTPUT_TOKENS,
+    max_tokens: payload.max_output_tokens ?? MAX_OUTPUT_TOKENS,
     stream: true,
   };
 
   if (payload.provider === 'groq') {
     delete body.max_tokens;
-    body.max_completion_tokens = MAX_OUTPUT_TOKENS;
+    body.max_completion_tokens = payload.max_output_tokens ?? MAX_OUTPUT_TOKENS;
     if (payload.model.startsWith('openai/gpt-oss-')) body.reasoning_effort = 'low';
   }
   return {
@@ -229,7 +234,7 @@ export function buildUpstreamRequest(payload, apiKey) {
       model: payload.model,
       instructions,
       input: payload.messages,
-      max_output_tokens: MAX_OUTPUT_TOKENS,
+      max_output_tokens: payload.max_output_tokens ?? MAX_OUTPUT_TOKENS,
       store: false,
       stream: true,
     };
@@ -261,7 +266,7 @@ export function buildUpstreamRequest(payload, apiKey) {
           model: payload.model,
           system: instructions,
           messages: payload.messages,
-          max_tokens: MAX_OUTPUT_TOKENS,
+          max_tokens: payload.max_output_tokens ?? MAX_OUTPUT_TOKENS,
           stream: true,
         }),
       },
@@ -285,7 +290,7 @@ export function buildUpstreamRequest(payload, apiKey) {
       body: JSON.stringify({
         system_instruction: { parts: [{ text: instructions }] },
         contents,
-        generation_config: { max_output_tokens: MAX_OUTPUT_TOKENS },
+        generation_config: { max_output_tokens: payload.max_output_tokens ?? MAX_OUTPUT_TOKENS },
       }),
     },
   };
