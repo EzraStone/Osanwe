@@ -40,8 +40,11 @@ npm run dev
 Open `http://localhost:3000`. It redirects to the exact hosted client at `/client`. A live
 provider call requires the visitor's own key and may incur charges on that provider account.
 The browser suite uses a synthetic provider response and never spends provider credit. It proves
-that generated JavaScript runs automatically and that interactive HTML either remains inside the
-enforced no-network boundary or fails closed on browsers that do not yet support that boundary.
+that generated JavaScript runs automatically. Unsupported-browser HTML tests
+are reported separately from actual execution. Native HTTP isolation passed on
+installed Chrome, but a native WebRTC case crashes and remains unresolved; see
+[`preview verification`](../docs/preview-verification.md). Do not read a skipped
+test as a successful sandbox check.
 
 ## Hosting
 
@@ -64,3 +67,6 @@ request. This is separate so a normal live chat verification never silently doub
 
 The Settings connection check and release procedure are documented in
 [`docs/hosted-provider-validation.md`](../docs/hosted-provider-validation.md).
+
+The free-only TokenRouter prompt, shared hosting safeguards, and current blocked
+release gates are linked from [`release gates`](../docs/release-gates.md).

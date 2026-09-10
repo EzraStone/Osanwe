@@ -1,9 +1,12 @@
 # Code runner boundary
 
 Code mode can load generated JavaScript and self-contained web pages into a local runner. Running
-code is always an explicit action; receiving a model response never executes it automatically. If
-one answer contains HTML, CSS, and JavaScript fences, the interface combines them into the exact web
-snapshot launched by **Run preview**.
+code in the hosted client starts automatically after a complete Code-mode answer
+contains runnable fences. Incomplete answers and unsupported languages do not
+auto-run. The downloadable relay client retains explicit **Run preview** controls.
+If one answer contains HTML, CSS, and JavaScript fences, the interface combines
+them into one in-memory web snapshot. The hosted Stop control discards the active
+frame without deleting the editor or last snapshot.
 
 ## JavaScript
 
@@ -35,7 +38,9 @@ are forwarded to the Console drawer; a synchronous error marks the run as comple
 
 Interactive HTML is gated to Chromium 152 or newer, where the response-level connection policy is
 available. Other browsers fail closed with an update message instead of running the page. Standalone
-JavaScript remains available in its network-blocked worker.
+JavaScript remains available in its network-blocked worker. The version gate is
+a compatibility filter, not proof of enforcement. The hosted native-WebRTC
+crash remains unresolved; see [verification findings](../preview-verification.md).
 
 Interactive HTML does not have the worker's reliable 2.5-second CPU cutoff. A page with a main-thread
 infinite loop or extreme memory use may still make the browser tab unresponsive. Use JavaScript mode
@@ -47,10 +52,10 @@ for bounded algorithm and test execution.
 - A preview can read a file only when the person deliberately selects or drops it into the generated
   page. That file remains inside the network-blocked preview and is not sent to the model, but the
   generated code can inspect it, so do not choose sensitive files.
-- No automatic execution of generated code.
+- Hosted Code-mode runnable answers execute automatically; edited code requires Run.
 - No network access from generated code.
 - No durable runner workspace; a page reload clears the editor, display, and results.
-- Preview Reload reruns the last explicit in-memory snapshot, not unrun editor changes.
+- Preview Reload reruns the last in-memory snapshot, not unrun editor changes.
 - The timeout is an availability guard, not a memory quota. Extremely memory-heavy code may still
   destabilize the browser tab.
 
