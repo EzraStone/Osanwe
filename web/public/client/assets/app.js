@@ -492,7 +492,7 @@ function addRunnerLine(kind,text){
 function showRunnerNetworkState(available){
   var badge=$("runnerNetworkState");
   if(available===true){
-    badge.textContent="Network off";badge.title="Generated code cannot make network requests";return;
+    badge.textContent="Network restricted";badge.title="Browser network policies are enabled. Preview isolation is experimental.";return;
   }
   if(available===false){
     badge.textContent="HTML locked";badge.title="Interactive HTML requires Chromium 152 or newer";return;
@@ -575,6 +575,10 @@ $("codePreviewToggle").addEventListener("click",function(){setRunnerOpen(true,th
 $("closeCodeRunner").addEventListener("click",function(){setRunnerOpen(false)});
 $("runCode").addEventListener("click",runEditorCode);
 $("rerunCode").addEventListener("click",rerunLastSnapshot);
+$("stopCode").addEventListener("click",function(){
+  resetRunnerFrame("Preview stopped. Reload to run the last snapshot.");
+  $("runnerStatus").classList.remove("warn");
+});
 $("expandCodeRunner").addEventListener("click",function(){
   var maximized=$("codeRunner").classList.toggle("is-maximized");
   this.textContent=maximized?"↙":"↗";

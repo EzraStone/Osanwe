@@ -131,6 +131,7 @@
         <button type="button" aria-label="Back" title="Preview navigation is unavailable" disabled>←</button>
         <button type="button" aria-label="Forward" title="Preview navigation is unavailable" disabled>→</button>
         <button type="button" id="rerunCode" aria-label="Reload preview" title="Reload preview">↻</button>
+        <button type="button" id="stopCode" aria-label="Stop preview" title="Stop preview">■</button>
         <div class="preview-address" aria-label="Preview address"><span aria-hidden="true">◇</span> <span id="previewAddress">osanwe://local-preview</span></div>
         <span class="network-off" id="runnerNetworkState" title="Checking the browser's preview boundary">Checking</span>
       </div>
@@ -161,7 +162,7 @@
         <pre id="runnerResults" class="runner-results" role="tabpanel" aria-labelledby="resultsTab" tabindex="0" hidden>No output yet.</pre>
         <div class="runner-footer">
           <p class="runner-status" id="runnerStatus" role="status" aria-live="polite">Ready. Nothing has run.</p>
-          <p class="runner-note" title="A preview can read only files you deliberately choose or drop into it.">Generated code auto-runs · network and storage blocked · selected files are readable by the preview</p>
+          <p class="runner-note" title="HTML may freeze or crash this tab. Selected or dropped files are readable by the preview; use only synthetic data.">Generated code auto-runs · experimental sandbox · use synthetic data</p>
         </div>
       </div>
     </aside>

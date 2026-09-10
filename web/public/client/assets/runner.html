@@ -391,7 +391,7 @@ function previewHTML(code) {
   stopAll();
   if (!networkIsolationReady) {
     beginWorkerOutput();
-    publishWorkerOutput("error", "Interactive HTML is disabled because this browser did not enforce the no-network policy. Use Chromium 152 or newer, then reopen Osanwë.");
+    publishWorkerOutput("error", "Interactive HTML is unavailable in this browser. Use Chrome or Edge 152 or newer, then reopen Osanwë. JavaScript console previews still work.");
     publishWorkerOutput("complete", "HTML preview blocked", { passed: 0, failed: 0, testCount: 0 });
     return;
   }
