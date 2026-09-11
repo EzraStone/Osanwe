@@ -55,3 +55,27 @@ document and nested data/srcdoc variants, identify whether the crash is tied to
 policy inheritance, then test the fix against both calibrated network controls.
 Never fix it by allowing same-origin access, removing the connection policy,
 lowering the version gate, or declaring the crash a passing security test.
+
+## 2026-09-10 isolated diagnostic
+
+`web/scripts/diagnose-preview-rtc.mjs` now reproduces the issue without the
+Osanwë client, provider requests, or credentials. Run it with Node from `web`;
+it launches a disposable headless Chrome and uses only loopback HTTP and UDP.
+It exits nonzero on a crashed or incomplete protected scenario.
+
+On Chrome 153.0.8010.36:
+
+| Scenario | Result | STUN packets |
+| --- | --- | ---: |
+| Unrestricted control | Completed | 3 |
+| Protected top document | Completed | 0 |
+| Protected data-URL frame | Completed | 0 |
+| Protected data-URL frame with nested srcdoc | Crashed | 0 |
+| Protected blob-URL frame with nested srcdoc | Crashed | 0 |
+
+This narrows the failure to the nested scenario in this browser configuration.
+The zero packet count during a crash is still not a passing isolation result.
+Switching the preview from a data URL to a blob URL did not remove the crash in
+this diagnostic, so production framing and security policies were not weakened.
+A browser-level fix or independently verified alternative is still required
+before widening interactive HTML access.
