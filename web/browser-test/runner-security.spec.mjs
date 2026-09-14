@@ -64,6 +64,8 @@ test('generated HTML and scripts automatically load as inert source in every bro
   await expect(runner.locator('pre.html-source')).toContainText('h1 { color: blue; }');
   await expect(runner.locator('pre.html-source')).toContainText('embedded-script-must-not-run');
   await expect(page.locator('#runnerNetworkState')).toHaveText('Source only');
+  await expect(page.locator('#runCode')).toHaveText('Show source');
+  await expect(page.locator('.generated-code-head button').first()).toHaveText('Show source');
   await expect(page.locator('#runnerStatus')).toHaveText('HTML shown as source. Interactive execution is paused.');
   await expect(runner.locator('iframe, img, #untrusted-heading')).toHaveCount(0);
   await expect(page.locator('#runnerResults')).not.toContainText('LOG  embedded-script');
@@ -94,6 +96,7 @@ test('switching from source-only HTML to JavaScript still runs console code', as
   await expect(runner.locator('pre.html-source')).toBeVisible();
   await page.locator('#editorTab').click();
   await page.locator('#runnerLanguage').selectOption('javascript');
+  await expect(page.locator('#runCode')).toHaveText('Run code');
   await page.locator('#runnerEditor').fill('console.log("worker remains available");');
   await page.locator('#runCode').click();
   await expect(runner.getByText('worker remains available', { exact: true })).toBeVisible();

@@ -292,7 +292,7 @@ function renderAssistantContent(body,text,withRunner){
       var useBundle=previewBundle&&(part===previewRoot||part.runnerLanguage==="javascript");
       var runnable=useBundle?previewBundle:{language:part.runnerLanguage,code:part.content};
       var loadButton=document.createElement("button");loadButton.type="button";
-      loadButton.textContent=runnable.language==="html"?"Run preview":"Run code";
+      loadButton.textContent=runnable.language==="html"?"Show source":"Run code";
       loadButton.addEventListener("click",function(){loadRunnerCode(runnable.language,runnable.code,true,loadButton)});
       head.appendChild(loadButton);
     }
@@ -477,7 +477,8 @@ function setRunnerOpen(open,opener){
 function loadRunnerCode(language,code,runNow,opener,moveFocus){
   $("runnerLanguage").value=language;$("runnerEditor").value=code;
   runnerLines=[];$("runnerResults").textContent="No output yet.";
-  $("runnerStatus").classList.remove("warn");$("runnerStatus").textContent=runNow?"Loading generated code into the sandbox…":"Loaded. Nothing runs until you choose Run in preview.";
+  showRunnerNetworkState();
+  $("runnerStatus").classList.remove("warn");$("runnerStatus").textContent=runNow?"Loading generated code…":(language==="html"?"Loaded. Choose Show source to display the markup without executing it.":"Loaded. Choose Run code to execute JavaScript.");
   runnerOpen=true;runnerReturnFocus=opener||document.activeElement;render();
   if(runNow)startRunnerRun(language,code,moveFocus!==false);else $("runnerEditor").focus();
 }
@@ -491,6 +492,7 @@ function addRunnerLine(kind,text){
 
 function showRunnerNetworkState(available){
   var badge=$("runnerNetworkState");
+  $("runCode").textContent=$("runnerLanguage").value==="html"?"Show source":"Run code";
   if($("runnerLanguage").value==="html"){
     badge.textContent="Source only";badge.title="Interactive HTML is paused for a browser safety issue. Generated markup is displayed as text, not executed.";return;
   }
@@ -509,11 +511,11 @@ function requestRunnerCapabilities(){
 
 function startRunnerRun(language,code,moveFocus){
   if(!code.trim()){
-    $("runnerStatus").textContent="Add code before running.";$("runnerStatus").classList.add("warn");$("runnerEditor").focus();return;
+    $("runnerStatus").textContent="Add code first.";$("runnerStatus").classList.add("warn");$("runnerEditor").focus();return;
   }
   runnerLastSnapshot={language:language,code:code};runnerActiveSnapshot=runnerLastSnapshot;
   runnerChannel=crypto.randomUUID();runnerLines=[];runnerHadError=false;setRunnerExecutionBusy(true);
-  $("runnerResults").textContent="Waiting for output…";$("runnerStatus").textContent="Running in the isolated sandbox…";
+  $("runnerResults").textContent="Waiting for output…";$("runnerStatus").textContent=language==="html"?"Displaying HTML as source. Scripts will not execute.":"Running JavaScript in the disposable worker…";
   $("runnerStatus").classList.remove("warn");$("rerunCode").disabled=true;
   if(language==="javascript"){showRunnerView("results");if(moveFocus!==false)$("resultsTab").focus()}
   else if(moveFocus!==false)$("closeCodeRunner").focus();
@@ -534,7 +536,7 @@ function runEditorCode(){
 
 function rerunLastSnapshot(){
   if(!runnerLastSnapshot){
-    $("runnerStatus").textContent="Nothing has run yet. Choose Run in preview first.";$("runnerStatus").classList.add("warn");return;
+    $("runnerStatus").textContent="No saved snapshot yet. Show source or run code first.";$("runnerStatus").classList.add("warn");return;
   }
   startRunnerRun(runnerLastSnapshot.language,runnerLastSnapshot.code,true);
 }
