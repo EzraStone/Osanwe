@@ -8,6 +8,7 @@ import {
 import { ephemeralClientIdentity } from '../../../../lib/client-identity.mjs';
 import { RequestCapacity } from '../../../../lib/request-capacity.mjs';
 import { readBoundedText } from '../../../../lib/bounded-body.mjs';
+import { hostedPauseResponse } from '../../../../lib/hosted-availability.mjs';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -42,6 +43,8 @@ function sameOriginRequest(request) {
 }
 
 export async function handleProviderCheck(request, fetchImpl = fetch) {
+  const paused = hostedPauseResponse();
+  if (paused) return paused;
   if (!sameOriginRequest(request)) return errorResponse(403, 'Cross-site requests are not allowed.');
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
     return errorResponse(415, 'Send a JSON request.');
