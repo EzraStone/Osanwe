@@ -138,7 +138,17 @@ test('the hosted deployment isolates its browser context', async () => {
   assert.match(config, /clientDocumentHeaders[\s\S]*X-Frame-Options'[\s\S]*DENY/);
   assert.match(config, /runnerHeaders[\s\S]*frame-ancestors 'self'/);
   assert.match(config, /runnerHeaders[\s\S]*worker-src blob:/);
+  assert.match(config, /runnerHeaders[\s\S]*frame-src 'none'/);
+  assert.match(config, /runnerHeaders[\s\S]*img-src 'none'/);
   assert.match(config, /Connection-Allowlist'[\s\S]*\(response-origin\);webrtc=block/);
   assert.match(config, /runnerHeaders[\s\S]*X-Frame-Options'[\s\S]*SAMEORIGIN/);
   assert.match(config, /X-Permitted-Cross-Domain-Policies.*none/s);
+});
+
+test('hosted HTML fallback has no generated-document execution path', async () => {
+  const runner = await readFile(new URL('../public/client/assets/runner.html', import.meta.url), 'utf8');
+  assert.match(runner, /source\.textContent = code/);
+  assert.match(runner, /htmlPreview: "source-only"/);
+  assert.doesNotMatch(runner, /DOMParser|innerHTML|srcdoc|createElement\("iframe"\)|allow-scripts|documentDataURL/);
+  assert.doesNotMatch(runner, /\u2014/);
 });

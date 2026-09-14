@@ -22,7 +22,7 @@ const clientDocumentHeaders = [
 const runnerHeaders = [
   {
     key: 'Content-Security-Policy',
-    value: "default-src 'none'; base-uri 'none'; child-src blob:; connect-src 'none'; font-src 'none'; form-action 'none'; frame-ancestors 'self'; frame-src data:; img-src data: blob:; media-src 'none'; object-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; worker-src blob:",
+    value: "default-src 'none'; base-uri 'none'; child-src blob:; connect-src 'none'; font-src 'none'; form-action 'none'; frame-ancestors 'self'; frame-src 'none'; img-src 'none'; media-src 'none'; object-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; worker-src blob:",
   },
   { key: 'Connection-Allowlist', value: '(response-origin);webrtc=block' },
   { key: 'X-Frame-Options', value: 'SAMEORIGIN' },

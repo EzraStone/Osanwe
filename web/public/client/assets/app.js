@@ -33,7 +33,7 @@ var modeCopy={
   chat:{title:"What are you thinking about?",placeholder:"Ask anything",assistant:"Osanwë",system:""},
   code:{
     title:"What should we build?",placeholder:"Describe a coding task",assistant:"Osanwë Code",
-    system:"You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. You cannot access the user's local files, run commands, or apply changes, so state that limitation whenever it matters. Prefer concise, directly usable code or patches. When creating or revising a web interface, return a complete runnable preview using fenced HTML, CSS, and JavaScript; Osanwë combines those blocks and runs them automatically after the response completes. Fence executable standalone JavaScript as javascript. JavaScript may include tests with test(name, fn) and assert(condition, message) for the local sandbox. The preview has no network, persistent storage, terminal, or ambient file access. A person may deliberately choose a file inside the preview, so never request sensitive files."
+    system:"You are Osanwë Code, a focused coding assistant. Help analyze, write, review, debug, and explain code. You cannot access the user's local files, run commands, or apply changes, so state that limitation whenever it matters. Prefer concise, directly usable code or patches. When creating or revising a web interface, return complete source using fenced HTML, CSS, and JavaScript; Osanwë combines those blocks and displays the source automatically. Interactive HTML execution is temporarily paused for a browser safety issue. Do not claim the web interface was run or tested. Standalone JavaScript runs automatically in a disposable worker without a DOM, network, terminal, or file access. Fence it as javascript. JavaScript may include tests with test(name, fn) and assert(condition, message). Use only synthetic data."
   }
 };
 document.body.dataset.mode=activeMode;
@@ -491,11 +491,14 @@ function addRunnerLine(kind,text){
 
 function showRunnerNetworkState(available){
   var badge=$("runnerNetworkState");
+  if($("runnerLanguage").value==="html"){
+    badge.textContent="Source only";badge.title="Interactive HTML is paused for a browser safety issue. Generated markup is displayed as text, not executed.";return;
+  }
   if(available===true){
     badge.textContent="Network restricted";badge.title="Browser network policies are enabled. Preview isolation is experimental.";return;
   }
   if(available===false){
-    badge.textContent="HTML locked";badge.title="Interactive HTML requires Chromium 152 or newer";return;
+    badge.textContent="Worker only";badge.title="JavaScript uses a disposable worker. Interactive HTML is paused in every browser.";return;
   }
   badge.textContent="Checking";badge.title="Checking the browser's preview boundary";
 }
@@ -514,7 +517,7 @@ function startRunnerRun(language,code,moveFocus){
   $("runnerStatus").classList.remove("warn");$("rerunCode").disabled=true;
   if(language==="javascript"){showRunnerView("results");if(moveFocus!==false)$("resultsTab").focus()}
   else if(moveFocus!==false)$("closeCodeRunner").focus();
-  $("previewAddress").textContent=language==="html"?"osanwe://local-preview/index.html":"osanwe://local-preview/console";
+  $("previewAddress").textContent=language==="html"?"osanwe://local-preview/source":"osanwe://local-preview/console";
   pendingRunnerRun={type:"osanwe-run",channel:runnerChannel,language:language,code:code};
   var expectedChannel=runnerChannel;
   runnerStartupTimer=window.setTimeout(function(){
@@ -596,6 +599,7 @@ $("runnerEditor").addEventListener("input",function(){
   }
 });
 $("runnerLanguage").addEventListener("change",function(){
+  requestRunnerCapabilities();
   if(!runnerBusy&&runnerLastSnapshot)$("runnerStatus").textContent="Language changed. Run it to update the display; Reload keeps the last snapshot.";
 });
 document.querySelectorAll("[data-runner-view]").forEach(function(button){button.addEventListener("click",function(){showRunnerView(button.dataset.runnerView)})});

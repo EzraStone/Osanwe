@@ -10,9 +10,8 @@
 html,body{width:100%; height:100%; min-height:100%; margin:0}
 body{overflow:auto; background:#fff; color:#1c1a17}
 #previewRoot{width:100%; min-height:100%}
-#previewRoot.app-view{height:100%; overflow:hidden}
 .empty{margin:0; padding:1rem; color:#6b6459; font-size:13px; line-height:1.5}
-.app-preview{display:block; width:100%; height:100%; border:0; background:#fff}
+.html-source{margin:0; padding:1rem; font-size:13px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere}
 .worker-view{padding:1rem; background:#11110f; color:#ebe7df; font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
 .worker-output{overflow:hidden; border:1px solid #35322b; border-radius:9px; background:#171613}
 .output-heading{padding:.65rem .8rem; border-bottom:1px solid #35322b; color:#d3ab6a; font:600 11px ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; letter-spacing:.09em; text-transform:uppercase}
@@ -31,7 +30,7 @@ body{overflow:auto; background:#fff; color:#1c1a17}
 </head>
 <body>
 <main id="previewRoot">
-  <p class="empty">Run JavaScript to see its output, or run HTML to open an interactive local preview.</p>
+  <p class="empty">JavaScript runs in a disposable worker. HTML is shown as source while interactive previews are paused.</p>
 </main>
 <script>
 const root = document.getElementById("previewRoot");
@@ -42,9 +41,6 @@ let channel = "";
 let worker = null;
 let workerURL = "";
 let timeout = null;
-let previewFrame = null;
-let previewTimeout = null;
-let previewReceiver = null;
 let outputList = null;
 
 function supportedNetworkBrowser() {
@@ -112,103 +108,12 @@ const workerSource = `
           emit("test", "PASS " + item.name, { passed: true });
         } catch (error) {
           failed += 1;
-          emit("test", "FAIL " + item.name + " — " + valueText(error), { passed: false });
+          emit("test", "FAIL " + item.name + ": " + valueText(error), { passed: false });
         }
       }
     }
     emit("complete", tests.length ? passed + " passed, " + failed + " failed" : (topLevelFailed ? "Run failed" : "Run completed"), { passed, failed, testCount: tests.length });
   };
-})();
-`;
-
-const previewPolicy = [
-  "default-src 'none'",
-  "style-src 'unsafe-inline'",
-  "script-src 'unsafe-inline' 'unsafe-eval'",
-  "img-src data: blob:",
-  "connect-src 'none'",
-  "webrtc 'block'",
-  "font-src 'none'",
-  "media-src 'none'",
-  "object-src 'none'",
-  "frame-src 'none'",
-  "worker-src 'none'",
-  "child-src 'none'",
-  "manifest-src 'none'",
-  "form-action 'none'",
-  "base-uri 'none'",
-].join("; ");
-
-// This bootstrap runs inside the generated page's opaque sandbox, never in the
-// trusted broker. CSP is the primary boundary; these replacements also make
-// common network attempts fail clearly for generated applications.
-const previewBootstrap = `
-(() => {
-  "use strict";
-  const hostWindow = window.parent;
-  const schedule = window.setTimeout.bind(window);
-  const enqueue = window.queueMicrotask.bind(window);
-  const errorType = Error;
-  const stringify = JSON.stringify.bind(JSON);
-  const stringValue = String;
-  const mapValues = Function.prototype.call.bind(Array.prototype.map);
-  const joinValues = Function.prototype.call.bind(Array.prototype.join);
-  const sliceText = Function.prototype.call.bind(String.prototype.slice);
-  const rejectPromise = Promise.reject.bind(Promise);
-  function valueText(value) {
-    if (typeof value === "string") return value;
-    if (value instanceof errorType) return value.stack || value.message;
-    try { return stringify(value); } catch (_) { return stringValue(value); }
-  }
-  const emit = (kind, values = []) => {
-    const text = sliceText(joinValues(mapValues(values, valueText), " "), 0, 12000);
-    hostWindow.postMessage({ type: "osanwe-preview-output", kind, text }, "*");
-  };
-  const blocked = () => rejectPromise(new errorType("Network access is disabled in this preview."));
-  const unavailable = () => { throw new errorType("Network access is disabled in this preview."); };
-  const pin = (name, value) => {
-    try { Object.defineProperty(globalThis, name, { value, configurable: false, writable: false }); } catch (_) {}
-  };
-  pin("fetch", blocked);
-  pin("XMLHttpRequest", unavailable);
-  pin("WebSocket", unavailable);
-  pin("EventSource", unavailable);
-  pin("WebTransport", unavailable);
-  pin("RTCPeerConnection", unavailable);
-  pin("webkitRTCPeerConnection", unavailable);
-  pin("Worker", unavailable);
-  pin("SharedWorker", unavailable);
-  pin("indexedDB", undefined);
-  pin("caches", undefined);
-  pin("localStorage", undefined);
-  pin("sessionStorage", undefined);
-  pin("open", () => null);
-  const preservedConsole = console;
-  for (const kind of ["log", "info", "warn", "error"]) {
-    const original = preservedConsole[kind] && preservedConsole[kind].bind(preservedConsole);
-    const forward = (...values) => {
-      if (original) original(...values);
-      emit(kind, values);
-    };
-    try { Object.defineProperty(preservedConsole, kind, { value: forward, configurable: false, writable: false }); }
-    catch (_) { try { preservedConsole[kind] = forward; } catch (_) {} }
-  }
-  pin("console", preservedConsole);
-  try { Object.defineProperty(navigator, "sendBeacon", { value: () => false, configurable: false, writable: false }); } catch (_) {}
-  document.addEventListener("submit", (event) => event.preventDefault(), true);
-  document.addEventListener("click", (event) => {
-    const link = event.target && event.target.closest ? event.target.closest("a[href]") : null;
-    if (link && !link.getAttribute("href").startsWith("#")) event.preventDefault();
-  }, true);
-  window.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    enqueue(() => {
-      if (!event.defaultPrevented) hostWindow.postMessage({ type: "osanwe-preview-control", action: "escape" }, "*");
-    });
-  });
-  window.addEventListener("error", (event) => emit("error", [event.error || event.message || "The generated page failed."]));
-  window.addEventListener("unhandledrejection", (event) => emit("error", [event.reason || "Unhandled promise rejection"]));
-  window.addEventListener("load", () => schedule(() => emit("ready"), 0), { once: true });
 })();
 `;
 
@@ -236,20 +141,8 @@ function stopWorker() {
   revokeWorkerURL();
 }
 
-function stopPreview() {
-  if (previewTimeout) window.clearTimeout(previewTimeout);
-  previewTimeout = null;
-  if (previewFrame) {
-    previewFrame.onload = null;
-    previewFrame.remove();
-  }
-  previewFrame = null;
-  previewReceiver = null;
-}
-
 function stopAll() {
   stopWorker();
-  stopPreview();
 }
 
 function beginWorkerOutput() {
@@ -324,155 +217,33 @@ function runJavaScript(code) {
   }, 2500);
 }
 
-function unwrap(node) {
-  const parent = node.parentNode;
-  if (!parent) return;
-  while (node.firstChild) parent.insertBefore(node.firstChild, node);
-  node.remove();
-}
-
-function sanitizeHTML(code) {
-  const parsed = new DOMParser().parseFromString(code, "text/html");
-  let removed = 0;
-
-  // Forms are neutralized but their controls remain available for local UI
-  // demos. Nested browsing contexts and plugin/resource elements are removed.
-  parsed.querySelectorAll("form").forEach((node) => {
-    unwrap(node);
-    removed += 1;
-  });
-  parsed.querySelectorAll("base,iframe,frame,frameset,object,embed,portal,link,meta[http-equiv]").forEach((node) => {
-    node.remove();
-    removed += 1;
-  });
-  const loadingAttributes = new Set([
-    "action", "background", "cite", "data", "formaction", "manifest", "ping", "poster", "srcset",
-  ]);
-  parsed.querySelectorAll("*").forEach((node) => {
-    for (const attribute of [...node.attributes]) {
-      const name = attribute.name.toLowerCase();
-      const value = attribute.value.trim();
-      const lowerValue = value.toLowerCase();
-      let strip = loadingAttributes.has(name) || name === "target" || name === "download";
-      if (name === "href" || name === "xlink:href") strip = !lowerValue.startsWith("#");
-      if (name === "src") {
-        const dataImage = node.localName === "img" && lowerValue.startsWith("data:image/");
-        strip = !dataImage;
-      }
-      if (strip) {
-        node.removeAttribute(attribute.name);
-        removed += 1;
-      }
-    }
-  });
-
-  const policy = parsed.createElement("meta");
-  policy.httpEquiv = "Content-Security-Policy";
-  policy.content = previewPolicy;
-  const referrer = parsed.createElement("meta");
-  referrer.name = "referrer";
-  referrer.content = "no-referrer";
-  const bootstrap = parsed.createElement("script");
-  bootstrap.textContent = previewBootstrap;
-  parsed.head.prepend(policy, referrer, bootstrap);
-  return { document: parsed, removed };
-}
-
-function documentDataURL(text) {
-  const bytes = new TextEncoder().encode(text);
-  const chunks = [];
-  for (let offset = 0; offset < bytes.length; offset += 32768) {
-    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 32768)));
-  }
-  return "data:text/html;charset=utf-8;base64," + btoa(chunks.join(""));
-}
-
+// Do not parse generated markup or insert it into an executable document.
+// This is a source-only fallback, not a repaired interactive HTML sandbox.
 function previewHTML(code) {
   stopAll();
-  if (!networkIsolationReady) {
-    beginWorkerOutput();
-    publishWorkerOutput("error", "Interactive HTML is unavailable in this browser. Use Chrome or Edge 152 or newer, then reopen Osanwë. JavaScript console previews still work.");
-    publishWorkerOutput("complete", "HTML preview blocked", { passed: 0, failed: 0, testCount: 0 });
-    return;
-  }
-  const sanitized = sanitizeHTML(code);
-  const serialized = "<!doctype html>\n" + sanitized.document.documentElement.outerHTML;
-  const frame = document.createElement("iframe");
-  frame.className = "app-preview";
-  frame.title = "Generated application preview";
-  frame.setAttribute("sandbox", "allow-scripts");
-  frame.setAttribute("referrerpolicy", "no-referrer");
-  previewFrame = frame;
-
-  let finished = false;
-  let errorCount = 0;
-  let outputCount = 0;
-  let overflowErrorSent = false;
-  const finish = () => {
-    if (finished || previewFrame !== frame) return;
-    finished = true;
-    if (previewTimeout) window.clearTimeout(previewTimeout);
-    previewTimeout = null;
-    const text = sanitized.removed
-      ? `Preview ready. ${sanitized.removed} external-loading or embedded item${sanitized.removed === 1 ? " was" : "s were"} neutralized.`
-      : "Preview ready in the isolated sandbox.";
-    send("preview", text, { removed: sanitized.removed });
-    send("complete", errorCount ? "HTML preview completed with errors" : "HTML preview completed", { passed: 0, failed: errorCount, testCount: 0 });
-  };
-  previewReceiver = (message) => {
-    if (!message || message.type !== "osanwe-preview-output") return false;
-    if (message.kind === "ready") {
-      finish();
-      return true;
-    }
-    if (!["log", "info", "warn", "error"].includes(message.kind) || typeof message.text !== "string") return true;
-    if (message.kind === "error") errorCount = Math.min(errorCount + 1, 1_000_000);
-    if (outputCount >= 200) {
-      if (message.kind === "error" && !overflowErrorSent) {
-        overflowErrorSent = true;
-        send("error", "An additional HTML error occurred after the 200-line output limit.");
-      }
-      return true;
-    }
-    outputCount += 1;
-    send(message.kind, message.text.slice(0, 12000));
-    return true;
-  };
-  frame.src = documentDataURL(serialized);
-  previewTimeout = window.setTimeout(() => {
-    if (finished || previewFrame !== frame) return;
-    finished = true;
-    previewTimeout = null;
-    frame.onload = null;
-    frame.remove();
-    previewFrame = null;
-    root.className = "error-view";
-    root.textContent = "";
-    const note = document.createElement("p");
-    note.className = "empty preview-error";
-    note.textContent = "The HTML preview did not finish loading.";
-    root.appendChild(note);
-    send("error", "The HTML preview did not finish loading.");
-    send("complete", "HTML preview failed", { passed: 0, failed: 0, testCount: 0 });
-  }, 2500);
-  root.className = "app-view";
+  outputList = null;
+  root.className = "worker-view";
   root.textContent = "";
-  root.appendChild(frame);
+  const note = document.createElement("p");
+  note.className = "empty";
+  note.textContent = "HTML source only. Interactive previews are paused for a browser safety issue. Your code is still available to edit and copy.";
+  const source = document.createElement("pre");
+  source.className = "html-source";
+  source.setAttribute("aria-label", "Generated HTML source");
+  source.textContent = code;
+  root.append(note, source);
+  send("preview", "HTML shown as source. Interactive execution is paused.");
+  send("complete", "HTML source displayed. No generated HTML or scripts were executed.", {
+    passed: 0, failed: 0, testCount: 0, sourceOnly: true,
+  });
 }
 
 window.addEventListener("message", (event) => {
   const message = event.data;
-  if (previewFrame && event.source === previewFrame.contentWindow
-      && message) {
-    if (message.type === "osanwe-preview-control" && message.action === "escape") sendControl("escape");
-    else if (previewReceiver) previewReceiver(message);
-    return;
-  }
-  // Messages from the generated nested frame are never trusted as runner
-  // commands. Only the credential-bearing parent may start a run.
+  // Only the credential-bearing parent may start a run.
   if (event.source !== parentWindow || !message) return;
   if (message.type === "osanwe-runner-capabilities") {
-    parentWindow.postMessage({ type: "osanwe-runner-ready", channel: startupChannel, networkIsolation: networkIsolationReady }, "*");
+    parentWindow.postMessage({ type: "osanwe-runner-ready", channel: startupChannel, networkIsolation: networkIsolationReady, htmlPreview: "source-only" }, "*");
     return;
   }
   if (message.type !== "osanwe-run"
@@ -491,7 +262,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !event.defaultPrevented) sendControl("escape");
 });
 window.addEventListener("pagehide", stopAll);
-parentWindow.postMessage({ type: "osanwe-runner-ready", channel: startupChannel, networkIsolation: networkIsolationReady }, "*");
+parentWindow.postMessage({ type: "osanwe-runner-ready", channel: startupChannel, networkIsolation: networkIsolationReady, htmlPreview: "source-only" }, "*");
 </script>
 </body>
 </html>

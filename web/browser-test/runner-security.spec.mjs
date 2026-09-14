@@ -1,6 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { createServer } from 'node:http';
-import { createSocket } from 'node:dgram';
 
 const providerCatalog = {
   providers: [{ id: 'tokenrouter', label: 'TokenRouter', models: ['z-ai/glm-5.3-free'] }],
@@ -44,37 +42,74 @@ test('generated JavaScript automatically runs in the display pane', async ({ pag
   await expect(page.locator('#runnerStatus')).toHaveText('Run completed. No tests were declared.');
 });
 
-test('unsupported browsers clearly block interactive HTML', async ({ browser, page }) => {
-  test.skip(Number.parseInt(browser.version(), 10) >= 152, 'This check requires an unsupported browser.');
-  await openCodeWithAnswer(page, '```html\n<h1>must not execute</h1>\n```');
-  await expect(page.locator('#runnerNetworkState')).toHaveText('HTML locked');
-  await expect(page.locator('#runnerStatus')).toHaveText('Run completed with errors.');
-  await expect(page.frameLocator('#runnerPreview').locator('iframe.app-preview')).toHaveCount(0);
+test('generated HTML and scripts automatically load as inert source in every browser', async ({ page }) => {
+  const unexpected = [];
+  page.on('request', (request) => {
+    if (!request.url().startsWith('http://127.0.0.1:3100/')) unexpected.push(request.url());
+  });
+  const markup = [
+    '<h1 id="untrusted-heading">An example page</h1>',
+    '<img src="https://example.com/source-must-not-load" onerror="while(true){}">',
+    '<iframe srcdoc="<script>new RTCPeerConnection()<\/script>"></iframe>',
+    '<meta http-equiv="refresh" content="0;url=https://example.com/redirect">',
+    '<script>while (true) {}<\/script>',
+  ].join('\n');
+  const runner = await openCodeWithAnswer(page, [
+    '```html', markup, '```',
+    '```css', 'h1 { color: blue; }', '```',
+    '```javascript', 'console.log("embedded-script-must-not-run");', '```',
+  ].join('\n'));
+  // Use the concrete source element because browsers map labelled pre elements differently.
+  await expect(runner.locator('pre.html-source')).toContainText(markup);
+  await expect(runner.locator('pre.html-source')).toContainText('h1 { color: blue; }');
+  await expect(runner.locator('pre.html-source')).toContainText('embedded-script-must-not-run');
+  await expect(page.locator('#runnerNetworkState')).toHaveText('Source only');
+  await expect(page.locator('#runnerStatus')).toHaveText('HTML shown as source. Interactive execution is paused.');
+  await expect(runner.locator('iframe, img, #untrusted-heading')).toHaveCount(0);
+  await expect(page.locator('#runnerResults')).not.toContainText('LOG  embedded-script');
+  expect(unexpected).toEqual([]);
 });
 
-test('supported browsers run HTML with blocked parent and network access', async ({ browser, page }) => {
-  const supported = Number.parseInt(browser.version(), 10) >= 152;
-  if (process.env.OSANWE_REQUIRE_INTERACTIVE_HTML === '1') expect(supported).toBe(true);
-  test.skip(!supported, 'Interactive HTML was NOT exercised: requires Chromium 152+.');
-  const escaped = [];
-  page.on('request', (request) => {
-    if (!request.url().startsWith('http://127.0.0.1:3100/')) escaped.push(request.url());
-  });
-  const runner = await openCodeWithAnswer(page, [
-    '```html',
-    '<!doctype html><html><body>',
-    '<p id="network">pending</p><p id="parent">pending</p>',
-    '<script>',
-    'fetch("https://example.com/should-not-leave").then(() => document.querySelector("#network").textContent="escaped").catch(() => document.querySelector("#network").textContent="blocked");',
-    'try { parent.document.body.innerText; document.querySelector("#parent").textContent="escaped"; } catch { document.querySelector("#parent").textContent="blocked"; }',
-    '</script></body></html>',
-    '```',
-  ].join('\n'));
-  const preview = runner.frameLocator('iframe.app-preview');
-  await expect(preview.locator('#network')).toHaveText('blocked');
-  await expect(preview.locator('#parent')).toHaveText('blocked');
-  await expect(page.locator('#runnerNetworkState')).toHaveText('Network restricted');
-  expect(escaped).toEqual([]);
+test('HTML can be edited, stopped and reloaded without executing markup', async ({ page }) => {
+  const runner = await openCodeWithAnswer(page, '```html\n<button>original source</button>\n```');
+  await expect(runner.locator('pre.html-source')).toContainText('original source');
+  await page.locator('#editorTab').click();
+  await page.locator('#runnerEditor').fill('<p>edited source</p><script>while(true){}<\/script>');
+  await page.locator('#runCode').click();
+  await expect(runner.locator('pre.html-source')).toContainText('edited source');
+  await page.locator('#stopCode').click();
+  await expect(runner.locator('pre.html-source')).toHaveCount(0);
+  await page.locator('#editorTab').click();
+  await page.locator('#runnerEditor').fill('<p>unrun source</p>');
+  await page.locator('#rerunCode').click();
+  await expect(runner.locator('pre.html-source')).toContainText('edited source');
+  await expect(runner.locator('pre.html-source')).not.toContainText('unrun source');
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await expect(page.locator('#codeRunner')).toBeHidden();
+  await expect(page.locator('#input')).toBeEditable();
+});
+
+test('switching from source-only HTML to JavaScript still runs console code', async ({ page }) => {
+  const runner = await openCodeWithAnswer(page, '```html\n<p>source</p>\n```');
+  await expect(runner.locator('pre.html-source')).toBeVisible();
+  await page.locator('#editorTab').click();
+  await page.locator('#runnerLanguage').selectOption('javascript');
+  await page.locator('#runnerEditor').fill('console.log("worker remains available");');
+  await page.locator('#runCode').click();
+  await expect(runner.getByText('worker remains available', { exact: true })).toBeVisible();
+  await expect(page.locator('#runnerStatus')).toHaveText('Run completed. No tests were declared.');
+  await expect(page.locator('#runnerNetworkState')).not.toHaveText('Source only');
+  await expect(runner.locator('pre.html-source')).toHaveCount(0);
+});
+
+test('hosted broker policy forbids all nested frames and external connections', async ({ request }) => {
+  const response = await request.get('/client/assets/runner.html');
+  expect(response.ok()).toBe(true);
+  const policy = response.headers()['content-security-policy'];
+  expect(policy).toContain("frame-src 'none'");
+  expect(policy).toContain("connect-src 'none'");
+  expect(policy).toContain("worker-src blob:");
+  expect(response.headers()['connection-allowlist']).toBe('(response-origin);webrtc=block');
 });
 
 test('a timed-out worker can be replaced, stopped, and reloaded', async ({ page }) => {
@@ -92,77 +127,4 @@ test('a timed-out worker can be replaced, stopped, and reloaded', async ({ page 
   await page.locator('#rerunCode').click();
   await expect(runner.getByText('recovered-snapshot', { exact: true })).toBeVisible();
   await expect(runner.getByText('unrun-edit', { exact: true })).toHaveCount(0);
-});
-
-for (const transport of ['http', 'webrtc']) test(`native ${transport} in a fresh frame cannot reach calibrated listeners`, async ({ browser, page }) => {
-  test.skip(transport === 'webrtc' && process.env.OSANWE_RTC_CRASH_REPRO !== '1',
-    'Known nested-frame browser crash; run with OSANWE_RTC_CRASH_REPRO=1. This boundary is NOT verified.');
-  const supported = Number.parseInt(browser.version(), 10) >= 152;
-  if (process.env.OSANWE_REQUIRE_INTERACTIVE_HTML === '1') expect(supported).toBe(true);
-  test.skip(!supported, 'Native network isolation NOT exercised: requires Chromium 152+.');
-  let httpHits = 0;
-  let udpHits = 0;
-  const server = createServer((request, response) => {
-    if (request.url !== '/calibration') httpHits++;
-    response.setHeader('Access-Control-Allow-Origin', '*');
-    response.setHeader('Content-Type', 'text/html');
-    response.end('<!doctype html><title>Local canary</title>');
-  });
-  const socket = createSocket('udp4');
-  socket.on('message', () => udpHits++);
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  await new Promise((resolve) => socket.bind(0, '127.0.0.1', resolve));
-  const httpUrl = `http://127.0.0.1:${server.address().port}`;
-  const stunUrl = `stun:127.0.0.1:${socket.address().port}`;
-  const control = await browser.newPage();
-  try {
-    await control.goto(httpUrl + '/calibration');
-    await control.evaluate(async ({ httpUrl, stunUrl }) => {
-      await fetch(httpUrl + '/probe');
-      const peer = new RTCPeerConnection({ iceServers: [{ urls: stunUrl }] });
-      peer.createDataChannel('calibration');
-      await peer.setLocalDescription(await peer.createOffer());
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      peer.close();
-    }, { httpUrl, stunUrl });
-    expect(httpHits).toBeGreaterThan(0);
-    expect(udpHits).toBeGreaterThan(0);
-    await control.close();
-    httpHits = 0;
-    udpHits = 0;
-    const child = `<script>(async () => {
-      const native = /native code/.test(Function.prototype.toString.call(fetch));
-      let outcome = 'unexpected';
-      try { await fetch(${JSON.stringify(httpUrl + '/escape')}); outcome = 'escaped'; } catch { outcome = 'blocked'; }
-      let peer;
-      try {
-        if (${transport === 'webrtc'}) {
-          peer = new RTCPeerConnection({ iceServers: [{ urls: ${JSON.stringify(stunUrl)} }] });
-          peer.createDataChannel('preview');
-          await Promise.race([peer.setLocalDescription(await peer.createOffer()), new Promise(r => setTimeout(r, 1000))]);
-        }
-      } catch {}
-      await new Promise(r => setTimeout(r, 1500));
-      if (peer) peer.close();
-      parent.postMessage({ probe: true, native, outcome }, '*');
-    })();<\/script>`;
-    const runner = await openCodeWithAnswer(page, '```html\n' + `<p id="result">pending</p><script>
-      const child = document.createElement('iframe');
-      child.srcdoc = ${JSON.stringify(child).replaceAll('</script>', '<\\/script>')};
-      window.addEventListener('message', event => {
-        if (event.source === child.contentWindow && event.data?.probe) {
-          document.querySelector('#result').textContent = event.data.native + ':' + event.data.outcome;
-        }
-      });
-      document.body.appendChild(child);
-    <\/script>` + '\n```');
-    await expect(runner.frameLocator('.app-preview').locator('#result')).toHaveText('true:blocked', { timeout: 8000 });
-    expect(httpHits).toBe(0);
-    expect(udpHits).toBe(0);
-  } finally {
-    await control.close();
-    await page.close();
-    await new Promise((resolve) => server.close(resolve));
-    await new Promise((resolve) => socket.close(resolve));
-  }
 });
