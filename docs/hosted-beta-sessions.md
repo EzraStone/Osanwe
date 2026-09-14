@@ -1,15 +1,18 @@
 # Five observed hosted-beta sessions
 
-Status: PREPARED, NOT RUN. As of 2026-09-09 no testers or independent relay
-operator have volunteered. Automated fixtures are not user sessions.
+Status: PREPARED, NOT RUN. Updated 2026-09-14. Outreach has begun, but no tester
+sessions or independent relay operators have been confirmed. Automated fixtures
+are not user sessions.
 
 Recruit five willing people for 15-minute sessions: a nontechnical Windows user,
 a coding-tool user, a macOS/Safari user, a Linux/Firefox user, and a keyboard-only
 or screen-reader user. One person can cover multiple characteristics; record
 five distinct participants using pseudonyms T01–T05. Do not publish their names
-or contact details. No unsolicited invitations have been sent.
+or contact details.
 
-Before inviting anyone, complete the hosted gates in `release-gates.md`. Explain
+Before starting sessions, complete hosted checks 1-3 in `release-gates.md`. The
+sessions themselves satisfy check 4; they are not a prerequisite to recruiting
+expressions of interest. Explain
 that this website and the selected provider process keys and conversations in
 transit. This is not an anonymous relay test. Ask for verbal consent to observe;
 do not record the screen or watch key entry. Use a dedicated revocable key with
@@ -27,9 +30,11 @@ per task. Help after that point and record that assistance was needed.
    Record whether the follow-up used the context, not the answer itself.
 4. Request a numbered list of imaginary garden names. Stop generation, then
    send another short message. Record whether both controls recover.
-5. Switch to Code and ask for a self-contained counter button. On a supported
-   browser, click it, Stop preview, and Reload. On unsupported browsers, record
-   the HTML restriction, then try a JavaScript console example.
+5. Switch to Code and ask for a self-contained counter button. Confirm its source
+   loads automatically and the interface clearly says interactive HTML is paused.
+   Edit the source, display it, Stop, and Reload. Verify Reload restores the last
+   displayed snapshot, not unrun edits. Then try a standalone JavaScript console
+   example. Do not tell testers to run downloaded HTML or bypass this restriction.
 6. Start New, then reload the tab. Confirm the key is no longer loaded. If local
    history was deliberately enabled, demonstrate deletion and explain its scope.
 

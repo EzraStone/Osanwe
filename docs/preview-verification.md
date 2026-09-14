@@ -1,6 +1,28 @@
 # Hosted preview verification
 
-## 2026-09-09 findings
+## Current hosted behavior: 2026-09-14
+
+Generated HTML, CSS, and embedded JavaScript now load automatically as literal
+source text. The hosted runner does not parse generated markup, create nested
+preview frames, or execute scripts from an HTML bundle. The interface explicitly
+labels this mode **Source only** and its action **Show source**. Standalone
+JavaScript still runs in a disposable worker with Stop, Reload, and a timeout.
+The hosted runner's response policy also blocks child frames and images.
+
+This removes the affected execution path from the hosted client. It does not
+repair the browser crash or establish safe interactive HTML execution. The
+downloadable client's experimental runner has not been changed by this mitigation.
+Do not restore interactive HTML or widen its distribution until its boundary has
+been independently verified.
+
+Local validation passed 87 unit tests, with two live-provider tests skipped, plus
+all eight browser tests in installed Chrome and Edge. Lint and the production
+build passed. Browser tests use synthetic provider fixtures, not real API keys.
+They cover literal malicious markup, no nested elements or external requests,
+automatic worker execution, switching modes, timeout recovery, Stop, and Reload.
+These results do not prove live provider access.
+
+## Historical 2026-09-09 findings, before the source-only mitigation
 
 Synthetic provider fixtures were used; these tests do not prove live model access.
 The installed Chrome 153.0.8010.36 successfully exercised automatic JavaScript,
@@ -26,33 +48,29 @@ passes or the implementation is replaced with a verified boundary. Basic HTML
 continues to function in the existing experimental preview; its label is not a
 blanket security guarantee. Use only synthetic data.
 
-## Reproduce locally without provider requests
+## Reproduce the current hosted suite without provider requests
 
 In `web`, use the actual installed browser, not a device preset with a different
 version's user agent:
 
 ```powershell
 $env:OSANWE_BROWSER_CHANNEL = 'chrome' # or msedge
-$env:OSANWE_REQUIRE_INTERACTIVE_HTML = '1'
-npm run test:browser -- runner-security.spec.mjs
+npm run test:browser
 ```
 
 For the unresolved crash, in a disposable test browser only:
 
 ```powershell
-$env:OSANWE_RTC_CRASH_REPRO = '1'
-npm run test:browser -- runner-security.spec.mjs --grep 'native webrtc'
+node scripts/diagnose-preview-rtc.mjs
 ```
 
-Remove these environment overrides for the bundled-browser suite. Older engines
-must visibly lock HTML and keep JavaScript available; their passing fallback
-test is not a successful interactive HTML test. Run the full regression on a
-supported engine before widening access. A browser version check is a
-compatibility filter, not runtime attestation that policies are enforced.
+Remove the browser-channel override for the bundled-browser suite. HTML must
+remain source-only on every browser. A passing source-only test is not a
+successful interactive HTML test. A browser version check is a compatibility
+filter, not runtime attestation that policies are enforced.
 
-Next debugging step: reduce the WebRTC case to a standalone response-policy
-document and nested data/srcdoc variants, identify whether the crash is tied to
-policy inheritance, then test the fix against both calibrated network controls.
+Future debugging can build on the isolated diagnostic below to determine why
+the nested case fails, then test any fix against calibrated network controls.
 Never fix it by allowing same-origin access, removing the connection policy,
 lowering the version gate, or declaring the crash a passing security test.
 
