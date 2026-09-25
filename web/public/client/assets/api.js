@@ -1,5 +1,6 @@
 import { validateProviderKey } from './credentials.js';
 import { readResponseText } from './response-body.js';
+import { validateCatalog } from './provider-catalog.js';
 
 let providerCache = null;
 
@@ -10,8 +11,8 @@ async function providerCatalog(fetchImpl = globalThis.fetch, force = false) {
     cache: 'no-store',
   });
   if (!response.ok) throw await responseError(response, 'provider catalog request failed');
-  const value = await response.json();
-  providerCache = Array.isArray(value.providers) ? value.providers : [];
+  const value = JSON.parse(await readResponseText(response, { maxBytes: 65536 }));
+  providerCache = validateCatalog(value);
   return providerCache;
 }
 
