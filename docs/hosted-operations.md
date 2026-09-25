@@ -79,6 +79,10 @@ operator verification gate, not something application code alone can guarantee.
 
 ## Application emergency pause
 
+The credential-free deployment check in `hosted-reliability.md` verifies static
+client/runner policy and the public catalog. It is safe to run without a provider
+key. It does not activate or validate the emergency pause described below.
+
 Set the server-only environment variable `OSANWE_HOSTED_API_PAUSED=1` and deploy
 that setting to make both AI endpoints return a no-store 503 response before
 reading credentials or the request body and before contacting a provider. The

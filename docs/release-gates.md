@@ -1,6 +1,6 @@
 # Separate release gates
 
-Updated 2026-09-14. Credit expiry never overrides a security gate. Losing an
+Updated 2026-09-25. Credit expiry never overrides a security gate. Losing an
 unused promotional credit is preferable to shipping an unsafe payment path.
 Prepared tests, passing fixtures, and written procedures are not live evidence.
 
@@ -60,6 +60,13 @@ deferred. Provider permission, payment processing terms, and operational cost
 controls must be resolved before accepting money.
 
 ## Development status
+
+The September 25 hosted reliability batch adds cancellable connection checks,
+stale-result suppression, transient-key lifecycle handling, custom-model
+selection repair, catalog retry, bounded browser responses, and end-to-end
+coverage of onboarding, recovery, history, and keyboard access. See
+`hosted-reliability.md` for scope and repeatable checks. Existing September 14
+hosting observations are historical, not a renewed billing or eligibility review.
 
 Implemented in this batch: readable-output checks, bounded upload/response
 reads, safe public errors, upstream cancellation, lower per-request output
