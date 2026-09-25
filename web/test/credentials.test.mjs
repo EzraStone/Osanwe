@@ -12,3 +12,14 @@ test('invalid credentials never reach a browser request', async () => {
   }
   assert.equal(validateProviderKey('synthetic-key_123'), 'synthetic-key_123');
 });
+
+test('credentialed requests refuse redirects, cookies, and browser caching', async () => {
+  const fetchImpl = async (_url, options) => {
+    assert.equal(options.redirect, 'error');
+    assert.equal(options.cache, 'no-store');
+    assert.equal(options.credentials, 'omit');
+    return Response.json({ ok: true, provider: 'test', model: 'test' });
+  };
+  await sendMessages({ model: 'test', messages: [{ role: 'user', content: 'synthetic' }] }, { apiKey: 'test-key', fetchImpl });
+  await testProviderConnection({ provider: 'test', model: 'test', apiKey: 'test-key' }, fetchImpl);
+});

@@ -84,6 +84,9 @@ export async function sendMessages(input, {
   validateProviderKey(apiKey);
   const response = await fetchImpl('/api/chat', {
     method: 'POST',
+    redirect: 'error',
+    cache: 'no-store',
+    credentials: 'omit',
     signal,
     headers: {
       authorization: `Bearer ${apiKey}`,
@@ -107,6 +110,9 @@ export async function testProviderConnection({ provider, model, apiKey }, fetchI
   validateProviderKey(apiKey);
   const response = await fetchImpl('/api/providers/check', {
     method: 'POST',
+    redirect: 'error',
+    cache: 'no-store',
+    credentials: 'omit',
     headers: {
       authorization: `Bearer ${apiKey}`,
       'content-type': 'application/json',
