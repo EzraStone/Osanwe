@@ -763,7 +763,7 @@ window.addEventListener("pageshow",function(event){
 });
 input.addEventListener("input",function(){autosize();refresh()});
 input.addEventListener("keydown",function(e){
-  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit()}
+  if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){e.preventDefault();submit()}
 });
 send.addEventListener("click",submit);
 stop.addEventListener("click",function(){
