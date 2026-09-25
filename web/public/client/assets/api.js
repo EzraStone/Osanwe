@@ -7,6 +7,9 @@ let providerCache = null;
 async function providerCatalog(fetchImpl = globalThis.fetch, force = false) {
   if (!force && providerCache) return providerCache;
   const response = await fetchImpl('/api/providers', {
+    signal: AbortSignal.timeout(10000),
+    redirect: 'error',
+    credentials: 'omit',
     headers: { accept: 'application/json' },
     cache: 'no-store',
   });
