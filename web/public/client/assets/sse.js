@@ -71,7 +71,7 @@ export const anthropicTextDelta = providerTextDelta;
 // readAnthropicTextStream resolves only after the provider emits an explicit
 // terminal event. A clean TCP EOF is not proof that a partial answer is
 // complete, so an interrupted stream remains excluded from future context.
-export async function readProviderTextStream(body, onText = () => {}) {
+export async function readProviderTextStream(body, onText = () => {}, { maxBytes = 2 * 1024 * 1024, timeoutMs = 90000 } = {}) {
   if (!body || typeof body.getReader !== "function") throw new TypeError("a readable response body is required");
   if (typeof onText !== "function") throw new TypeError("onText must be a function");
 
@@ -80,6 +80,10 @@ export async function readProviderTextStream(body, onText = () => {}) {
   const parser = new SSEParser();
   let sawTerminal = false;
   let reachedEOF = false;
+  let bytes = 0, timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('The answer timed out before completion. You can try again.')), timeoutMs);
+  });
 
   const consume = (payloads) => {
     for (const payload of payloads) {
@@ -92,23 +96,26 @@ export async function readProviderTextStream(body, onText = () => {}) {
 
   try {
     while (!sawTerminal) {
-      const item = await reader.read();
+      const item = await Promise.race([reader.read(), deadline]);
       if (item.done) {
         reachedEOF = true;
         consume(parser.push(decoder.decode()));
         consume(parser.finish());
         break;
       }
+      bytes += item.value.byteLength;
+      if (bytes > maxBytes) throw new RangeError('The answer exceeded the browser safety limit.');
       consume(parser.push(decoder.decode(item.value, { stream: true })));
     }
     if (!sawTerminal) {
       throw new Error("The response ended before the provider confirmed it was complete.");
     }
   } finally {
+    clearTimeout(timer);
     // Stop bytes after a terminal event and release the reader. Cancellation
     // is cleanup, never evidence that a valid terminal event was incomplete.
     if (!reachedEOF) {
-      try { await reader.cancel(); } catch {}
+      reader.cancel().catch(() => {});
     }
     try { reader.releaseLock(); } catch {}
   }
