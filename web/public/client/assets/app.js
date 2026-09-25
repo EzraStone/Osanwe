@@ -8,6 +8,8 @@ import { buildIdentityLabel, catalogRow, humanize, normalizeCatalog, relayVerifi
 import { connectionSnippets } from "./snippets.js";
 import { readProviderTextStream } from "./sse.js";
 import { conversationStore } from "./storage.js";
+import { ConnectionCheck } from "./connection-check.js";
+import { validateProviderKey } from "./credentials.js";
 
 (function(){
 "use strict";
@@ -29,6 +31,7 @@ var status=null,busy=false,stopping=false,broken=false,requestPhase="idle",lastT
     retentionMode="ephemeral",store=conversationStore("ephemeral"),
     conversation=createConversation({model:model.value});
 var modeConversations={chat:conversation,code:createConversation({model:model.value})};
+var connectionCheck=new ConnectionCheck();
 var modeCopy={
   chat:{title:"What are you thinking about?",placeholder:"Ask anything",assistant:"Osanwë",system:""},
   code:{
@@ -661,10 +664,10 @@ function connectProviderKey(){
     $("providerKeyStatus").textContent="Confirm the non-sensitive test boundary before connecting.";
     providerConsent.focus();return;
   }
-  if(!candidate||/[\r\n\0\s]/.test(candidate)){
-    $("providerKeyStatus").textContent="Paste one API key without spaces or line breaks.";
-    providerKeyInput.focus();return;
+  try{validateProviderKey(candidate)}catch(error){
+    $("providerKeyStatus").textContent=error.message;providerKeyInput.focus();return;
   }
+  cancelConnectionCheck();
   providerKey=candidate;
   providerKeyInput.value="";
   providerKeyInput.disabled=true;providerConsent.disabled=true;
@@ -674,6 +677,7 @@ function connectProviderKey(){
 }
 
 function forgetProviderKey(){
+  cancelConnectionCheck();stopActiveRequest();
   providerKey="";providerKeyInput.value="";providerKeyInput.disabled=false;providerConsent.disabled=false;
   $("connectProviderKey").hidden=false;$("testProviderKey").hidden=true;$("forgetProviderKey").hidden=true;
   $("providerKeyStatus").textContent="The tab released its reference to the provider key.";
@@ -684,15 +688,28 @@ async function checkProviderConnection(){
   var button=$("testProviderKey"),message=$("providerKeyStatus");
   if(!providerKey){message.textContent="Load a provider key before testing the connection.";providerKeyInput.focus();return}
   if(!applyProviderModel())return;
+  var check=connectionCheck.start();
   button.disabled=true;message.textContent="Testing "+providerLabel()+" with a bounded synthetic request…";
+  $("cancelProviderCheck").hidden=false;
   try{
-    var result=await testProviderConnection({provider:providerId,model:model.value,apiKey:providerKey});
+    var result=await testProviderConnection({provider:providerId,model:model.value,apiKey:providerKey,signal:check.controller.signal});
+    if(!connectionCheck.owns(check))return;
     message.textContent="Connection verified. "+providerLabel()+" returned text from "+result.model+".";
   }catch(error){
+    if(!connectionCheck.owns(check))return;
     var retry=error&&error.retryable?" You can try again.":"";
-    message.textContent=(error&&error.message?error.message:"Connection test failed.")+retry;
-  }finally{button.disabled=false}
+    message.textContent=check.timedOut?"Connection test timed out. You can try again.":(error&&error.message?error.message:"Connection test failed.")+retry;
+  }finally{
+    if(connectionCheck.owns(check)){button.disabled=false;$("cancelProviderCheck").hidden=true}
+    connectionCheck.finish(check);
+  }
 }
+
+function cancelConnectionCheck(){
+  if(connectionCheck.cancel())$("providerKeyStatus").textContent="Connection test cancelled. This cannot recall a request already sent.";
+  $("testProviderKey").disabled=false;$("cancelProviderCheck").hidden=true;
+}
+$("cancelProviderCheck").addEventListener("click",cancelConnectionCheck);
 
 async function activateSelectedInvite(){
 	var chooser=$("inviteBookFile"),button=$("activateTrialAccess"),message=$("trialAccessStatus");
@@ -721,6 +738,7 @@ providerModel.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preve
 providerSelect.addEventListener("change",function(){
   var next=providerSelect.value;
   if(!providers.some(function(item){return item.id===next})||next===providerId)return;
+  cancelConnectionCheck();
   runTransition(async function(){
     await stopActiveRequest();
     providerKey="";providerKeyInput.value="";providerKeyInput.disabled=false;providerConsent.disabled=false;
@@ -882,6 +900,7 @@ function syncModelPicker(){
 
 function selectModel(id){
   if(!catalogModels.some(function(item){return item.id===id}))return;
+  cancelConnectionCheck();
   model.value=id;conversation.model=id;rememberModel(id);persistConversation();
   syncModelPicker();renderModelCards();render();
 }
