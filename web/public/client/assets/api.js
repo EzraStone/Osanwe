@@ -121,7 +121,14 @@ export async function testProviderConnection({ provider, model, apiKey }, fetchI
     body: JSON.stringify({ provider, model: model.trim() }),
   });
   if (!response.ok) throw await responseError(response, `connection test failed with status ${response.status}`);
-  return response.json();
+  let result;
+  try { result = JSON.parse(await readResponseText(response)); } catch {
+    throw new Error('The connection test returned an unreadable response. Try again.');
+  }
+  if (!result || result.ok !== true || result.provider !== provider || result.model !== model.trim()) {
+    throw new Error('The connection test did not verify the selected provider and model.');
+  }
+  return { ok: true, provider, model: result.model };
 }
 
 export async function responseError(response, fallback) {
