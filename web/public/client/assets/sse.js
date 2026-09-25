@@ -46,6 +46,7 @@ export function providerTextDelta(payload) {
   } catch {
     return { done: false, text: "" };
   }
+  if (!event || typeof event !== 'object') return { done: false, text: '' };
   if (event.error) {
     throw new Error(event.error.message || "the provider returned an error");
   }
@@ -80,6 +81,7 @@ export async function readProviderTextStream(body, onText = () => {}, { maxBytes
   const parser = new SSEParser();
   let sawTerminal = false;
   let reachedEOF = false;
+  let readable = false;
   let bytes = 0, timer;
   const deadline = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error('The answer timed out before completion. You can try again.')), timeoutMs);
@@ -89,7 +91,7 @@ export async function readProviderTextStream(body, onText = () => {}, { maxBytes
     for (const payload of payloads) {
       if (sawTerminal) break;
       const delta = providerTextDelta(payload);
-      if (delta.text) onText(delta.text);
+      if (delta.text) { if (delta.text.trim()) readable = true; onText(delta.text); }
       if (delta.done) sawTerminal = true;
     }
   };
@@ -110,6 +112,7 @@ export async function readProviderTextStream(body, onText = () => {}, { maxBytes
     if (!sawTerminal) {
       throw new Error("The response ended before the provider confirmed it was complete.");
     }
+    if (!readable) throw new Error('The provider completed without readable text. Check the selected model and try again.');
   } finally {
     clearTimeout(timer);
     // Stop bytes after a terminal event and release the reader. Cancellation
