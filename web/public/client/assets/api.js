@@ -1,3 +1,5 @@
+import { validateProviderKey } from './credentials.js';
+
 let providerCache = null;
 
 async function providerCatalog(fetchImpl = globalThis.fetch, force = false) {
@@ -78,9 +80,7 @@ export async function sendMessages(input, {
   mode = 'chat',
 } = {}) {
   if (typeof input.model !== 'string' || !input.model.trim()) throw new TypeError('a model is required');
-  if (typeof apiKey !== 'string' || apiKey !== apiKey.trim() || /[\r\n\0]/.test(apiKey)) {
-    throw new TypeError('the provider key is malformed');
-  }
+  validateProviderKey(apiKey);
   const response = await fetchImpl('/api/chat', {
     method: 'POST',
     signal,
@@ -103,9 +103,7 @@ export async function sendMessages(input, {
 export async function testProviderConnection({ provider, model, apiKey }, fetchImpl = globalThis.fetch) {
   if (typeof provider !== 'string' || !provider) throw new TypeError('a provider is required');
   if (typeof model !== 'string' || !model.trim()) throw new TypeError('a model is required');
-  if (typeof apiKey !== 'string' || apiKey !== apiKey.trim() || /[\r\n\0]/.test(apiKey)) {
-    throw new TypeError('the provider key is malformed');
-  }
+  validateProviderKey(apiKey);
   const response = await fetchImpl('/api/providers/check', {
     method: 'POST',
     headers: {
