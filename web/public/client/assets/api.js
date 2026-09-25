@@ -1,4 +1,5 @@
 import { validateProviderKey } from './credentials.js';
+import { readResponseText } from './response-body.js';
 
 let providerCache = null;
 
@@ -118,7 +119,7 @@ export async function testProviderConnection({ provider, model, apiKey }, fetchI
 }
 
 export async function responseError(response, fallback) {
-  const text = await response.text();
+  const text = await readResponseText(response).catch(() => '');
   try {
     const parsed = JSON.parse(text);
     const error = parsed && parsed.error;
