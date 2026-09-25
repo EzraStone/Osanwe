@@ -124,7 +124,7 @@ export async function responseError(response, fallback) {
     const parsed = JSON.parse(text);
     const error = parsed && parsed.error;
     const message = typeof error === 'string' ? error : error && error.message;
-    if (typeof message === 'string' && message) {
+    if (typeof message === 'string' && message && message.length <= 800) {
       const result = new Error(message);
       result.status = response.status;
       if (error && typeof error === 'object') {
@@ -134,9 +134,17 @@ export async function responseError(response, fallback) {
       return result;
     }
   } catch {
-    // Plain text is still more useful than a generic status.
+    // Edge error pages may contain identifiers or markup. Do not echo them.
   }
-  const result = new Error(text.trim() || fallback);
+  const messages = {
+    401: 'The provider rejected that API key. Check the provider selected in Settings.',
+    403: 'This request was blocked. Check your provider access and try again.',
+    429: 'Too many requests. Wait a minute before trying again. Shared Wi-Fi may share this limit.',
+    503: 'AI connections are temporarily unavailable. Please try again later.',
+    504: 'The request timed out. Please try again.',
+  };
+  const result = new Error(messages[response.status] || fallback);
   result.status = response.status;
+  result.retryable = [429, 502, 503, 504].includes(response.status);
   return result;
 }
