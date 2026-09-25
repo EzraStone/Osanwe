@@ -10,6 +10,15 @@ test('a successful HTTP status alone cannot mark a provider connection verified'
   await assert.rejects(testProviderConnection(input, async () => new Response('<html>error</html>')), /unreadable/);
 });
 
+test('connection checks pass cancellation through to the network request', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(testProviderConnection({ ...input, signal: controller.signal }, async (_url, options) => {
+    assert.equal(options.signal, controller.signal);
+    options.signal.throwIfAborted();
+  }), { name: 'AbortError' });
+});
+
 test('connection verification returns only its public outcome', async () => {
   const result = await testProviderConnection(input, async () => Response.json({ ok: true, provider: 'test', model: 'model', extra: 'not-for-ui' }));
   assert.deepEqual(result, { ok: true, provider: 'test', model: 'model' });

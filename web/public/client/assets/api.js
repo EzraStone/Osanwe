@@ -104,12 +104,13 @@ export async function sendMessages(input, {
   return response;
 }
 
-export async function testProviderConnection({ provider, model, apiKey }, fetchImpl = globalThis.fetch) {
+export async function testProviderConnection({ provider, model, apiKey, signal }, fetchImpl = globalThis.fetch) {
   if (typeof provider !== 'string' || !provider) throw new TypeError('a provider is required');
   if (typeof model !== 'string' || !model.trim()) throw new TypeError('a model is required');
   validateProviderKey(apiKey);
   const response = await fetchImpl('/api/providers/check', {
     method: 'POST',
+    signal,
     redirect: 'error',
     cache: 'no-store',
     credentials: 'omit',
