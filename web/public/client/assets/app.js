@@ -49,18 +49,19 @@ if(retentionMode==="device"){
 
 // ---- status ---------------------------------------------------------
 function load(){
+  $("retryStartup").disabled=true;
   return fetchStatus()
     .then(function(s){
-      status=s;providers=Array.isArray(s.providers)?s.providers:[];
+      status=s;$("startupError").hidden=true;providers=Array.isArray(s.providers)?s.providers:[];
       if(!providers.some(function(item){return item.id===providerId}))providerId=providers[0]?providers[0].id:"groq";
       status.selected_provider=providerLabel();syncProviderControls();render();return s;
     })
     .catch(function(e){
-      // The client is what serves this page, so failing to reach it means it
-      // is going away. Saying so beats showing stale numbers as current.
-      state.textContent="Client unreachable";state.classList.add("warn");
-    });
+      state.textContent="Connection unavailable";state.classList.add("warn");
+      $("startupError").hidden=false;
+    }).finally(function(){$("retryStartup").disabled=false});
 }
+$("retryStartup").addEventListener("click",function(){load().then(function(s){if(s)return loadModels()})});
 
 function plural(n,word){return n+" "+word+(n===1?"":"s")}
 
@@ -1173,6 +1174,6 @@ $("exportConversationBtn").addEventListener("click",function(){
 showSnippet("shell");
 retentionLabel();
 syncModelPicker();
-load().then(function(){return loadModels()});
+load().then(function(s){if(s)return loadModels()});
 autosize();refresh();
 })();
