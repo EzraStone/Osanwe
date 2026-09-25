@@ -754,7 +754,12 @@ providerSelect.addEventListener("change",function(){
 $("activateTrialAccess").addEventListener("click",function(){activateSelectedInvite()});
 $("openProviderSettings").addEventListener("click",openSettings);
 providerKeyInput.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();connectProviderKey()}});
-window.addEventListener("pagehide",function(){providerKey="";providerKeyInput.value=""});
+window.addEventListener("pagehide",function(){
+  forgetProviderKey();resetRunnerFrame("Preview stopped when the page was hidden.");
+});
+window.addEventListener("pageshow",function(event){
+  if(event.persisted){forgetProviderKey();render();refresh()}
+});
 input.addEventListener("input",function(){autosize();refresh()});
 input.addEventListener("keydown",function(e){
   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit()}
