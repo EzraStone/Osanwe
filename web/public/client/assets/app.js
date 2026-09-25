@@ -997,6 +997,17 @@ modelChoiceToggle.addEventListener("click",function(){
   var open=modelChoices.hidden;modelChoices.hidden=!open;modelChoiceToggle.setAttribute("aria-expanded",String(open));
   if(open){var first=modelChoices.querySelector(".model-choice");if(first)first.focus()}
 });
+modelChoices.addEventListener("keydown",function(event){
+  var choices=Array.from(modelChoices.querySelectorAll(".model-choice"));
+  if(!choices.length)return;
+  var current=choices.indexOf(document.activeElement),next;
+  if(event.key==="ArrowDown")next=(current+1)%choices.length;
+  else if(event.key==="ArrowUp")next=(current-1+choices.length)%choices.length;
+  else if(event.key==="Home")next=0;
+  else if(event.key==="End")next=choices.length-1;
+  else return;
+  event.preventDefault();choices[next].focus();
+});
 modelAdvancedToggle.addEventListener("click",function(){
   var detail=$("modelAdvanced"),open=detail.hidden;detail.hidden=!open;modelAdvancedToggle.setAttribute("aria-expanded",String(open));
 });
