@@ -907,6 +907,10 @@ function syncModelPicker(){
 function selectModel(id){
   if(!catalogModels.some(function(item){return item.id===id}))return;
   cancelConnectionCheck();
+  if(!Array.from(model.options).some(function(option){return option.value===id})){
+    var option=document.createElement("option");option.value=id;option.textContent=id;model.appendChild(option);
+  }
+  model.disabled=false;
   model.value=id;conversation.model=id;rememberModel(id);persistConversation();
   syncModelPicker();renderModelCards();render();
 }
