@@ -130,6 +130,9 @@ jobs:
       - name: hosted production build
         run: npm run build
 
+      - name: credential-free production pause drill
+        run: npm run test:pause
+
       - name: install test browser
         run: npx playwright install --with-deps chromium
 

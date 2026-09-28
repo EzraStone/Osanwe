@@ -11,6 +11,7 @@
     "start": "next start",
     "test": "node --check public/client/assets/app.js && node --test test/*.test.mjs",
     "test:browser": "playwright test",
+    "test:pause": "node --test test-production/*.test.mjs",
     "lint": "oxlint app lib test",
     "format": "oxfmt"
   },
