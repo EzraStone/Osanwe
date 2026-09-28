@@ -97,4 +97,18 @@ This is not an immediate edge kill switch: old deployments and in-flight calls
 can remain active until separately stopped. For an urgent incident, use the
 scoped edge deny/pause procedure first. The pause does not prevent hosting costs,
 revoke provider keys, or cancel requests already sent to a provider. The setting
-is implemented and unit-tested, but has not been activated in production.
+is implemented and tested locally, but has not been activated in production.
+
+### Credential-free production-build drill
+
+From `web`, run `npm run build` followed by `npm run test:pause`. The drill starts
+temporary loopback-only production servers with `1` and a deliberately
+misspelled pause value. Both `/api/chat` and `/api/providers/check` must return
+no-store 503 responses and `Retry-After: 300` before parsing invalid JSON.
+No credentials are provided, so even a broken pause cannot reach a provider.
+The client page and public catalog must still load. Each child server is stopped
+after its test. CI runs the same drill after its production build.
+
+Both cases passed locally on September 28, 2026. This tests the built application,
+not Vercel environment propagation, old deployments, in-flight cancellation,
+edge enforcement, or billing. No production setting was changed by the drill.

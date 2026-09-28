@@ -1,5 +1,33 @@
 # Hosted preview verification
 
+## 2026-09-28 diagnostic retest
+
+Interactive HTML remains source-only. The isolated diagnostic was rerun in
+Chrome 154.0.8037.57 and Edge 154.0.4258.37 using synthetic loopback probes only.
+Both browsers produced the following results:
+
+| Scenario | Native HTTP probe | Native WebRTC probe | STUN packets |
+| --- | --- | --- | ---: |
+| Unrestricted control | Completed, one request | Completed | 3 |
+| Protected top document | Verified CSP rejection | Completed | 0 |
+| Protected data-URL frame | Verified CSP rejection | Completed | 0 |
+| Protected data-URL frame with nested srcdoc | Verified CSP rejection | Crashed | 0 |
+| Protected blob-URL frame with nested srcdoc | Verified CSP rejection | Crashed | 0 |
+
+Both diagnostic runs exited nonzero because the nested WebRTC scenarios crashed.
+Zero traffic during a crash is not evidence of successful confinement. This
+reproduces the unresolved failure on newer browsers without establishing its
+root cause. The passing source-only client suite does not override this gate.
+
+The diagnostic now requires a successful traffic-producing control separately
+for HTTP and UDP. HTTP denial must combine zero listener requests, a fetch
+TypeError, and a matching `connect-src` policy event. Arbitrary RTC exceptions,
+missing completion, and renderer crashes all fail. Per-scenario UDP listeners
+avoid attributing late packets to a later test. Reports contain fixed outcome
+codes and allowlisted exception names, not exception messages or stacks. Five
+unit tests cover this verdict policy. These controls strengthen the diagnostic;
+they do not expand production preview permissions.
+
 ## Current hosted behavior: 2026-09-14
 
 Generated HTML, CSS, and embedded JavaScript now load automatically as literal

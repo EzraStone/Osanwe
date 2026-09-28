@@ -1,6 +1,6 @@
 # Separate release gates
 
-Updated 2026-09-25. Credit expiry never overrides a security gate. Losing an
+Updated 2026-09-28. Credit expiry never overrides a security gate. Losing an
 unused promotional credit is preferable to shipping an unsafe payment path.
 Prepared tests, passing fixtures, and written procedures are not live evidence.
 
@@ -60,6 +60,16 @@ deferred. Provider permission, payment processing terms, and operational cost
 controls must be resolved before accepting money.
 
 ## Development status
+
+The September 28 follow-up adds bounded chat-header waits, coherent refreshed
+provider controls, stale catalog protection, key removal when a provider is
+removed, and a credential-free production-build pause drill in CI. Local checks
+passed 122 unit tests, 46 browser tests in each installed Chrome and Edge, lint,
+build, and both pause cases. Two live-provider tests remain skipped. These are
+synthetic/local results, not new provider, participant, or billing evidence.
+The isolated preview diagnostic now requires calibrated HTTP and UDP controls
+and distinguishes policy rejection, incomplete execution, and renderer crashes.
+Interactive HTML remains source-only pending a verified execution boundary.
 
 The September 25 hosted reliability batch adds cancellable connection checks,
 stale-result suppression, transient-key lifecycle handling, custom-model

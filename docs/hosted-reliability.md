@@ -1,6 +1,6 @@
 # Hosted beta reliability
 
-Updated 2026-09-25. This is the hosted bring-your-own-key client, not the
+Updated 2026-09-28. This is the hosted bring-your-own-key client, not the
 independent relay network. The host and selected provider process credentials,
 prompts, and answers in transit. No payment service or new infrastructure was
 enabled for this work.
@@ -25,6 +25,22 @@ enabled for this work.
 
 ## Repeatable checks
 
+Follow-up results on September 28: 122 unit tests passed, with two live-provider
+tests skipped. All 46 synthetic browser tests passed in Chrome 154.0.8037.57 and
+Edge 154.0.4258.37. The first concurrent Edge run timed out in the opening catalog
+recovery test; the complete separate rerun passed without changing the test or
+extending its timeout. Lint, the production build, and both local production-pause
+tests passed. The loopback deployment checker passed all three credential-free
+GET checks. These results do not verify a real provider key or model response.
+
+The follow-up adds a 65-second wait limit for chat response headers without
+cutting off a healthy response stream. Stop continues to cancel the stream.
+Catalog refresh now updates provider labels, choices, and model suggestions
+together, rejects stale cache updates, recovers from a failed initial load, and
+cancels outdated connection checks. Removing the selected provider from the
+catalog forgets its key before a replacement can be used. No automatic provider
+retry or paid fallback is introduced.
+
 Recorded local results on September 25: 109 unit tests passed, with the two
 live-provider tests skipped. All 41 browser tests passed in Chrome 154.0.8037.57
 and all 41 passed in Edge 153.0.4234.48. Lint and production build passed. The
@@ -33,6 +49,9 @@ requests. No real-provider success, new participant session, or new regional
 measurement is implied by these results.
 
 From `web`, run `npm test`, `npm run lint`, and `npm run build`.
+After building, run `npm run test:pause` to exercise both AI routes in a temporary
+loopback production server. CI runs this drill too. It needs no API key, makes
+no provider call, and does not change the deployed pause setting.
 Run `npm run test:browser` for the synthetic end-to-end suite. To use installed
 Windows browsers, set `OSANWE_BROWSER_CHANNEL` to `chrome` or `msedge` first.
 The new fixture intercepts provider APIs and rejects unexpected external
