@@ -3,9 +3,11 @@ import { readResponseText } from './response-body.js';
 import { validateCatalog } from './provider-catalog.js';
 
 let providerCache = null;
+let providerRequest = 0;
 
-async function providerCatalog(fetchImpl = globalThis.fetch, force = false) {
+export async function loadProviderCatalog(fetchImpl = globalThis.fetch, force = false) {
   if (!force && providerCache) return providerCache;
+  const request = ++providerRequest;
   const response = await fetchImpl('/api/providers', {
     signal: AbortSignal.timeout(10000),
     redirect: 'error',
@@ -15,12 +17,15 @@ async function providerCatalog(fetchImpl = globalThis.fetch, force = false) {
   });
   if (!response.ok) throw await responseError(response, 'provider catalog request failed');
   const value = JSON.parse(await readResponseText(response, { maxBytes: 65536 }));
-  providerCache = validateCatalog(value);
-  return providerCache;
+  const providers = validateCatalog(value);
+  // A slower, older refresh must not replace the registry used by later
+  // provider selections. Callers can still discard their own stale result.
+  if (request === providerRequest) providerCache = providers;
+  return providers;
 }
 
 export async function loadStatus(fetchImpl = globalThis.fetch) {
-  const providers = await providerCatalog(fetchImpl);
+  const providers = await loadProviderCatalog(fetchImpl);
   const origin = typeof location === 'object' && location.origin ? location.origin : 'this hosted page';
   return {
     paying: 'byok',
@@ -39,10 +44,12 @@ export async function loadStatus(fetchImpl = globalThis.fetch) {
 }
 
 export async function loadModels(provider = 'groq', fetchImpl = globalThis.fetch, force = false) {
-  const providers = await providerCatalog(fetchImpl, force);
+  const providers = await loadProviderCatalog(fetchImpl, force);
   const selected = providers.find((item) => item && item.id === provider);
   const models = selected && Array.isArray(selected.models) ? selected.models : [];
   return {
+    // Keep provider controls and model choices on the same registry snapshot.
+    providers,
     data: models.map((id) => ({
       id,
       type: 'model',
@@ -83,28 +90,59 @@ export async function sendMessages(input, {
   apiKey = '',
   provider = 'groq',
   mode = 'chat',
+  headerTimeoutMs = 65000,
 } = {}) {
   if (typeof input.model !== 'string' || !input.model.trim()) throw new TypeError('a model is required');
   validateProviderKey(apiKey);
-  const response = await fetchImpl('/api/chat', {
-    method: 'POST',
-    redirect: 'error',
-    cache: 'no-store',
-    credentials: 'omit',
-    signal,
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      'content-type': 'application/json',
-      accept: 'text/event-stream, application/json',
-    },
-    body: JSON.stringify({
-      provider,
-      model: input.model.trim(),
-      mode,
-      messages: normalizeMessages(input.messages),
-    }),
+  const body = JSON.stringify({
+    provider,
+    model: input.model.trim(),
+    mode,
+    messages: normalizeMessages(input.messages),
   });
-  if (!response.ok) throw await responseError(response, `request failed with status ${response.status}`);
+  const controller = new AbortController();
+  const forwardAbort = () => controller.abort(signal.reason);
+  if (signal) {
+    if (signal.aborted) forwardAbort();
+    else signal.addEventListener('abort', forwardAbort, { once: true });
+  }
+  const timeoutError = new Error('The connection timed out before the server answered. You can try again.');
+  timeoutError.name = 'TimeoutError';
+  timeoutError.retryable = true;
+  const timer = setTimeout(() => controller.abort(timeoutError), headerTimeoutMs);
+  let response;
+  try {
+    response = await fetchImpl('/api/chat', {
+      method: 'POST',
+      redirect: 'error',
+      cache: 'no-store',
+      credentials: 'omit',
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+        accept: 'text/event-stream, application/json',
+      },
+      body,
+    });
+  } catch (error) {
+    if (signal) signal.removeEventListener('abort', forwardAbort);
+    if (controller.signal.reason === timeoutError) throw timeoutError;
+    throw error;
+  } finally {
+    // This deadline bounds only header arrival. Keep forwarding user aborts
+    // after headers so Stop/Forget key can still cancel the response body.
+    clearTimeout(timer);
+  }
+  if (!response.ok) {
+    try {
+      const error = await responseError(response, `request failed with status ${response.status}`);
+      if (controller.signal.aborted) throw controller.signal.reason;
+      throw error;
+    } finally {
+      if (signal) signal.removeEventListener('abort', forwardAbort);
+    }
+  }
   return response;
 }
 
