@@ -917,15 +917,32 @@ function selectModel(id){
 
 function loadModels(force){
   var request=++catalogRequest;
+  cancelConnectionCheck();
+  modelsReady=false;render();
   return fetchModels(providerId,globalThis.fetch,Boolean(force))
-    .then(function(cat){
+    .then(async function(cat){
       if(request!==catalogRequest)return;
+      if(!status){
+        var recoveredStatus=await fetchStatus();
+        if(request!==catalogRequest)return;
+        status=recoveredStatus;$("startupError").hidden=true;
+      }
+	  providers=cat.providers;status.providers=providers;
+      if(!providers.some(function(item){return item.id===providerId})){
+        await stopActiveRequest();
+        if(request!==catalogRequest)return;
+        forgetProviderKey();providerId=providers[0].id;preferredModel="";
+        try{localStorage.setItem("osanwe-provider",providerId);localStorage.removeItem("osanwe-model")}catch(e){}
+        cat=await fetchModels(providerId);
+        if(request!==catalogRequest)return;
+        $("providerKeyStatus").textContent="The previous provider is no longer listed. Its key was forgotten. Choose a provider and load its key.";
+      }
 	  catalogModels=normalizeCatalog(cat);
 	  if(preferredModel&&validModelId(preferredModel)&&!catalogModels.some(function(item){return item.id===preferredModel}))catalogModels.push(customCatalogEntry(preferredModel));
 	  modelsReady=true;
       if(!catalogModels.length){
         $("catalogState").textContent="No suggested models are available for this provider. Enter a model ID in Settings.";
-		model.textContent="";model.disabled=true;conversation.model="";syncModelPicker();closeModelMenu();render();renderModelCards();
+		model.textContent="";model.disabled=true;conversation.model="";syncModelPicker();syncProviderControls();closeModelMenu();render();renderModelCards();
         return;
       }
 	  model.disabled=false;
@@ -939,7 +956,7 @@ function loadModels(force){
       // Keep the selection if it survived, otherwise take the first.
       if(catalogModels.some(function(m){return m.id===current}))model.value=current;
       conversation.model=model.value;
-	  syncModelPicker();render();renderModelCards();
+	  syncModelPicker();syncProviderControls();render();renderModelCards();
     })
     .catch(function(){
 	  if(request!==catalogRequest)return;
@@ -990,7 +1007,7 @@ function rememberModel(id){
 }
 
 model.addEventListener("change",function(){
-  conversation.model=model.value;providerModel.value=model.value;rememberModel(model.value);persistConversation();syncModelPicker();renderModelCards();
+  selectModel(model.value);
 });
 modelTrigger.addEventListener("click",function(){
   var open=modelMenu.hidden;
