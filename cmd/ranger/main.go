@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -354,10 +355,11 @@ func startMetrics(addr string, srv *ranger.Server, log *slog.Logger) *http.Serve
 // sensible; getting it wrong cannot weaken authentication.
 func identityHosts(addr string) []string {
 	hosts := []string{"localhost", "127.0.0.1", "::1"}
-	if host, _, err := net.SplitHostPort(addr); err == nil && host != "" && host != "0.0.0.0" && host != "::" {
-		hosts = append(hosts, host)
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" || host == "0.0.0.0" || host == "::" || slices.Contains(hosts, host) {
+		return hosts
 	}
-	return hosts
+	return append(hosts, host)
 }
 
 // displayAddr turns a wildcard bind into something copy-pasteable.
