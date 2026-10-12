@@ -21,8 +21,7 @@ absolute baseline it reports would not transfer to a different vendor.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from typing import Callable
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
