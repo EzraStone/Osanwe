@@ -187,11 +187,7 @@ func run() error {
 	if *plaintext {
 		log.Warn("serving without TLS; whatever sits in front of this reads every prompt that passes through it")
 	} else {
-		names := []string{"localhost", "127.0.0.1"}
-		if *hosts != "" {
-			names = strings.Split(*hosts, ",")
-		}
-		cert, pin, created, err := certs.LoadOrCreate(*certPath, *keyPath, names, 365*24*time.Hour)
+		cert, pin, created, err := certs.LoadOrCreate(*certPath, *keyPath, certNames(*hosts), 365*24*time.Hour)
 		if err != nil {
 			return err
 		}
@@ -294,6 +290,16 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(ctx)
+}
+
+// certNames returns the names for a generated certificate. -hosts is trimmed
+// like every other list flag: "gw.example, 10.0.0.5" must yield an IP address
+// entry, not a DNS name with a leading space, and an empty item is dropped.
+func certNames(hosts string) []string {
+	if names := commaList(hosts); len(names) > 0 {
+		return names
+	}
+	return []string{"localhost", "127.0.0.1"}
 }
 
 func commaList(value string) []string {
