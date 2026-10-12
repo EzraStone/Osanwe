@@ -1,6 +1,15 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"io"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/EzraStone/osanwe/internal/mint"
+)
 
 func TestSelectAuthorizationMode(t *testing.T) {
 	tests := []struct {
@@ -69,5 +78,79 @@ func TestValidateLoadedInviteCapacity(t *testing.T) {
 		if err := validateLoadedInviteCapacity(100, actual); err == nil {
 			t.Fatalf("actual capacity %d was accepted against pin 100", actual)
 		}
+	}
+}
+
+// runRefusal runs eregion with args and returns its error, failing the test if
+// it starts serving instead: every case here must be refused before listen.
+func runRefusal(t *testing.T, args []string, getenv func(string) string) error {
+	t.Helper()
+	dir := t.TempDir()
+	full := append([]string{"-key", filepath.Join(dir, "mint.key"), "-addr", "127.0.0.1:0"}, args...)
+	done := make(chan error, 1)
+	go func() { done <- run(full, getenv, io.Discard) }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(30 * time.Second):
+		t.Fatalf("run(%q) started serving instead of refusing", args)
+		return nil
+	}
+}
+
+func TestRunRefusesUnsafeAuthorizationConfigurations(t *testing.T) {
+	noEnv := func(string) string { return "" }
+	btcpayKey := func(name string) string {
+		if name == "OSANWE_BTCPAY_API_KEY" {
+			return "test-api-key"
+		}
+		return ""
+	}
+	tests := []struct {
+		name   string
+		args   []string
+		getenv func(string) string
+		want   string
+	}{
+		{"no authorization mode", nil, noEnv, "no authorization mode is configured"},
+		{"BTCPay without API key", []string{"-btcpay", "https://pay.example"}, noEnv, "OSANWE_BTCPAY_API_KEY is required"},
+		{"BTCPay without receipts database", []string{"-btcpay", "https://pay.example"}, btcpayKey, "-receipts-db is required in BTCPay mode"},
+		{"invite without capacity", []string{"-invite-manifest", "invite-manifest.json"}, noEnv, "-invite-capacity is required"},
+		{"invite without receipts database", []string{"-invite-manifest", "invite-manifest.json", "-invite-capacity", "10"}, noEnv, "-receipts-db is required in invite mode"},
+		{"open and invite together", []string{"-open", "-invite-manifest", "invite-manifest.json"}, noEnv, "mutually exclusive"},
+		{"capacity outside invite mode", []string{"-open", "-invite-capacity", "5"}, noEnv, "valid only with -invite-manifest"},
+		{"unknown flag", []string{"-pay-anyone"}, noEnv, "flag provided but not defined"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := runRefusal(t, test.args, test.getenv)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("run error = %v, want one containing %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestRunPrintsTheKeyIDOfTheKeyItLoads(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "mint.key")
+	var out bytes.Buffer
+	if err := run([]string{"-key", keyPath, "-print-key-id"}, func(string) string { return "" }, &out); err != nil {
+		t.Fatal(err)
+	}
+	priv, created, err := mint.LoadOrCreateKey(keyPath, mint.MinKeyBits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created {
+		t.Fatal("-print-key-id did not leave the key it reported on disk")
+	}
+	if got, want := strings.TrimSpace(out.String()), mint.KeyID(&priv.PublicKey); got != want {
+		t.Fatalf("printed key id %q, want %q", got, want)
+	}
+}
+
+func TestRunTreatsHelpAsSuccess(t *testing.T) {
+	if err := run([]string{"-h"}, func(string) string { return "" }, io.Discard); err != nil {
+		t.Fatalf("-h returned %v, want nil", err)
 	}
 }

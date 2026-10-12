@@ -19,6 +19,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -30,7 +31,7 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:], os.Getenv, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
@@ -88,7 +89,10 @@ func validateLoadedInviteCapacity(expected, actual int) error {
 	return nil
 }
 
-func run() error {
+// run takes its arguments, environment and standard output as parameters so
+// the refusals below, each of which keeps an unpaid mint from starting, can be
+// exercised without a process of their own.
+func run(args []string, getenv func(string) string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("eregion", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8445", "address to listen on")
 	keyPath := fs.String("key", "mint.key", "signing key path, created if absent")
@@ -114,7 +118,7 @@ func run() error {
 			"For a local demo only:\n  eregion -key mint.key -publish mint.pub -open\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(os.Args[1:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
@@ -136,7 +140,7 @@ func run() error {
 	}
 
 	if *printKey {
-		fmt.Println(mint.KeyID(&priv.PublicKey))
+		fmt.Fprintln(stdout, mint.KeyID(&priv.PublicKey))
 		return nil
 	}
 
@@ -157,7 +161,7 @@ func run() error {
 		log.Warn("issuing tokens to anyone who asks; there is no payment behind this mint")
 		authorizer = mint.OpenAuthorizer{}
 	case authorizationModeBTCPay:
-		apiKey := os.Getenv("OSANWE_BTCPAY_API_KEY")
+		apiKey := getenv("OSANWE_BTCPAY_API_KEY")
 		if apiKey == "" {
 			return errors.New("eregion: OSANWE_BTCPAY_API_KEY is required in BTCPay mode")
 		}
