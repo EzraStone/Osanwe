@@ -318,6 +318,32 @@ func (p *publisher) rebuild() error {
 	return nil
 }
 
+// firstListing reports the start of the first consensus window, current or
+// later, that could include d, and false if none ever could.
+//
+// A window lists only descriptors valid throughout it. The store has already
+// refused anything published in the future, so from the next window onward
+// publication is never the obstacle: only expiry is, and later windows end
+// later. If neither the current nor the next window can hold d, no window
+// will, and accepting it would leave its operator waiting for a listing that
+// never comes.
+func (p *publisher) firstListing(d *directory.Descriptor) (time.Time, bool) {
+	now := time.Now()
+	if p.now != nil {
+		now = p.now()
+	}
+	for _, at := range []time.Time{now, now.Add(p.epoch)} {
+		window, err := directory.NewEpochConsensus(nil, at, p.epoch, p.lifetime)
+		if err != nil {
+			return time.Time{}, false
+		}
+		if d.ValidThroughout(window.ValidAfter, window.ValidUntil) {
+			return window.ValidAfter, true
+		}
+	}
+	return time.Time{}, false
+}
+
 // maxSubmission bounds a POSTed descriptor. Descriptors are small; anything
 // larger is either a mistake or an attempt to make the authority read forever.
 const maxSubmission = 64 << 10
@@ -362,6 +388,18 @@ func submitHandler(store *directory.Store, pub *publisher, log *slog.Logger) htt
 		// restarting the authority.
 		if err := store.Accept.Reload(); err != nil {
 			log.Error("could not reload the accept list", "error", err)
+		}
+
+		// Only for admitted relays: an identity that is not on the accept list
+		// should hear that first, from Put, whatever its descriptor says.
+		if store.Accept.Allows(d.Identity) {
+			if _, ok := pub.firstListing(d); !ok {
+				http.Error(w, fmt.Sprintf("descriptor expires %s, before any consensus this authority builds could end "+
+					"(each lasts %s); it would be stored but never listed. Republish with a -descriptor-validity "+
+					"of at least %s", d.Expires.UTC().Format(time.RFC3339), pub.lifetime, pub.lifetime+pub.epoch),
+					http.StatusUnprocessableEntity)
+				return
+			}
 		}
 
 		if err := store.Put(d, d.Encoded(), time.Now()); err != nil {

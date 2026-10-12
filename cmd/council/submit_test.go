@@ -201,3 +201,94 @@ func TestSubmitSeesAcceptListChangesWithoutARestart(t *testing.T) {
 		t.Fatalf("after admission: %d %q", rec.Code, rec.Body.String())
 	}
 }
+
+func (f *submitFixture) descriptorValidUntil(id *directory.Identity, nickname string, published, expires time.Time) []byte {
+	f.t.Helper()
+	d := &directory.Descriptor{
+		Nickname:     nickname,
+		Address:      nickname + ".example:8443",
+		TLSPin:       "sha256/" + strings.Repeat("A", 42) + "8=",
+		Identity:     id.Fingerprint(),
+		Destinations: []string{"api.anthropic.com:443"},
+		Published:    published,
+		Expires:      expires,
+	}
+	encoded, err := d.Sign(id)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return encoded
+}
+
+// A descriptor that expires before any consensus window could end was once
+// accepted with 202 and then never listed, so its operator waited forever.
+func TestSubmitRefusesADescriptorNoConsensusCouldList(t *testing.T) {
+	id := newRelayIdentity(t)
+	f := newSubmitFixture(t, id)
+	rec := f.post(f.descriptorValidUntil(id, "brief", f.now.Add(-time.Minute), f.now.Add(59*time.Minute)))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("short-lived descriptor: %d %q, want 422", rec.Code, rec.Body.String())
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "never listed") || !strings.Contains(body, "-descriptor-validity of at least 3h30m0s") {
+		t.Errorf("refusal does not say what to change: %q", body)
+	}
+	if _, err := os.Stat(f.store.FileFor(id.Fingerprint())); err == nil {
+		t.Fatal("an unlistable descriptor was stored")
+	}
+}
+
+func TestSubmitAcceptsADescriptorTheNextConsensusCanList(t *testing.T) {
+	id := newRelayIdentity(t)
+	f := newSubmitFixture(t, id)
+	next := f.now.Truncate(f.pub.epoch).Add(f.pub.epoch)
+	rec := f.post(f.descriptorValidUntil(id, "just", f.now.Add(-time.Minute), next.Add(f.pub.lifetime)))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("descriptor valid for exactly the next window: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSubmitTellsAnUnadmittedRelayAboutAdmissionFirst(t *testing.T) {
+	f := newSubmitFixture(t)
+	stranger := newRelayIdentity(t)
+	rec := f.post(f.descriptorValidUntil(stranger, "brief", f.now.Add(-time.Minute), f.now.Add(59*time.Minute)))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("unadmitted short-lived descriptor: %d, want 403", rec.Code)
+	}
+}
+
+// firstListing is checked against the publisher's own clock, so unlike the
+// handler tests above it can be placed anywhere in an epoch deterministically.
+func TestFirstListingFindsTheEarliestWindowThatCanHoldADescriptor(t *testing.T) {
+	id := newRelayIdentity(t)
+	f := newSubmitFixture(t, id)
+	start := f.now.Truncate(f.pub.epoch)
+	f.now = start.Add(10 * time.Minute) // well past the publication skew
+	next := start.Add(f.pub.epoch)
+
+	parse := func(published, expires time.Time) *directory.Descriptor {
+		d, err := directory.ParseDescriptor(f.descriptorValidUntil(id, "alpha", published, expires))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	tests := []struct {
+		name      string
+		published time.Time
+		expires   time.Time
+		want      time.Time
+		ok        bool
+	}{
+		{"published before this window", start.Add(-time.Minute), start.Add(24 * time.Hour), start, true},
+		{"published mid-window, long-lived", f.now.Add(-time.Minute), f.now.Add(24 * time.Hour), next, true},
+		{"published mid-window, just long enough", f.now.Add(-time.Minute), next.Add(f.pub.lifetime), next, true},
+		{"published mid-window, one second short", f.now.Add(-time.Minute), next.Add(f.pub.lifetime - time.Second), time.Time{}, false},
+		{"far too short", f.now.Add(-time.Minute), f.now.Add(59 * time.Minute), time.Time{}, false},
+	}
+	for _, test := range tests {
+		got, ok := f.pub.firstListing(parse(test.published, test.expires))
+		if ok != test.ok || !got.Equal(test.want) {
+			t.Errorf("%s: firstListing = %s, %v; want %s, %v", test.name, got, ok, test.want, test.ok)
+		}
+	}
+}
