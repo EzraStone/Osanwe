@@ -423,18 +423,33 @@ func submitHandler(store *directory.Store, pub *publisher, log *slog.Logger) htt
 
 		// Re-evaluate immediately. If this epoch already has a signed body, the
 		// anti-equivocation rule deliberately queues the change for the next one.
+		eligible, _ := pub.firstListing(d)
 		if err := pub.rebuild(); err != nil {
 			var conflict *epochBodyConflictError
 			if errors.As(err, &conflict) {
+				if next := conflict.epoch.Add(pub.epoch); eligible.Before(next) {
+					eligible = next
+				}
 				log.Info("descriptor accepted for the next consensus epoch",
-					"nickname", d.Nickname, "epoch", conflict.epoch.Add(pub.epoch).UTC().Format(time.RFC3339))
+					"nickname", d.Nickname, "epoch", eligible.UTC().Format(time.RFC3339))
 			} else {
 				log.Error("rebuild after submission failed", "error", err)
 			}
 		}
 
+		// Say when the relay can appear. Without this an operator who checks the
+		// consensus straight after a 202 finds their relay missing and has no
+		// way to tell a queued listing from a lost one.
 		w.WriteHeader(http.StatusAccepted)
-		fmt.Fprintf(w, "accepted %s (%s)\n", d.Nickname, d.Address)
+		pub.mu.RLock()
+		current := pub.validAfter
+		pub.mu.RUnlock()
+		if eligible.Equal(current) {
+			fmt.Fprintf(w, "accepted %s (%s); eligible for the current consensus\n", d.Nickname, d.Address)
+		} else {
+			fmt.Fprintf(w, "accepted %s (%s); eligible from the consensus beginning %s\n",
+				d.Nickname, d.Address, eligible.UTC().Format(time.RFC3339))
+		}
 	}
 }
 

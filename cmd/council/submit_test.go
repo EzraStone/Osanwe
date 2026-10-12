@@ -160,7 +160,7 @@ func TestSubmitAcceptsAnAdmittedRelayAndPublishesIt(t *testing.T) {
 	// Published before this epoch began, so it is valid for the whole window
 	// and the rebuild that follows acceptance can list it straight away.
 	rec := f.post(f.descriptor(id, "alpha", f.now.Truncate(f.pub.epoch).Add(-time.Minute)))
-	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), "accepted alpha (alpha.example:8443)") {
+	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), "accepted alpha (alpha.example:8443); eligible for the current consensus") {
 		t.Fatalf("admitted relay: %d %q", rec.Code, rec.Body.String())
 	}
 	if _, err := os.Stat(f.store.FileFor(id.Fingerprint())); err != nil {
@@ -290,5 +290,24 @@ func TestFirstListingFindsTheEarliestWindowThatCanHoldADescriptor(t *testing.T) 
 		if ok != test.ok || !got.Equal(test.want) {
 			t.Errorf("%s: firstListing = %s, %v; want %s, %v", test.name, got, ok, test.want, test.ok)
 		}
+	}
+}
+
+// Once an epoch's body is signed, a newly admitted relay waits for the next
+// epoch, and the authority must say so rather than let the operator find the
+// relay missing from the consensus they fetch next.
+func TestSubmitSaysWhenAQueuedRelayBecomesEligible(t *testing.T) {
+	alpha, beta := newRelayIdentity(t), newRelayIdentity(t)
+	f := newSubmitFixture(t, alpha, beta)
+	start := f.now.Truncate(f.pub.epoch)
+
+	first := f.post(f.descriptor(alpha, "alpha", start.Add(-time.Minute)))
+	if !strings.Contains(first.Body.String(), "eligible for the current consensus") {
+		t.Fatalf("first relay: %d %q", first.Code, first.Body.String())
+	}
+	second := f.post(f.descriptor(beta, "beta", start.Add(-time.Minute)))
+	want := "eligible from the consensus beginning " + start.Add(f.pub.epoch).UTC().Format(time.RFC3339)
+	if second.Code != http.StatusAccepted || !strings.Contains(second.Body.String(), want) {
+		t.Fatalf("relay queued behind a signed epoch: %d %q, want %q", second.Code, second.Body.String(), want)
 	}
 }
