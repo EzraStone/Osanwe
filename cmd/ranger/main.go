@@ -54,7 +54,7 @@ func (s *stringList) Set(v string) error {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:], os.Getenv, os.Stdout); err != nil {
 		// Library errors already carry a package prefix; adding another
 		// here would print "cmd: cmd: ...".
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -62,7 +62,9 @@ func main() {
 	}
 }
 
-func run() error {
+// run takes its arguments, environment and standard output as parameters so
+// that its refusals and its print-and-exit modes can be tested in process.
+func run(args []string, getenv func(string) string, stdout io.Writer) error {
 	var allow stringList
 
 	fs := flag.NewFlagSet("ranger", flag.ContinueOnError)
@@ -92,14 +94,14 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "Usage:\n  ranger -allow api.anthropic.com -secret SECRET\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(os.Args[1:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
 	}
 	if *showVersion {
-		fmt.Println(version.String("ranger"))
+		fmt.Fprintln(stdout, version.String("ranger"))
 		return nil
 	}
 
@@ -108,7 +110,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(s)
+		fmt.Fprintln(stdout, s)
 		return nil
 	}
 
@@ -132,7 +134,7 @@ func run() error {
 	}
 
 	if *showPin {
-		fmt.Println(pin)
+		fmt.Fprintln(stdout, pin)
 		return nil
 	}
 
@@ -143,7 +145,7 @@ func run() error {
 		return err
 	}
 	if *showIdentity {
-		fmt.Println(identity.Fingerprint())
+		fmt.Fprintln(stdout, identity.Fingerprint())
 		return nil
 	}
 	if idCreated {
@@ -218,7 +220,7 @@ func run() error {
 
 	// Secret from the environment by preference: a command line is visible in
 	// the process table to every user on the machine.
-	sec := os.Getenv("OSANWE_RANGER_SECRET")
+	sec := getenv("OSANWE_RANGER_SECRET")
 	if *secret != "" {
 		sec = *secret
 	}

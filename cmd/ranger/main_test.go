@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/EzraStone/osanwe/internal/auth"
 	"github.com/EzraStone/osanwe/internal/policy"
@@ -229,5 +231,59 @@ func TestHealthzFailsOnceTheRelayStops(t *testing.T) {
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("stopped relay: status %d, want 503 so a load balancer drains it", rec.Code)
+	}
+}
+
+func noEnv(string) string { return "" }
+
+// runRanger runs the relay command in dir and fails the test if it starts
+// serving: every case that uses it must refuse or exit by itself.
+func runRanger(t *testing.T, dir string, args []string, getenv func(string) string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	full := append([]string{"-dir", dir, "-addr", "127.0.0.1:0", "-metrics", ""}, args...)
+	done := make(chan error, 1)
+	go func() { done <- run(full, getenv, &out) }()
+	select {
+	case err := <-done:
+		return out.String(), err
+	case <-time.After(30 * time.Second):
+		t.Fatalf("ranger %q started serving instead of exiting", args)
+		return "", nil
+	}
+}
+
+func TestRunRefusesAnOpenOrUnboundedRelay(t *testing.T) {
+	goodSecret := strings.Repeat("s", auth.MinSecretLen)
+	secret := func(value string) func(string) string {
+		return func(name string) string {
+			if name == "OSANWE_RANGER_SECRET" {
+				return value
+			}
+			return ""
+		}
+	}
+	tests := []struct {
+		name   string
+		args   []string
+		getenv func(string) string
+		want   string
+	}{
+		{"no secret", []string{"-allow", "api.anthropic.com"}, noEnv, "no secret set"},
+		{"short secret", []string{"-allow", "api.anthropic.com"}, secret("short"), "need at least"},
+		{"short secret on the command line", []string{"-allow", "api.anthropic.com", "-secret", "short"}, secret(goodSecret), "need at least"},
+		{"no destinations", nil, secret(goodSecret), "no -allow destinations given"},
+		{"unusable destination", []string{"-allow", "https://api.anthropic.com/v1"}, secret(goodSecret), "policy: "},
+		{"no tunnel capacity", []string{"-allow", "api.anthropic.com", "-max-tunnels", "0"}, secret(goodSecret), "-max-tunnels must be at least 1"},
+		{"descriptor without destinations", []string{"-descriptor", "relay.desc", "-nickname", "r1"}, noEnv, "-descriptor needs -allow"},
+		{"descriptor without nickname", []string{"-descriptor", "relay.desc", "-allow", "api.anthropic.com"}, noEnv, "-descriptor needs -nickname"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := runRanger(t, t.TempDir(), test.args, test.getenv)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("run error = %v, want one containing %q", err, test.want)
+			}
+		})
 	}
 }
