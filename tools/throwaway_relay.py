@@ -113,7 +113,7 @@ def pump(a: socket.socket, b: socket.socket) -> int:
     return moved
 
 
-def handle(conn: socket.socket, peer: tuple, allow: set[str], secret: str | None) -> None:
+def handle(conn: socket.socket, peer: tuple[str, int], allow: set[tuple[str, int]], secret: str | None) -> None:
     conn.settimeout(HANDSHAKE_TIMEOUT)
     try:
         # Read the request head. A CONNECT head is tiny; cap it so a hostile
