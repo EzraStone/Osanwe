@@ -260,6 +260,30 @@ human decision on purpose. An open endpoint would let anyone register relays,
 and a directory listing a thousand attacker-run relays beside three honest ones
 has handed the attacker almost every client without breaking a signature.
 
+### When a published relay appears
+
+An accepted submission is answered with the consensus it is eligible for:
+
+```text
+  https://council-a.example/publish: accepted northrelay (relay.example.com:8443);
+  eligible from the consensus beginning 2026-10-12T05:00:00Z
+```
+
+A relay rarely joins the consensus being served at that moment. A consensus
+lists only descriptors that stay valid for its whole window, so a relay
+published partway through an epoch joins at the next boundary, and once an
+authority has signed the current epoch any change waits for the following one.
+Fetching the consensus straight after publishing and not finding your relay is
+expected; check again after the time the authority gave.
+
+Because every window must fit inside the descriptor's validity, a descriptor
+that expires sooner than the authority's `-lifetime` plus one epoch could never
+be listed. Such a submission is refused with `422`, and the message gives the
+`-descriptor-validity` that would work. ranger's default of 24 hours is well
+clear of the defaults here (three-hour lifetime, 30-minute epoch).
+
+### Replays and identity
+
 A submission is refused if it is older than or the same age as the one already
 stored (`409`). Otherwise anyone holding a copy of an old descriptor could
 replay it and move your relay back to a previous address or key. That old
