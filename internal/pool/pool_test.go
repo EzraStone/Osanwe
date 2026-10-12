@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/EzraStone/osanwe/internal/directory"
+	"github.com/EzraStone/osanwe/internal/tunnel"
 )
 
 const dest = "api.anthropic.com:443"
@@ -697,5 +699,49 @@ func TestAManuallyPinnedRelayNeverGoesStale(t *testing.T) {
 	}
 	if _, refusing := p.Staleness(); refusing {
 		t.Fatal("a pool holding no consensus reported itself too stale to use")
+	}
+}
+
+// --------------------------------------------------------------------------
+// a substituted relay key is reported, not just failed over
+// --------------------------------------------------------------------------
+
+func TestPinMismatchIsReportedAsAnErrorAndFailedOver(t *testing.T) {
+	h := newHarness(t,
+		descriptor(t, "alpha", "10.0.0.1:8443"),
+		descriptor(t, "bravo", "10.0.0.2:8443"),
+	)
+	var logged strings.Builder
+	h.pool.log = slog.New(slog.NewTextHandler(&logged, nil))
+
+	// Find the relay the pool is sticking to, then have it present a key the
+	// directory never published: the typed error wrapped by the handshake and
+	// then by the dial, which is the shape the tunnel actually produces.
+	mustDial(t, h.pool).Close()
+	guard := h.dialed()[0]
+	h.resetCalls()
+	h.fail(guard, fmt.Errorf("tunnel: TLS handshake with relay: %w",
+		&tunnel.PinMismatchError{Expected: "sha256/published", Presented: "sha256/something-else"}))
+
+	mustDial(t, h.pool).Close()
+	if calls := h.dialed(); len(calls) != 2 || calls[0] != guard || calls[1] == guard {
+		t.Fatalf("dials = %q, want the guard %s then a failover to the other relay", calls, guard)
+	}
+	out := logged.String()
+	if !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "relay key does not match the one the directory published") {
+		t.Fatalf("a substituted relay key was not reported as an error:\n%s", out)
+	}
+}
+
+func TestIsPinMismatchGoesByTypeNotWording(t *testing.T) {
+	typed := fmt.Errorf("dial: %w", &tunnel.PinMismatchError{Expected: "a", Presented: "b"})
+	if !isPinMismatch(typed) {
+		t.Error("a wrapped *tunnel.PinMismatchError was not recognised")
+	}
+	if isPinMismatch(errors.New("relay key mismatch, said some other layer")) {
+		t.Error("an untyped error was treated as a pin mismatch because of its wording")
+	}
+	if isPinMismatch(&tunnel.Error{Status: 407}) {
+		t.Error("a credential refusal was treated as a pin mismatch")
 	}
 }

@@ -443,8 +443,11 @@ func backoff(fails int) time.Duration {
 	return d
 }
 
+// isPinMismatch matches on the tunnel's error type, not its wording, so that
+// rephrasing the message cannot quietly turn this alert into a routine warning.
 func isPinMismatch(err error) bool {
-	return strings.Contains(err.Error(), "relay key mismatch")
+	var mismatch *tunnel.PinMismatchError
+	return errors.As(err, &mismatch)
 }
 
 // summarise turns a list of relay failures into something actionable.
