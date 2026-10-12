@@ -1,7 +1,7 @@
 import { activateInviteBook, loadModels as fetchModels, loadStatus as fetchStatus, sendMessages } from "./api.js";
 import { buildPreviewBundle, parseCodeFences } from "./code.js";
 import { appendTurn, conversationTitle, conversationTurnText, createConversation, exportConversation, toRequestMessages } from "./conversation.js";
-import { disclosureNarrative } from "./disclosure.js";
+import { disclosureNarrative, keyMismatchSummary } from "./disclosure.js";
 import { ConversationLifecycle } from "./lifecycle.js";
 import { buildIdentityLabel, catalogRow, humanize, normalizeCatalog, relayVerificationLabel } from "./models.js";
 import { connectionSnippets } from "./snippets.js";
@@ -180,6 +180,8 @@ function fillPanel(){
   var facts=[];
   if(status&&status.relay)facts.push(["relay",status.relay.nickname||status.relay.address]);
 	if(status&&status.relay)facts.push(["relay check",relayVerificationLabel(status)]);
+  var mismatch=keyMismatchSummary(status);
+  if(mismatch)facts.push(["key mismatch",mismatch]);
   if(status&&status.directory)facts.push(["signed by",status.directory.signed_by+" authorities"]);
   if(status)facts.push(["paying",status.paying]);
   if(status)facts.push(["daemon retained",status.retained]);

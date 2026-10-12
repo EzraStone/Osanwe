@@ -1,9 +1,39 @@
+// ageLabel turns a count of seconds into the plain words the panel uses.
+export function ageLabel(seconds) {
+  const s = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+  if (s < 60) return "just now";
+  if (s < 3600) {
+    const m = Math.floor(s / 60);
+    return `${m} minute${m === 1 ? "" : "s"} ago`;
+  }
+  const h = Math.floor(s / 3600);
+  return `${h} hour${h === 1 ? "" : "s"} ago`;
+}
+
+// keyMismatchSummary names the relay that most recently presented a key the
+// directory did not publish, and when, or returns null if none has.
+export function keyMismatchSummary(status) {
+  const m = status && status.directory && status.directory.key_mismatch;
+  if (!m || typeof m.address !== "string" || !m.address) return null;
+  const name = typeof m.nickname === "string" && m.nickname ? `${m.nickname} (${m.address})` : m.address;
+  return `${name}, ${ageLabel(m.seconds_ago)}`;
+}
+
 export function disclosureNarrative(status, completedHere = false) {
   const relay = status && status.relay;
   const connected = relay && (relay.verification === "connected_pin_matched" ||
     (relay.verification === undefined && relay.key_matched === true));
   const tokenMode = status && status.paying === "tokens";
   const lines = [];
+
+  // First, because it is the one line here that may describe an attack rather
+  // than a limitation. The connection was refused, so the claim is bounded.
+  const mismatch = keyMismatchSummary(status);
+  if (mismatch) {
+    lines.push(["A listed relay presented a key the directory did not publish. ",
+      `This client refused that connection before sending anything through it: ${mismatch}. ` +
+      "It can mean the operator changed the key without republishing, or that something is impersonating the relay."]);
+  }
 
   if (completedHere && connected) {
     lines.push(["This page completed a request through a pinned relay. ",
