@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"io"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -85,8 +88,15 @@ func TestValidateLoadedInviteCapacity(t *testing.T) {
 // it starts serving instead: every case here must be refused before listen.
 func runRefusal(t *testing.T, args []string, getenv func(string) string) error {
 	t.Helper()
-	dir := t.TempDir()
-	full := append([]string{"-key", filepath.Join(dir, "mint.key"), "-addr", "127.0.0.1:0"}, args...)
+	keyPath := filepath.Join(t.TempDir(), "mint.key")
+	t.Cleanup(func() {
+		// A configuration that will not start has no business creating a
+		// signing key on its way to saying so.
+		if _, err := os.Stat(keyPath); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("refused configuration %q left a signing key at %s (stat error %v)", args, keyPath, err)
+		}
+	})
+	full := append([]string{"-key", keyPath, "-addr", "127.0.0.1:0"}, args...)
 	done := make(chan error, 1)
 	go func() { done <- run(full, getenv, io.Discard) }()
 	select {

@@ -89,6 +89,34 @@ func validateLoadedInviteCapacity(expected, actual int) error {
 	return nil
 }
 
+// checkAuthorizationFlags refuses an unusable configuration using the flags
+// and environment alone. It runs before the signing key is loaded, so a mint
+// that will not start also never creates a key file on the way to refusing.
+func checkAuthorizationFlags(mode authorizationMode, inviteCapacity int, btcpayAPIKey, receiptsDB string) error {
+	if err := validateInviteCapacityFlag(mode, inviteCapacity); err != nil {
+		return err
+	}
+	switch mode {
+	case authorizationModeOpen:
+		return nil
+	case authorizationModeBTCPay:
+		if btcpayAPIKey == "" {
+			return errors.New("eregion: OSANWE_BTCPAY_API_KEY is required in BTCPay mode")
+		}
+		if receiptsDB == "" {
+			return errors.New("eregion: -receipts-db is required in BTCPay mode; invoice entitlements must remain one-shot across restarts")
+		}
+		return nil
+	case authorizationModeInvite:
+		if receiptsDB == "" {
+			return errors.New("eregion: -receipts-db is required in invite mode; vouchers must remain one-shot across restarts")
+		}
+		return nil
+	default:
+		return errors.New("eregion: no authorization mode is configured; pass -btcpay for payments, -invite-manifest for a fixed free beta, or -open only for a local demo")
+	}
+}
+
 // run takes its arguments, environment and standard output as parameters so
 // the refusals below, each of which keeps an unpaid mint from starting, can be
 // exercised without a process of their own.
@@ -131,6 +159,21 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
+	// Payment is an explicit choice, never a default. A mint that quietly
+	// issued to anyone would be indistinguishable from a working one right up
+	// until the provider bill arrived.
+	var mode authorizationMode
+	btcpayAPIKey := getenv("OSANWE_BTCPAY_API_KEY")
+	if !*printKey {
+		var err error
+		if mode, err = selectAuthorizationMode(*open, *btcpayEndpoint, *inviteManifest); err != nil {
+			return err
+		}
+		if err := checkAuthorizationFlags(mode, *inviteCapacity, btcpayAPIKey, *receiptsDB); err != nil {
+			return err
+		}
+	}
+
 	priv, created, err := mint.LoadOrCreateKey(*keyPath, *bits)
 	if err != nil {
 		return err
@@ -144,30 +187,13 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 		return nil
 	}
 
-	// Payment is an explicit choice, never a default. A mint that quietly
-	// issued to anyone would be indistinguishable from a working one right up
-	// until the provider bill arrived.
 	var authorizer mint.Authorizer
 	var receipts *mint.FileReceiptStore
-	mode, err := selectAuthorizationMode(*open, *btcpayEndpoint, *inviteManifest)
-	if err != nil {
-		return err
-	}
-	if err := validateInviteCapacityFlag(mode, *inviteCapacity); err != nil {
-		return err
-	}
 	switch mode {
 	case authorizationModeOpen:
 		log.Warn("issuing tokens to anyone who asks; there is no payment behind this mint")
 		authorizer = mint.OpenAuthorizer{}
 	case authorizationModeBTCPay:
-		apiKey := getenv("OSANWE_BTCPAY_API_KEY")
-		if apiKey == "" {
-			return errors.New("eregion: OSANWE_BTCPAY_API_KEY is required in BTCPay mode")
-		}
-		if *receiptsDB == "" {
-			return errors.New("eregion: -receipts-db is required in BTCPay mode; invoice entitlements must remain one-shot across restarts")
-		}
 		var err error
 		receipts, err = mint.OpenFileReceiptStore(*receiptsDB)
 		if err != nil {
@@ -179,7 +205,7 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 			}
 		}()
 		authorizer, err = mint.NewBTCPayAuthorizer(mint.BTCPayConfig{
-			Endpoint: *btcpayEndpoint, StoreID: *btcpayStore, APIKey: apiKey,
+			Endpoint: *btcpayEndpoint, StoreID: *btcpayStore, APIKey: btcpayAPIKey,
 			Amount: *btcpayAmount, Currency: *btcpayCurrency, Receipts: receipts,
 		})
 		if err != nil {
@@ -190,9 +216,6 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 			"amount", *btcpayAmount, "currency", *btcpayCurrency,
 			"receipts_db", *receiptsDB)
 	case authorizationModeInvite:
-		if *receiptsDB == "" {
-			return errors.New("eregion: -receipts-db is required in invite mode; vouchers must remain one-shot across restarts")
-		}
 		var err error
 		receipts, err = mint.OpenFileReceiptStore(*receiptsDB)
 		if err != nil {
@@ -221,7 +244,9 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 			"not_before", start.Format(time.RFC3339), "not_after", end.Format(time.RFC3339),
 			"manifest", *inviteManifest, "receipts_db", *receiptsDB)
 	default:
-		return errors.New("eregion: no authorization mode is configured; pass -btcpay for payments, -invite-manifest for a fixed free beta, or -open only for a local demo")
+		// checkAuthorizationFlags has already refused this; kept so that a mode
+		// added later without a case here cannot fall through to issuing.
+		return errors.New("eregion: no authorization mode is configured")
 	}
 
 	m, err := mint.New(priv, authorizer)
