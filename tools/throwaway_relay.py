@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hmac
 import logging
 import select
 import socket
@@ -143,7 +144,11 @@ def handle(conn: socket.socket, peer: tuple[str, int], allow: set[tuple[str, int
                  if line.lower().startswith(b"proxy-authorization:")),
                 None,
             )
-            if supplied != expected:
+            # Constant-time, so response timing does not reveal how much of a
+            # guessed secret was right.
+            if supplied is None or not hmac.compare_digest(
+                supplied.encode("latin-1"), expected.encode("ascii")
+            ):
                 _respond(conn, "407 Proxy Authentication Required",
                          'Proxy-Authenticate: Basic realm="osanwe-phase0"\r\n')
                 log.warning("%s: rejected, bad or missing credentials", peer[0])

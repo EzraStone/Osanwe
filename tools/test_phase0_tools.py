@@ -126,6 +126,20 @@ class Phase0RelayTests(unittest.TestCase):
         client.close()
         relay.join()
 
+    def test_wrong_secret_is_rejected(self):
+        relay = self.run_relay_once({("127.0.0.1", 443)})
+        client = socket.create_connection(("127.0.0.1", relay.port), timeout=2)
+        token = base64.b64encode(b"relay:not-the-secret").decode()
+        client.sendall(
+            (
+                "CONNECT 127.0.0.1:443 HTTP/1.1\r\nHost: 127.0.0.1:443\r\n"
+                f"Proxy-Authorization: Basic {token}\r\n\r\n"
+            ).encode()
+        )
+        self.assertIn(b"407 Proxy Authentication Required", recv_head(client))
+        client.close()
+        relay.join()
+
     def test_destination_outside_allowlist_is_rejected(self):
         relay = self.run_relay_once({("127.0.0.1", 443)})
         client = self.connect(relay.port, "127.0.0.1:444", authorized=True)
