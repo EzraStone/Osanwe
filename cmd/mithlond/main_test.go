@@ -1,12 +1,16 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/EzraStone/osanwe/internal/certs"
+	"github.com/EzraStone/osanwe/internal/mint"
 )
 
 func TestCertNamesTrimsAndDefaults(t *testing.T) {
@@ -43,5 +47,106 @@ func TestSpacedHostsYieldAnIPAddressEntry(t *testing.T) {
 		if name != "gw.example" {
 			t.Errorf("unexpected DNS name %q", name)
 		}
+	}
+}
+
+var (
+	mintKeyOnce sync.Once
+	mintKeyPath string
+	mintKeyErr  error
+)
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if mintKeyPath != "" {
+		os.RemoveAll(filepath.Dir(mintKeyPath))
+	}
+	os.Exit(code)
+}
+
+// testMintKey writes one mint public key for the whole package; generating an
+// RSA key per case would dominate the run time for no extra coverage.
+func testMintKey(t *testing.T) string {
+	t.Helper()
+	mintKeyOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "mithlond-test-mint")
+		if err != nil {
+			mintKeyErr = err
+			return
+		}
+		priv, err := mint.GenerateKey(mint.MinKeyBits)
+		if err != nil {
+			mintKeyErr = err
+			return
+		}
+		mintKeyPath = filepath.Join(dir, "mint.pub")
+		mintKeyErr = mint.WritePublicKey(&priv.PublicKey, mintKeyPath)
+	})
+	if mintKeyErr != nil {
+		t.Fatal(mintKeyErr)
+	}
+	return mintKeyPath
+}
+
+func TestRunRefusesAnUnboundedOrUnauthenticatedGateway(t *testing.T) {
+	mintKey := testMintKey(t)
+	emptyCA := filepath.Join(t.TempDir(), "empty-ca.pem")
+	if err := os.WriteFile(emptyCA, []byte("not a certificate\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	providerKey := func(name string) string {
+		if name == "OSANWE_PROVIDER_KEY" {
+			return "sk-test"
+		}
+		return ""
+	}
+	noKey := func(string) string { return "" }
+
+	tests := []struct {
+		name   string
+		args   []string
+		getenv func(string) string
+		want   string
+	}{
+		{"no spent-token journal", []string{"-spent-db", "", "-mint-key", mintKey}, providerKey, "-spent-db is required"},
+		{"blank spent-token journal", []string{"-spent-db", "  ", "-mint-key", mintKey}, providerKey, "-spent-db is required"},
+		{"no aggregate budget", []string{"-budget-db", "", "-mint-key", mintKey}, providerKey, "-budget-db is required"},
+		{"unparseable cost ceiling", []string{"-budget-cost-usd", "lots", "-mint-key", mintKey}, providerKey, "invalid -budget-cost-usd"},
+		{"single prices beside a route table", []string{"-routes", "routes.conf", "-input-usd-per-million", "1", "-output-usd-per-million", "2"}, providerKey, "cannot be used with -routes"},
+		{"half a price pair", []string{"-input-usd-per-million", "1", "-mint-key", mintKey}, providerKey, "must be set together"},
+		{"unparseable input price", []string{"-input-usd-per-million", "one", "-output-usd-per-million", "2", "-mint-key", mintKey}, providerKey, "invalid -input-usd-per-million"},
+		{"no provider credential", []string{"-mint-key", mintKey}, noKey, "no provider credential"},
+		{"missing route table", []string{"-routes", "does-not-exist.conf", "-mint-key", mintKey}, noKey, "opening -routes"},
+		{"no mint key", nil, providerKey, "no -mint-key given"},
+		{"the same mint key twice", []string{"-mint-key", mintKey, "-mint-key", mintKey}, providerKey, "holds a key already loaded"},
+		{"upstream CA with no certificates", []string{"-mint-key", mintKey, "-upstream-ca", emptyCA}, providerKey, "contained no usable certificates"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			args := []string{
+				"-addr", "127.0.0.1:0",
+				"-cert", filepath.Join(dir, "gw.crt"), "-key", filepath.Join(dir, "gw.key"),
+				"-spent-db", filepath.Join(dir, "spent.db"), "-budget-db", filepath.Join(dir, "budget.db"),
+				"-models", "test-model",
+			}
+			args = append(args, test.args...)
+			done := make(chan error, 1)
+			go func() { done <- run(args, test.getenv) }()
+			select {
+			case err := <-done:
+				if err == nil || !strings.Contains(err.Error(), test.want) {
+					t.Fatalf("run error = %v, want one containing %q", err, test.want)
+				}
+			case <-time.After(30 * time.Second):
+				t.Fatal("mithlond started serving instead of refusing")
+			}
+		})
+	}
+}
+
+func TestRunTreatsHelpAsSuccess(t *testing.T) {
+	if err := run([]string{"-h"}, func(string) string { return "" }); err != nil {
+		t.Fatalf("-h returned %v, want nil", err)
 	}
 }

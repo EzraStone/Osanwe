@@ -37,13 +37,16 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:], os.Getenv); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+// run takes its arguments and environment as parameters so that every check
+// standing between a pooled provider account and an unbounded bill can be
+// tested without starting a process.
+func run(args []string, getenv func(string) string) error {
 	var mintKeys stringList
 
 	fs := flag.NewFlagSet("mithlond", flag.ContinueOnError)
@@ -83,7 +86,7 @@ func run() error {
 			"  mithlond -mint-key mint.pub -spent-db spent.db -budget-db budget.db -models MODEL -upstream https://api.anthropic.com\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(os.Args[1:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
@@ -132,7 +135,7 @@ func run() error {
 	// to every user on the machine, and these are the pooled credentials for
 	// everybody the gateway serves.
 	var routes *gateway.Routes
-	providerKey := os.Getenv("OSANWE_PROVIDER_KEY")
+	providerKey := getenv("OSANWE_PROVIDER_KEY")
 
 	if *routesPath != "" && providerKey != "" {
 		log.Warn("both -routes and OSANWE_PROVIDER_KEY are set; the route table wins and the single credential is unused")
@@ -142,7 +145,7 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("mithlond: opening -routes: %w", err)
 		}
-		routes, err = gateway.ParseRoutes(f, os.Getenv)
+		routes, err = gateway.ParseRoutes(f, getenv)
 		f.Close()
 		if err != nil {
 			return err
