@@ -67,6 +67,21 @@ def _respond(conn: socket.socket, status: str, extra: str = "") -> None:
         pass
 
 
+def _no_delay(sock: socket.socket) -> None:
+    """Forward each streamed chunk as soon as it arrives.
+
+    Python sockets leave Nagle's algorithm on, so a small SSE frame can sit in
+    the send buffer until the previous segment is acknowledged. Against a peer
+    that delays its ACKs that is a stall of up to its delayed-ACK timer,
+    commonly 40 to 200 ms. Go's net package disables Nagle by default, so
+    without this the instrument would add latency the shipped relay does not.
+    """
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    except OSError:
+        pass
+
+
 def pump(a: socket.socket, b: socket.socket) -> int:
     """Shuttle bytes between two sockets until either closes. Returns bytes moved."""
     moved = 0
@@ -157,6 +172,8 @@ def handle(conn: socket.socket, peer: tuple, allow: set[str], secret: str | None
             log.warning("%s: upstream %s:%d failed: %s", peer[0], host, port, exc)
             return
 
+        _no_delay(conn)
+        _no_delay(upstream)
         conn.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
         conn.settimeout(None)
         upstream.settimeout(None)

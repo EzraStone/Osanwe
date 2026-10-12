@@ -4,6 +4,7 @@ import base64
 import socket
 import threading
 import unittest
+from unittest import mock
 
 import providers
 import phase0_latency
@@ -142,6 +143,45 @@ class Phase0RelayTests(unittest.TestCase):
         client.sendall(payload)
         self.assertEqual(payload, client.recv(len(payload)))
         client.close()
+        relay.join()
+        upstream.join()
+
+    def test_tunnel_disables_nagle_on_both_legs(self):
+        # Python leaves Nagle on and Go's net package turns it off. If the
+        # instrument kept it, small streamed frames would wait on ACKs that the
+        # shipped relay never waits for, and the overhead would be overstated.
+        upstream = OneShotServer(self.echo)
+        upstream.start()
+        allow = {("127.0.0.1", upstream.port)}
+        legs = {}
+        opened = []
+        real_connect = socket.create_connection
+
+        def record(*args, **kwargs):
+            sock = real_connect(*args, **kwargs)
+            opened.append(sock)
+            return sock
+
+        def relay_handler(conn, peer):
+            legs["client"] = conn
+            throwaway_relay.handle(conn, peer, allow, self.secret)
+
+        relay = OneShotServer(relay_handler)
+        with mock.patch.object(throwaway_relay.socket, "create_connection", record):
+            relay.start()
+            client = self.connect(relay.port, f"127.0.0.1:{upstream.port}", authorized=True)
+            self.assertIn(b"200 Connection Established", recv_head(client))
+            legs["upstream"] = next(
+                s for s in opened if s.getpeername()[1] == upstream.port
+            )
+            for name, sock in legs.items():
+                with self.subTest(leg=name):
+                    self.assertNotEqual(
+                        0, sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
+                    )
+            client.sendall(b"x")
+            self.assertEqual(b"x", client.recv(1))
+            client.close()
         relay.join()
         upstream.join()
 
