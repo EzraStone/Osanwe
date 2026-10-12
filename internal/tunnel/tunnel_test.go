@@ -267,3 +267,27 @@ func TestHostname(t *testing.T) {
 		}
 	}
 }
+
+// Each refusal must name the relay and say what to do about it; a bare status
+// code sends an operator to the HTTP specification instead of the fix.
+func TestRelayRefusalsExplainThemselves(t *testing.T) {
+	tests := []struct {
+		status int
+		want   []string
+	}{
+		{http.StatusProxyAuthRequired, []string{"relay.example:8443", "(407)", "secret"}},
+		{http.StatusForbidden, []string{"relay.example:8443", "api.example:443", "(403)", "-allow"}},
+		{http.StatusBadGateway, []string{"relay.example:8443", "api.example:443", "(502)", "could not reach"}},
+		{http.StatusServiceUnavailable, []string{"relay.example:8443", "(503)", "capacity", "another listed relay"}},
+		{http.StatusMethodNotAllowed, []string{"relay.example:8443", "(405)", "not appear to be an osanwe ranger"}},
+		{http.StatusTeapot, []string{"relay.example:8443", "api.example:443", "status 418"}},
+	}
+	for _, test := range tests {
+		msg := (&Error{Status: test.status, Target: "api.example:443", Relay: "relay.example:8443"}).Error()
+		for _, want := range test.want {
+			if !strings.Contains(msg, want) {
+				t.Errorf("status %d: %q does not contain %q", test.status, msg, want)
+			}
+		}
+	}
+}
