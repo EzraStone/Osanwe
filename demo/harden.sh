@@ -136,7 +136,9 @@ else
 fi
 echo
 say "Not checked here, because it is not built:"
-say "  nothing rate limits the gateway. Every check above bounds what ONE"
-say "  token buys; none of them bound how many tokens one person may present."
+say "  per-caller fairness. Every check above bounds what ONE token buys, and"
+say "  the gateway's aggregate budget bounds what ALL callers spend together,"
+say "  but the gateway cannot tell callers apart, so one person holding many"
+say "  tokens can spend the whole budget window before anyone else is served."
 echo
 exit "$FAILED"
