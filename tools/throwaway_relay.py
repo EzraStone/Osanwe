@@ -138,9 +138,9 @@ def handle(conn: socket.socket, peer: tuple[str, int], allow: set[tuple[str, int
         if secret is not None:
             expected = "Basic " + base64.b64encode(f"relay:{secret}".encode()).decode()
             supplied = next(
-                (l.decode("latin-1").split(":", 1)[1].strip()
-                 for l in lines[1:]
-                 if l.lower().startswith(b"proxy-authorization:")),
+                (line.decode("latin-1").split(":", 1)[1].strip()
+                 for line in lines[1:]
+                 if line.lower().startswith(b"proxy-authorization:")),
                 None,
             )
             if supplied != expected:
