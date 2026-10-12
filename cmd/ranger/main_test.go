@@ -273,7 +273,7 @@ func TestRunRefusesAnOpenOrUnboundedRelay(t *testing.T) {
 		{"short secret", []string{"-allow", "api.anthropic.com"}, secret("short"), "need at least"},
 		{"short secret on the command line", []string{"-allow", "api.anthropic.com", "-secret", "short"}, secret(goodSecret), "need at least"},
 		{"no destinations", nil, secret(goodSecret), "no -allow destinations given"},
-		{"unusable destination", []string{"-allow", "https://api.anthropic.com/v1"}, secret(goodSecret), "policy: "},
+		{"unusable destination", []string{"-allow", "https://api.anthropic.com/v1"}, secret(goodSecret), "is a URL; give only the host"},
 		{"no tunnel capacity", []string{"-allow", "api.anthropic.com", "-max-tunnels", "0"}, secret(goodSecret), "-max-tunnels must be at least 1"},
 		{"descriptor without destinations", []string{"-descriptor", "relay.desc", "-nickname", "r1"}, noEnv, "-descriptor needs -allow"},
 		{"descriptor without nickname", []string{"-descriptor", "relay.desc", "-allow", "api.anthropic.com"}, noEnv, "-descriptor needs -nickname"},

@@ -1,6 +1,9 @@
 package policy
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseRejectsEmptyList(t *testing.T) {
 	if _, err := Parse(nil); err == nil {
@@ -53,6 +56,46 @@ func TestParseDestination(t *testing.T) {
 		if got.Host != tt.wantHost || got.Port != tt.wantPort {
 			t.Errorf("ParseDestination(%q) = %s:%d, want %s:%d",
 				tt.in, got.Host, got.Port, tt.wantHost, tt.wantPort)
+		}
+	}
+}
+
+// Entries a CONNECT target could never equal must be refused at parse time:
+// accepted, they start a relay that silently refuses that destination.
+func TestParseDestinationRejectsWhatCouldNeverMatch(t *testing.T) {
+	tests := map[string]string{
+		"https://api.anthropic.com":    "is a URL",
+		"https://api.anthropic.com/v1": "is a URL",
+		"api.anthropic.com/v1":         "path, query or credentials",
+		"api.anthropic.com:443/v1":     "path, query or credentials",
+		"user@api.anthropic.com":       "path, query or credentials",
+		"api.anthropic.com?x=1":        "path, query or credentials",
+		"api.anthropic.com#frag":       "path, query or credentials",
+		"api anthropic.com":            "not a host name",
+		"api..anthropic.com":           "not a host name",
+		".api.anthropic.com":           "not a host name",
+		"api.anthropic.com\x00":        "not a host name",
+		strings.Repeat("a", 254):       "not a host name",
+	}
+	for in, want := range tests {
+		_, err := ParseDestination(in)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("ParseDestination(%q) error = %v, want one containing %q", in, err, want)
+		}
+	}
+}
+
+func TestParseDestinationKeepsLegitimateNames(t *testing.T) {
+	for in, want := range map[string]string{
+		"internal_gw.corp.example:8443": "internal_gw.corp.example",
+		"xn--bcher-kva.example":         "xn--bcher-kva.example",
+		"::1":                           "::1",
+		"[::1]":                         "::1",
+		"2001:db8::7":                   "2001:db8::7",
+	} {
+		d, err := ParseDestination(in)
+		if err != nil || d.Host != want {
+			t.Errorf("ParseDestination(%q) = %+v, %v; want host %q", in, d, err, want)
 		}
 	}
 }

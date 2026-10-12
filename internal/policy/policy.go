@@ -66,6 +66,14 @@ func ParseDestination(raw string) (Destination, error) {
 	if s == "" {
 		return Destination{}, fmt.Errorf("policy: empty destination")
 	}
+	// A pasted URL is the likeliest mistake, and splitting it on its last
+	// colon produces an error about a "port" the operator never wrote.
+	if strings.Contains(s, "://") {
+		return Destination{}, fmt.Errorf("policy: %q is a URL; give only the host or host:port, such as api.anthropic.com", raw)
+	}
+	if strings.ContainsAny(s, "/?#@") {
+		return Destination{}, fmt.Errorf("policy: %q has a path, query or credentials; give only the host or host:port", raw)
+	}
 
 	host, portStr, err := net.SplitHostPort(s)
 	if err != nil {
@@ -78,6 +86,11 @@ func ParseDestination(raw string) (Destination, error) {
 	if host == "" {
 		return Destination{}, fmt.Errorf("policy: %q has no host", raw)
 	}
+	// Anything else would be accepted as a destination no CONNECT target can
+	// ever equal: the relay would start and then silently refuse it.
+	if !validHost(host) {
+		return Destination{}, fmt.Errorf("policy: %q is not a host name or IP address", raw)
+	}
 
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
@@ -88,6 +101,27 @@ func ParseDestination(raw string) (Destination, error) {
 	}
 
 	return Destination{Host: host, Port: port}, nil
+}
+
+// validHost accepts an IP address or a name made of letters, digits, hyphens,
+// underscores and dots, with no empty label. It is deliberately looser than
+// RFC 1123 (underscores appear in real internal names) and exists only to
+// reject entries that could never match a dialled host.
+func validHost(h string) bool {
+	if net.ParseIP(h) != nil {
+		return true
+	}
+	if len(h) > 253 || strings.HasPrefix(h, ".") || strings.Contains(h, "..") {
+		return false
+	}
+	for _, r := range h {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // normalizeHost lowercases, strips the root label's trailing dot, and removes
