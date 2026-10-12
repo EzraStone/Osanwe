@@ -5,15 +5,20 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/EzraStone/osanwe/internal/auth"
+	"github.com/EzraStone/osanwe/internal/directory"
 	"github.com/EzraStone/osanwe/internal/policy"
 	"github.com/EzraStone/osanwe/internal/ranger"
 )
@@ -285,5 +290,105 @@ func TestRunRefusesAnOpenOrUnboundedRelay(t *testing.T) {
 				t.Fatalf("run error = %v, want one containing %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestRunWritesADescriptorClientsCanVerify(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "relay.desc")
+
+	pin, err := runRanger(t, dir, []string{"-pin"}, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := runRanger(t, dir, []string{"-identity"}, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runRanger(t, dir, []string{
+		"-descriptor", out, "-nickname", "elrond", "-contact", "ops@relay.example",
+		"-allow", "api.anthropic.com", "-advertise", "relay.example:8443", "-descriptor-validity", "6h",
+	}, noEnv); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := directory.ParseDescriptor(raw)
+	if err != nil {
+		t.Fatalf("descriptor does not verify: %v", err)
+	}
+	if d.Nickname != "elrond" || d.Address != "relay.example:8443" || d.Contact != "ops@relay.example" {
+		t.Errorf("descriptor = %q at %q contact %q", d.Nickname, d.Address, d.Contact)
+	}
+	if d.TLSPin != strings.TrimSpace(pin) {
+		t.Errorf("descriptor pin %q, but -pin printed %q", d.TLSPin, pin)
+	}
+	if d.Identity != strings.TrimSpace(identity) {
+		t.Errorf("descriptor identity %q, but -identity printed %q", d.Identity, identity)
+	}
+	if !reflect.DeepEqual(d.Destinations, []string{"api.anthropic.com:443"}) {
+		t.Errorf("destinations = %q", d.Destinations)
+	}
+	if got := d.Expires.Sub(d.Published); got != 6*time.Hour {
+		t.Errorf("validity = %s, want 6h", got)
+	}
+}
+
+func TestRunKeepsItsIdentityAcrossInvocations(t *testing.T) {
+	dir := t.TempDir()
+	for _, flag := range []string{"-pin", "-identity"} {
+		first, err := runRanger(t, dir, []string{flag}, noEnv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := runRanger(t, dir, []string{flag}, noEnv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first == "" || first != second {
+			t.Errorf("%s printed %q then %q; a relay's identity must not change between runs", flag, first, second)
+		}
+	}
+}
+
+func TestRunWillNotAdvertiseAWildcardAddress(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "relay.desc")
+	_, err := runRanger(t, dir, []string{
+		"-addr", "0.0.0.0:8443", "-descriptor", out, "-nickname", "elrond", "-allow", "api.anthropic.com",
+	}, noEnv)
+	if err == nil || !strings.Contains(err.Error(), "-advertise is required") {
+		t.Fatalf("run error = %v, want the -advertise refusal", err)
+	}
+	if _, err := os.Stat(out); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("an undialable descriptor was written anyway (stat error %v)", err)
+	}
+}
+
+func TestRunGeneratesUsableDistinctSecrets(t *testing.T) {
+	first, err := runRanger(t, t.TempDir(), []string{"-gen-secret"}, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := runRanger(t, t.TempDir(), []string{"-gen-secret"}, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second = strings.TrimSpace(first), strings.TrimSpace(second)
+	if _, err := auth.New(first); err != nil {
+		t.Fatalf("-gen-secret printed a secret ranger itself rejects: %v", err)
+	}
+	if first == second {
+		t.Fatal("-gen-secret printed the same secret twice")
+	}
+}
+
+func TestRunPrintsItsVersion(t *testing.T) {
+	out, err := runRanger(t, t.TempDir(), []string{"-version"}, noEnv)
+	if err != nil || !strings.HasPrefix(out, "ranger") {
+		t.Fatalf("-version printed %q, %v", out, err)
 	}
 }
