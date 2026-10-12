@@ -32,9 +32,16 @@ good() { echo "   ${G}✓${N} $*"; }
 warn() { echo "   ${Y}!${N} $*"; }
 
 cleanup() {
-  echo
-  echo "stopping..."
-  kill $(jobs -p) 2>/dev/null || true
+  # Bound to EXIT as well as the signals, so disarm first: otherwise Ctrl-C
+  # runs this once for INT and again when the script exits.
+  trap - EXIT INT TERM
+  echo; echo "stopping..."
+  local pids
+  pids=$(jobs -p)
+  if [ -n "$pids" ]; then
+    # shellcheck disable=SC2086 # one PID per word is the intent
+    kill $pids 2>/dev/null || true
+  fi
   wait 2>/dev/null || true
   rm -rf "$WORK"
 }

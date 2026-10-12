@@ -38,8 +38,16 @@ die()  { echo; echo "${R}$*${N}" >&2; exit 1; }
 
 WORK="$(mktemp -d)"
 cleanup() {
+  # Bound to EXIT as well as the signals, so disarm first: otherwise Ctrl-C
+  # runs this once for INT and again when the script exits.
+  trap - EXIT INT TERM
   echo; echo "stopping..."
-  kill $(jobs -p) 2>/dev/null || true
+  local pids
+  pids=$(jobs -p)
+  if [ -n "$pids" ]; then
+    # shellcheck disable=SC2086 # one PID per word is the intent
+    kill $pids 2>/dev/null || true
+  fi
   wait 2>/dev/null || true
   rm -rf "$WORK"
 }
