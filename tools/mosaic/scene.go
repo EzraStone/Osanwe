@@ -44,7 +44,6 @@ var (
 	sunCore   = rgb{0.99, 0.90, 0.70}
 	cloudLit  = rgb{0.90, 0.83, 0.72}
 	cloudDark = rgb{0.44, 0.46, 0.52}
-	hillFar   = rgb{0.34, 0.36, 0.42}
 	hillNear  = rgb{0.20, 0.21, 0.24}
 	seaFar    = rgb{0.40, 0.43, 0.49}
 	seaNear   = rgb{0.11, 0.15, 0.21}
