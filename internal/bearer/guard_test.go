@@ -253,12 +253,18 @@ type stubRelays struct {
 	ok         bool
 	n, signed  int
 	since      time.Time
+
+	mismatchNick, mismatchAddr string
+	mismatchAt                 time.Time
 }
 
 func (s stubRelays) Current() (string, string, bool) { return s.nick, s.addr, s.ok }
 func (s stubRelays) Len() int                        { return s.n }
 func (s stubRelays) SignedBy() int                   { return s.signed }
 func (s stubRelays) GuardSince() (time.Time, bool)   { return s.since, !s.since.IsZero() }
+func (s stubRelays) LastKeyMismatch() (string, string, string, string, time.Time, bool) {
+	return s.mismatchNick, s.mismatchAddr, "sha256/expected-pin", "sha256/presented-pin", s.mismatchAt, !s.mismatchAt.IsZero()
+}
 
 func TestStatusReportsWhatTheInterfaceNeeds(t *testing.T) {
 	s := testServer(t, func(c *Config) {
@@ -311,6 +317,39 @@ func TestStatusReportsWhatTheInterfaceNeeds(t *testing.T) {
 	}
 	if st.Privacy.ConversationHistory != "not_stored_by_osanwe_services" {
 		t.Fatalf("conversation history = %q", st.Privacy.ConversationHistory)
+	}
+}
+
+func TestStatusReportsARelayThatPresentedAnUnpublishedKey(t *testing.T) {
+	s := testServer(t, func(c *Config) {
+		c.Relays = stubRelays{
+			nick: "ranger-two", addr: "203.0.113.10:8443", ok: true, n: 2, signed: 2,
+			mismatchNick: "ranger-one", mismatchAddr: "203.0.113.9:8443",
+			mismatchAt: time.Now().Add(-45 * time.Second),
+		}
+	})
+	resp := ask(t, s, Prefix+"status", nil)
+	body, _ := io.ReadAll(resp.Body)
+	var st Status
+	if err := json.Unmarshal(body, &st); err != nil {
+		t.Fatalf("status is not valid JSON: %v\n%s", err, body)
+	}
+	m := st.Directory.KeyMismatch
+	if m == nil || m.Nickname != "ranger-one" || m.Address != "203.0.113.9:8443" || m.SecondsAgo < 40 || m.SecondsAgo > 120 {
+		t.Fatalf("key_mismatch = %+v, want ranger-one about 45 seconds ago", m)
+	}
+	// The pool knows both pins; the page is told neither.
+	if strings.Contains(string(body), "sha256/") {
+		t.Fatalf("status exposes a pin:\n%s", body)
+	}
+}
+
+func TestStatusReportsNoKeyMismatchWhenThereWasNone(t *testing.T) {
+	s := testServer(t, func(c *Config) {
+		c.Relays = stubRelays{nick: "ranger-one", addr: "203.0.113.9:8443", ok: true, n: 1, signed: 1}
+	})
+	if m := s.Status().Directory.KeyMismatch; m != nil {
+		t.Fatalf("key_mismatch = %+v with none recorded", m)
 	}
 }
 

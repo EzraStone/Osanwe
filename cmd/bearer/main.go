@@ -36,6 +36,11 @@ import (
 	"github.com/EzraStone/osanwe/internal/version"
 )
 
+// The status page learns about substituted relay keys through an optional
+// interface. Asserting it here means a change to either side's method fails
+// the build instead of silently switching the report off.
+var _ bearer.KeyMismatchStatus = (*pool.Pool)(nil)
+
 func main() {
 	if err := run(); err != nil {
 		// Library errors already carry a package prefix; adding another

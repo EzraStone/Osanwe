@@ -34,6 +34,13 @@ type RelayStatus interface {
 	SignedBy() int
 }
 
+// KeyMismatchStatus is the optional part of a RelayStatus that reports a relay
+// presenting a key other than the one its descriptor published. internal/pool
+// implements it; a source without it simply never reports one.
+type KeyMismatchStatus interface {
+	LastKeyMismatch() (nickname, address, expected, presented string, at time.Time, ok bool)
+}
+
 // WalletStatus is the part of a TokenSource that can be shown. Not every
 // TokenSource has to offer it.
 type WalletStatus interface {
@@ -107,6 +114,22 @@ type DirectoryInfo struct {
 	SignedBy     int `json:"signed_by"`
 	Failovers    int64
 	RefreshError bool `json:"refresh_error,omitempty"`
+
+	// KeyMismatch is set once a listed relay has answered with a key other
+	// than the one the directory published for it. The client refused that
+	// connection and moved on, so nothing was sent through it; this is here
+	// because the cause may be impersonation, and the person using the
+	// client should hear about it rather than only a log file.
+	KeyMismatch *KeyMismatchInfo `json:"key_mismatch,omitempty"`
+}
+
+// KeyMismatchInfo names the relay and how long ago it happened. The pins
+// themselves are left out, like every other pin, so the page holds nothing it
+// does not need.
+type KeyMismatchInfo struct {
+	Nickname   string `json:"nickname,omitempty"`
+	Address    string `json:"address"`
+	SecondsAgo int64  `json:"seconds_ago"`
 }
 
 type WalletInfo struct {
@@ -207,6 +230,14 @@ func (s *Server) Status() Status {
 		st.Directory = &DirectoryInfo{
 			RelaysKnown: s.cfg.Relays.Len(),
 			SignedBy:    s.cfg.Relays.SignedBy(),
+		}
+		if reporter, ok := s.cfg.Relays.(KeyMismatchStatus); ok {
+			if nick, addr, _, _, at, ok := reporter.LastKeyMismatch(); ok {
+				st.Directory.KeyMismatch = &KeyMismatchInfo{
+					Nickname: nick, Address: addr,
+					SecondsAgo: max(0, int64(time.Since(at).Seconds())),
+				}
+			}
 		}
 		if nick, addr, ok := s.cfg.Relays.Current(); ok {
 			info := &RelayInfo{
