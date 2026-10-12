@@ -78,7 +78,7 @@ def architecture(p):
     W, H = 960, 470
     # Four columns, sized so a gap always fits its label without touching a box.
     BW, GAP = 168, 96
-    COL = [0, 264, 528, 792]
+    COL = [i * (BW + GAP) for i in range(4)]
     body = []
 
     body.append(
