@@ -731,17 +731,39 @@ func TestPinMismatchIsReportedAsAnErrorAndFailedOver(t *testing.T) {
 	if !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "relay key does not match the one the directory published") {
 		t.Fatalf("a substituted relay key was not reported as an error:\n%s", out)
 	}
+
+	nick, addr, expected, presented, at, ok := h.pool.LastKeyMismatch()
+	if !ok || addr != guard || nick == "" || expected != "sha256/published" || presented != "sha256/something-else" || at.IsZero() {
+		t.Fatalf("LastKeyMismatch = %q %q %q %q %v %v", nick, addr, expected, presented, at, ok)
+	}
+	if got := h.pool.Stats().KeyMismatches; got != 1 {
+		t.Fatalf("KeyMismatches = %d, want 1", got)
+	}
 }
 
-func TestIsPinMismatchGoesByTypeNotWording(t *testing.T) {
-	typed := fmt.Errorf("dial: %w", &tunnel.PinMismatchError{Expected: "a", Presented: "b"})
-	if !isPinMismatch(typed) {
-		t.Error("a wrapped *tunnel.PinMismatchError was not recognised")
+func TestNoKeyMismatchIsReportedUntilOneHappens(t *testing.T) {
+	h := newHarness(t, descriptor(t, "alpha", "10.0.0.1:8443"))
+	h.fail("10.0.0.1:8443", errors.New("connection refused"))
+	if _, err := h.pool.DialContext(context.Background(), "tcp", dest); err == nil {
+		t.Fatal("dial succeeded through a failing relay")
 	}
-	if isPinMismatch(errors.New("relay key mismatch, said some other layer")) {
+	if _, _, _, _, _, ok := h.pool.LastKeyMismatch(); ok {
+		t.Fatal("an ordinary dial failure was reported as a key mismatch")
+	}
+	if got := h.pool.Stats().KeyMismatches; got != 0 {
+		t.Fatalf("KeyMismatches = %d after an ordinary failure", got)
+	}
+}
+
+func TestPinMismatchGoesByTypeNotWording(t *testing.T) {
+	typed := fmt.Errorf("dial: %w", &tunnel.PinMismatchError{Expected: "a", Presented: "b"})
+	if m, ok := asPinMismatch(typed); !ok || m.Expected != "a" || m.Presented != "b" {
+		t.Error("a wrapped *tunnel.PinMismatchError was not recognised with its pins")
+	}
+	if _, ok := asPinMismatch(errors.New("relay key mismatch, said some other layer")); ok {
 		t.Error("an untyped error was treated as a pin mismatch because of its wording")
 	}
-	if isPinMismatch(&tunnel.Error{Status: 407}) {
+	if _, ok := asPinMismatch(&tunnel.Error{Status: 407}); ok {
 		t.Error("a credential refusal was treated as a pin mismatch")
 	}
 }

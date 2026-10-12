@@ -115,6 +115,15 @@ type Stats struct {
 	RefreshErrors int64
 	Failovers     int64
 	DialErrors    int64
+	// KeyMismatches counts dials refused because a relay presented a key
+	// other than the one its descriptor published.
+	KeyMismatches int64
+}
+
+// keyMismatch is the most recent relay that presented an unpublished key.
+type keyMismatch struct {
+	nickname, address, expected, presented string
+	at                                     time.Time
 }
 
 // relay is one candidate and what we have learned about it.
@@ -142,6 +151,7 @@ type Pool struct {
 	signedBy   int
 	validUntil time.Time
 	stats      Stats
+	mismatch   *keyMismatch
 }
 
 // New validates a Config and returns a Pool. It does not fetch; call Refresh.
@@ -424,7 +434,12 @@ func (p *Pool) fail(r *relay, err error) {
 	// either a rotation the operator never announced or something impersonating
 	// a relay. Failing over is right, but doing it silently would hide the one
 	// event most worth seeing.
-	if isPinMismatch(err) {
+	if mismatch, ok := asPinMismatch(err); ok {
+		p.stats.KeyMismatches++
+		p.mismatch = &keyMismatch{
+			nickname: r.desc.Nickname, address: r.desc.Address,
+			expected: mismatch.Expected, presented: mismatch.Presented, at: p.now(),
+		}
 		p.log.Error("relay key does not match the one the directory published",
 			"relay", r.desc.Nickname, "address", r.desc.Address)
 		return
@@ -443,11 +458,11 @@ func backoff(fails int) time.Duration {
 	return d
 }
 
-// isPinMismatch matches on the tunnel's error type, not its wording, so that
+// asPinMismatch matches on the tunnel's error type, not its wording, so that
 // rephrasing the message cannot quietly turn this alert into a routine warning.
-func isPinMismatch(err error) bool {
+func asPinMismatch(err error) (*tunnel.PinMismatchError, bool) {
 	var mismatch *tunnel.PinMismatchError
-	return errors.As(err, &mismatch)
+	return mismatch, errors.As(err, &mismatch)
 }
 
 // summarise turns a list of relay failures into something actionable.
@@ -467,6 +482,22 @@ func summarise(addr string, failures []string) error {
 			"OSANWE_SECRET does not match what these relays were started with (%d tried)", len(failures))
 	}
 	return fmt.Errorf("pool: no relay could carry a connection to %s: %s", addr, strings.Join(failures, "; "))
+}
+
+// LastKeyMismatch reports the most recent relay that presented a key other
+// than the one the directory published for it: which relay, the pin that was
+// expected and the one presented, and when. ok is false if none has.
+//
+// Failover already routes around such a relay. This exists so the person using
+// the client can be told, since it may mean impersonation rather than an outage.
+func (p *Pool) LastKeyMismatch() (nickname, address, expected, presented string, at time.Time, ok bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.mismatch == nil {
+		return "", "", "", "", time.Time{}, false
+	}
+	m := p.mismatch
+	return m.nickname, m.address, m.expected, m.presented, m.at, true
 }
 
 // Current reports the relay in use, if one has been chosen.
