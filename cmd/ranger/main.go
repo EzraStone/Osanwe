@@ -299,6 +299,19 @@ func run() error {
 // startMetrics serves cumulative counters. It binds loopback by default: these
 // numbers describe a relay's traffic and there is no reason to publish them.
 func startMetrics(addr string, srv *ranger.Server, log *slog.Logger) *http.Server {
+	s := &http.Server{Addr: addr, Handler: metricsHandler(srv), ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Warn("metrics endpoint stopped", "error", err)
+		}
+	}()
+	log.Info("metrics listening", "addr", addr)
+	return s
+}
+
+// metricsHandler serves /metrics in the Prometheus text format and /healthz,
+// which fails while the relay is saturated or stopping.
+func metricsHandler(srv *ranger.Server) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		m := srv.Metrics()
@@ -339,15 +352,7 @@ func startMetrics(addr string, srv *ranger.Server, log *slog.Logger) *http.Serve
 		}
 		fmt.Fprintln(w, "ok")
 	})
-
-	s := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Warn("metrics endpoint stopped", "error", err)
-		}
-	}()
-	log.Info("metrics listening", "addr", addr)
-	return s
+	return mux
 }
 
 // identityHosts returns the names to put in a generated certificate. Clients

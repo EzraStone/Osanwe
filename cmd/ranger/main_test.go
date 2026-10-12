@@ -1,12 +1,19 @@
 package main
 
 import (
+	"bufio"
+	"context"
+	"crypto/tls"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/EzraStone/osanwe/internal/auth"
+	"github.com/EzraStone/osanwe/internal/policy"
+	"github.com/EzraStone/osanwe/internal/ranger"
 )
 
 func TestIdentityHostsAddsAConcreteBindHostOnce(t *testing.T) {
@@ -127,5 +134,100 @@ func TestPublishReportsAnUnreachableAuthority(t *testing.T) {
 	authority.Close()
 	if err := publish(url, []byte("descriptor")); err == nil {
 		t.Fatal("publish to a closed authority returned nil")
+	}
+}
+
+func newMetricsTestRelay(t *testing.T) *ranger.Server {
+	t.Helper()
+	allow, err := policy.Parse([]string{"api.anthropic.com:443"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authenticator, err := auth.New(strings.Repeat("s", auth.MinSecretLen))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := ranger.New(ranger.Config{
+		Addr: "127.0.0.1:0", TLS: &tls.Config{}, Allowlist: allow, Auth: authenticator, MaxTunnels: 7,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return srv
+}
+
+func TestMetricsAreWellFormedPrometheusText(t *testing.T) {
+	srv := newMetricsTestRelay(t)
+	srv.Metrics().Accepted.Add(3)
+	srv.Metrics().BytesToClient.Add(4096)
+
+	rec := httptest.NewRecorder()
+	metricsHandler(srv).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain; version=0.0.4") {
+		t.Errorf("Content-Type %q", ct)
+	}
+
+	help, types, values := map[string]bool{}, map[string]string{}, map[string]string{}
+	scanner := bufio.NewScanner(rec.Body)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		switch {
+		case len(fields) >= 3 && fields[0] == "#" && fields[1] == "HELP":
+			help[fields[2]] = true
+		case len(fields) == 4 && fields[0] == "#" && fields[1] == "TYPE":
+			types[fields[2]] = fields[3]
+		case len(fields) == 2:
+			values[fields[0]] = fields[1]
+		default:
+			t.Errorf("unparseable line %q", scanner.Text())
+		}
+	}
+	if len(values) == 0 {
+		t.Fatal("no samples")
+	}
+	for name := range values {
+		if !help[name] {
+			t.Errorf("%s has no HELP line", name)
+		}
+		want := "gauge"
+		if strings.HasSuffix(name, "_total") {
+			want = "counter"
+		}
+		if types[name] != want {
+			t.Errorf("%s TYPE = %q, want %q", name, types[name], want)
+		}
+	}
+	for name, want := range map[string]string{
+		"osanwe_ranger_accepted_total":        "3",
+		"osanwe_ranger_bytes_to_client_total": "4096",
+		"osanwe_ranger_tunnels_reserved":      "0",
+		"osanwe_ranger_tunnels_limit":         "7",
+	} {
+		if values[name] != want {
+			t.Errorf("%s = %q, want %q", name, values[name], want)
+		}
+	}
+}
+
+func TestHealthzFailsOnceTheRelayStops(t *testing.T) {
+	srv := newMetricsTestRelay(t)
+	handler := metricsHandler(srv)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "ok" {
+		t.Fatalf("healthy relay: %d %q", rec.Code, rec.Body.String())
+	}
+
+	if err := srv.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("stopped relay: status %d, want 503 so a load balancer drains it", rec.Code)
 	}
 }
