@@ -107,7 +107,7 @@ func pinVerifier(want string) func([][]byte, [][]*x509.Certificate) error {
 			return fmt.Errorf("tunnel: parsing relay certificate: %w", err)
 		}
 		if got := certs.Pin(leaf); got != want {
-			return fmt.Errorf("tunnel: relay key mismatch\n  expected %s\n  got      %s\nthe relay's identity changed, or something is impersonating it", want, got)
+			return &PinMismatchError{Expected: want, Presented: got}
 		}
 		return nil
 	}
@@ -190,6 +190,19 @@ func (d *Dialer) negotiate(conn net.Conn, addr string) error {
 		return fmt.Errorf("tunnel: relay sent %d unexpected bytes after the CONNECT response", n)
 	}
 	return nil
+}
+
+// PinMismatchError means the relay completed a TLS handshake with a key other
+// than the pinned one. It is a type rather than a message because callers
+// treat it differently from every other dial failure: an outage is retried
+// quietly, but a substituted key may be impersonation and must be reported.
+type PinMismatchError struct {
+	Expected  string // the pin the client was configured or told to require
+	Presented string // the pin of the key the relay actually used
+}
+
+func (e *PinMismatchError) Error() string {
+	return fmt.Sprintf("tunnel: relay key mismatch\n  expected %s\n  got      %s\nthe relay's identity changed, or something is impersonating it", e.Expected, e.Presented)
 }
 
 // Error describes a relay's refusal, translated into something an operator can

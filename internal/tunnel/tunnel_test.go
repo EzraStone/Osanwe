@@ -145,10 +145,20 @@ func TestDialRejectsWrongPin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if _, err := d.DialContext(context.Background(), "tcp", f.echoAddr); err == nil {
+	_, err = d.DialContext(context.Background(), "tcp", f.echoAddr)
+	if err == nil {
 		t.Fatal("dial succeeded against a relay whose key did not match the pin")
-	} else if !strings.Contains(err.Error(), "mismatch") {
-		t.Errorf("error = %v, want a key-mismatch message", err)
+	}
+	var mismatch *PinMismatchError
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("error = %v, want a *PinMismatchError through the handshake wrapping", err)
+	}
+	if mismatch.Expected != otherPin || mismatch.Presented != f.pin {
+		t.Errorf("mismatch = expected %s presented %s, want expected %s presented %s",
+			mismatch.Expected, mismatch.Presented, otherPin, f.pin)
+	}
+	if !strings.Contains(err.Error(), "relay key mismatch") {
+		t.Errorf("error = %v, want the operator-facing key-mismatch message", err)
 	}
 }
 
