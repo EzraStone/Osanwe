@@ -357,7 +357,13 @@ client will not make requests" is a worse failure than a slow one.
 
 Two failures are treated specially. A relay presenting a key the directory did
 not publish is logged as an error rather than a warning, since that is either a
-rotation the operator never announced or something impersonating a relay. And
+rotation the operator never announced or something impersonating a relay. The
+handshake fails before the CONNECT request, so neither the relay secret nor the
+destination is sent to it. The client also reports the most recent such relay
+in `/_osanwe/status` as `directory.key_mismatch`, with its nickname, address and
+how many seconds ago it happened, and the interface's "What happened to your
+words" panel opens with a warning naming it. The pins are left out of the status
+document, as all pins are, since the page has no use for them. And
 when *every* relay rejects the credential, the client says the secret is wrong
 instead of listing four identical 407s — with one shared secret across a
 directory of independently operated relays, that is the likely cause. See the
