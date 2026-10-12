@@ -201,7 +201,8 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 				if endpoint == "" {
 					continue
 				}
-				if err := publish(endpoint, encoded); err != nil {
+				outcome, err := publish(endpoint, encoded)
+				if err != nil {
 					// Publishing to several authorities is normal, and one
 					// being down must not stop the others from hearing about
 					// this relay.
@@ -209,7 +210,7 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 					failures++
 					continue
 				}
-				fmt.Fprintf(os.Stderr, "  %s: accepted\n", endpoint)
+				fmt.Fprintf(os.Stderr, "  %s: %s\n", endpoint, outcome)
 			}
 			if failures > 0 {
 				return fmt.Errorf("ranger: %d authority endpoint(s) refused or were unreachable", failures)
@@ -381,26 +382,28 @@ func displayAddr(addr string) string {
 	return addr
 }
 
-// publish POSTs a signed descriptor to a directory authority.
+// publish POSTs a signed descriptor to a directory authority and returns the
+// authority's own account of the outcome, which says when the relay becomes
+// eligible for a consensus.
 //
 // The descriptor is signed, so this needs no credential and no transport
 // security to be safe: an authority verifies the signature, and a middlebox
 // that altered the document in flight would only produce something the
 // authority rejects.
-func publish(endpoint string, descriptor []byte) error {
+func publish(endpoint string, descriptor []byte) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(descriptor))
 	if err != nil {
-		return err
+		return "", err
 	}
 	req.Header.Set("Content-Type", "text/plain")
 	req.Header.Set("User-Agent", "osanwe-ranger")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 
@@ -408,14 +411,17 @@ func publish(endpoint string, descriptor []byte) error {
 	msg := strings.TrimSpace(string(body))
 	switch {
 	case resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusOK:
-		return nil
+		if msg == "" {
+			msg = "accepted"
+		}
+		return msg, nil
 	case resp.StatusCode == http.StatusForbidden:
-		return fmt.Errorf("not admitted by this authority (403). Its operator must add this relay's identity to their accept list: %s", msg)
+		return "", fmt.Errorf("not admitted by this authority (403). Its operator must add this relay's identity to their accept list: %s", msg)
 	case resp.StatusCode == http.StatusConflict:
-		return fmt.Errorf("the authority already holds a newer descriptor (409): %s", msg)
+		return "", fmt.Errorf("the authority already holds a newer descriptor (409): %s", msg)
 	case resp.StatusCode == http.StatusServiceUnavailable:
-		return fmt.Errorf("this authority does not accept submissions (503): %s", msg)
+		return "", fmt.Errorf("this authority does not accept submissions (503): %s", msg)
 	default:
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
 	}
 }

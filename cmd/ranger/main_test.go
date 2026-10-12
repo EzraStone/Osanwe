@@ -73,7 +73,7 @@ func TestPublishSendsTheSignedDescriptorVerbatim(t *testing.T) {
 	}))
 	defer authority.Close()
 
-	if err := publish(authority.URL, descriptor); err != nil {
+	if _, err := publish(authority.URL, descriptor); err != nil {
 		t.Fatalf("publish = %v, want nil on 202", err)
 	}
 	if gotMethod != http.MethodPost || gotType != "text/plain" || gotAgent != "osanwe-ranger" {
@@ -103,10 +103,10 @@ func TestPublishExplainsEachAuthorityRefusal(t *testing.T) {
 				http.Error(w, "  authority says why  ", test.status)
 			}))
 			defer authority.Close()
-			err := publish(authority.URL, []byte("descriptor"))
+			outcome, err := publish(authority.URL, []byte("descriptor"))
 			if test.wantNil {
-				if err != nil {
-					t.Fatalf("publish = %v, want nil", err)
+				if err != nil || outcome != "authority says why" {
+					t.Fatalf("publish = %q, %v; want the authority's trimmed message and nil", outcome, err)
 				}
 				return
 			}
@@ -126,7 +126,7 @@ func TestPublishBoundsTheAuthorityExplanation(t *testing.T) {
 		io.WriteString(w, strings.Repeat("x", 64<<10))
 	}))
 	defer authority.Close()
-	err := publish(authority.URL, []byte("descriptor"))
+	_, err := publish(authority.URL, []byte("descriptor"))
 	if err == nil {
 		t.Fatal("publish succeeded on 403")
 	}
@@ -139,7 +139,7 @@ func TestPublishReportsAnUnreachableAuthority(t *testing.T) {
 	authority := httptest.NewServer(http.NotFoundHandler())
 	url := authority.URL
 	authority.Close()
-	if err := publish(url, []byte("descriptor")); err == nil {
+	if _, err := publish(url, []byte("descriptor")); err == nil {
 		t.Fatal("publish to a closed authority returned nil")
 	}
 }
@@ -390,5 +390,15 @@ func TestRunPrintsItsVersion(t *testing.T) {
 	out, err := runRanger(t, t.TempDir(), []string{"-version"}, noEnv)
 	if err != nil || !strings.HasPrefix(out, "ranger") {
 		t.Fatalf("-version printed %q, %v", out, err)
+	}
+}
+
+func TestPublishFallsBackToAcceptedForAnEmptyReply(t *testing.T) {
+	authority := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer authority.Close()
+	if outcome, err := publish(authority.URL, []byte("descriptor")); err != nil || outcome != "accepted" {
+		t.Fatalf("publish = %q, %v; want \"accepted\"", outcome, err)
 	}
 }
