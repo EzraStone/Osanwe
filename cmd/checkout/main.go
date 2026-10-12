@@ -22,13 +22,15 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:], os.Getenv); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+// run takes its arguments and environment as parameters so the refusals that
+// keep a misconfigured storefront from taking money can be tested directly.
+func run(args []string, getenv func(string) string) error {
 	fs := flag.NewFlagSet("checkout", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8446", "address to listen on; put a TLS reverse proxy in front for public use")
 	btcpayEndpoint := fs.String("btcpay", "", "base URL of a self-hosted BTCPay Server")
@@ -49,7 +51,7 @@ func run() error {
 		fmt.Fprintln(os.Stderr, "Flags:")
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(os.Args[1:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
@@ -61,7 +63,7 @@ func run() error {
 		level = slog.LevelDebug
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
-	apiKey := os.Getenv("OSANWE_BTCPAY_CREATE_API_KEY")
+	apiKey := getenv("OSANWE_BTCPAY_CREATE_API_KEY")
 	if apiKey == "" {
 		return errors.New("checkout: OSANWE_BTCPAY_CREATE_API_KEY is required")
 	}
