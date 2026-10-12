@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -69,5 +73,43 @@ func TestStdinCloseSignalWaitsForLauncherEOF(t *testing.T) {
 	case <-closed:
 	case <-time.After(time.Second):
 		t.Fatal("stdin close signal did not fire after launcher EOF")
+	}
+}
+
+func TestReadInviteBookBoundsWhatItReads(t *testing.T) {
+	dir := t.TempDir()
+	const limit = 64 << 10
+	write := func(name string, size int) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, bytes.Repeat([]byte("{"), size), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	if data, err := readInviteBook(write("at-limit.json", limit)); err != nil || len(data) != limit {
+		t.Fatalf("a book of exactly %d bytes: %d bytes, %v", limit, len(data), err)
+	}
+	if _, err := readInviteBook(write("over-limit.json", limit+1)); err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Fatalf("a book one byte over the limit: %v, want a size refusal", err)
+	}
+	if _, err := readInviteBook(filepath.Join(dir, "missing.json")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("a missing book: %v, want not-exist", err)
+	}
+}
+
+func TestStringListTrimsAndDropsEmptyItems(t *testing.T) {
+	var list stringList
+	for _, v := range []string{" https://a.example/consensus ,, https://b.example/consensus", "", "https://c.example/consensus "} {
+		if err := list.Set(v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []string{"https://a.example/consensus", "https://b.example/consensus", "https://c.example/consensus"}
+	if !reflect.DeepEqual([]string(list), want) {
+		t.Fatalf("list = %q, want %q", list, want)
+	}
+	if got := list.String(); got != strings.Join(want, ",") {
+		t.Fatalf("String() = %q", got)
 	}
 }
