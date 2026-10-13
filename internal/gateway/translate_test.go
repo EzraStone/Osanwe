@@ -40,6 +40,13 @@ func openaiProvider(t *testing.T, roots *x509.CertPool) string {
 			return
 		}
 
+		// A prompt asking for it gets the answer cut short by a content filter,
+		// the way OpenAI-compatible providers report one.
+		finish := "stop"
+		if strings.Contains(string(body), "trip the filter") {
+			finish = "content_filter"
+		}
+
 		if in["stream"] == true {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
@@ -48,7 +55,7 @@ func openaiProvider(t *testing.T, roots *x509.CertPool) string {
 				fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":%q}}]}\n\n", word)
 				f.Flush()
 			}
-			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+			fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":%q}]}\n\n", finish)
 			fmt.Fprint(w, "data: [DONE]\n\n")
 			f.Flush()
 			return
@@ -56,8 +63,8 @@ func openaiProvider(t *testing.T, roots *x509.CertPool) string {
 
 		// Echo back what arrived, so a test can inspect the translated request.
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"id":"chatcmpl-1","model":%q,"choices":[{"message":{"content":%q},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":4}}`,
-			in["model"], "I am a model.")
+		fmt.Fprintf(w, `{"id":"chatcmpl-1","model":%q,"choices":[{"message":{"content":%q},"finish_reason":%q}],"usage":{"prompt_tokens":7,"completion_tokens":4}}`,
+			in["model"], "I am a model.", finish)
 	}))
 	t.Cleanup(srv.Close)
 	roots.AddCert(srv.Certificate())
@@ -350,5 +357,71 @@ func TestStreamTranslationDoesNotStall(t *testing.T) {
 		}
 	case <-time.After(1500 * time.Millisecond):
 		t.Fatal("the first token had not arrived after 1.5s; the stream is being buffered")
+	}
+}
+
+func TestStopReasonSpeaksTheMessagesVocabulary(t *testing.T) {
+	for finish, want := range map[string]string{
+		"stop":           "end_turn",
+		"":               "end_turn",
+		"length":         "max_tokens",
+		"content_filter": "refusal",
+		"tool_calls":     "tool_use",
+		"function_call":  "tool_use",
+		// Unknown reasons are passed on, not turned into an ordinary end.
+		"provider_specific_reason": "provider_specific_reason",
+	} {
+		if got := stopReason(finish); got != want {
+			t.Errorf("stopReason(%q) = %q, want %q", finish, got, want)
+		}
+	}
+}
+
+// A provider's content filter must reach a Messages-API client as the stop
+// reason that API uses for it, both whole and streamed.
+func TestAFilteredAnswerArrivesAsARefusal(t *testing.T) {
+	front, m := translatingGateway(t)
+	ask := func(stream bool) string {
+		t.Helper()
+		body := `{"model":"llama-3.1-8b-instant","max_tokens":64,"messages":[{"role":"user","content":"trip the filter"}]}`
+		if stream {
+			body = strings.Replace(body, `"max_tokens":64,`, `"max_tokens":64,"stream":true,`, 1)
+		}
+		req, _ := http.NewRequest(http.MethodPost, front.URL+"/v1/messages", strings.NewReader(body))
+		req.Header.Set(TokenHeader, tokenFor(t, m))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := front.Client().Do(req)
+		if err != nil {
+			t.Fatalf("Do: %v", err)
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d: %s", resp.StatusCode, raw)
+		}
+		return string(raw)
+	}
+
+	var whole struct {
+		StopReason string `json:"stop_reason"`
+	}
+	if raw := ask(false); json.Unmarshal([]byte(raw), &whole) != nil || whole.StopReason != "refusal" {
+		t.Fatalf("non-streamed stop_reason = %q in %s", whole.StopReason, raw)
+	}
+
+	var streamed string
+	for _, line := range strings.Split(ask(true), "\n") {
+		var ev struct {
+			Type  string `json:"type"`
+			Delta struct {
+				StopReason string `json:"stop_reason"`
+			} `json:"delta"`
+		}
+		if json.Unmarshal([]byte(strings.TrimPrefix(strings.TrimSpace(line), "data:")), &ev) == nil && ev.Type == "message_delta" {
+			streamed = ev.Delta.StopReason
+		}
+	}
+	if streamed != "refusal" {
+		t.Fatalf("streamed stop_reason = %q, want refusal", streamed)
 	}
 }

@@ -176,12 +176,23 @@ func fromOpenAI(body []byte) ([]byte, error) {
 	})
 }
 
+// stopReason maps an OpenAI finish_reason onto the Messages API's stop_reason.
+// Reasons with an equivalent are translated, because a client written against
+// the Messages API branches on its own vocabulary and would not recognise
+// OpenAI's. Anything else passes through unchanged rather than being disguised
+// as an ordinary end of turn.
 func stopReason(finish string) string {
 	switch finish {
 	case "length":
 		return "max_tokens"
 	case "stop", "":
 		return "end_turn"
+	case "content_filter":
+		// The provider's filter cut the answer short; "refusal" is the Messages
+		// API's word for a response stopped on policy grounds.
+		return "refusal"
+	case "tool_calls", "function_call":
+		return "tool_use"
 	default:
 		return finish
 	}
