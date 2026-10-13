@@ -48,6 +48,12 @@ identify a person.
 
 ![The disclosure panel, listing what each party saw and what the client cannot verify](docs/img/app-seal.png)
 
+One event moves to the top of that panel when it happens: a relay from the directory answering
+with a key the directory never published. The client refuses the connection before sending the
+relay secret or the destination, fails over to another relay, and then names the relay and how
+long ago it happened, because the cause may be impersonation rather than an outage. See
+[when a relay goes away](docs/directory.md#when-a-relay-goes-away) for the details.
+
 ### The model catalog
 
 Labels are read live from the connected gateway and state observable facts only. Provider
