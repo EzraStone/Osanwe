@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -193,6 +194,48 @@ func TestNewServerRejectsUnsafeConfiguration(t *testing.T) {
 	} {
 		if _, err := NewServer(cfg); err == nil {
 			t.Fatalf("accepted config: %+v", cfg)
+		}
+	}
+}
+
+// The page loads exactly two same-origin assets. Each must be served with the
+// type a browser will accept under nosniff, and the page must contain nothing
+// its own policy (script-src 'self'; style-src 'self') would silently block.
+func TestPageAssetsAreServedAndThePageObeysItsOwnPolicy(t *testing.T) {
+	handler := newTestServer(t, &fakeCreator{}, 5)
+	get := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+
+	page := get("/").Body.String()
+	for _, ref := range []string{`<link rel="stylesheet" href="/app.css">`, `<script src="/app.js" defer></script>`} {
+		if !strings.Contains(page, ref) {
+			t.Errorf("page no longer loads %s", ref)
+		}
+	}
+	for _, inline := range []*regexp.Regexp{
+		regexp.MustCompile(`<script(\s[^>]*)?>[^<]+</script>`), // inline script body
+		regexp.MustCompile(`(?i)\sstyle=`),                     // inline style attribute
+		regexp.MustCompile(`(?i)\son[a-z]+=`),                  // inline event handler
+		regexp.MustCompile(`(?i)<style`),                       // inline stylesheet
+	} {
+		if m := inline.FindString(page); m != "" {
+			t.Errorf("page contains %q, which its CSP blocks", m)
+		}
+	}
+
+	for path, wantType := range map[string]string{"/app.css": "text/css", "/app.js": "text/javascript"} {
+		rec := get(path)
+		if rec.Code != http.StatusOK || rec.Body.Len() == 0 {
+			t.Fatalf("%s: %d with %d bytes", path, rec.Code, rec.Body.Len())
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, wantType) {
+			t.Errorf("%s Content-Type = %q, want %s; under nosniff a browser would refuse it", path, ct, wantType)
+		}
+		if rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("Content-Security-Policy") == "" {
+			t.Errorf("%s is missing the security headers", path)
 		}
 	}
 }
