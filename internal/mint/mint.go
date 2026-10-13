@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -292,12 +293,32 @@ func WritePublicKey(pub *rsa.PublicKey, path string) error {
 	if err != nil {
 		return fmt.Errorf("mint: encoding public key: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	// eregion rewrites this file on every start, and a gateway may read it at
+	// any moment. Truncating in place would let that reader, or anything after
+	// a crash or a full disk, see an empty or partial key and refuse to start.
+	// A temporary file renamed over the old one is either the old key or the
+	// new one, never something in between.
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("mint: writing public key: %w", err)
 	}
-	defer f.Close()
-	return pem.Encode(f, &pem.Block{Type: publicKeyPEMType, Bytes: der})
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // a no-op once the rename has happened
+	if err := pem.Encode(tmp, &pem.Block{Type: publicKeyPEMType, Bytes: der}); err != nil {
+		tmp.Close()
+		return fmt.Errorf("mint: writing public key: %w", err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return fmt.Errorf("mint: writing public key: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("mint: writing public key: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("mint: writing public key: %w", err)
+	}
+	return nil
 }
 
 // LoadPublicKey reads a mint's verification key.
