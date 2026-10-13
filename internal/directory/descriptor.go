@@ -2,7 +2,6 @@ package directory
 
 import (
 	"bufio"
-	"crypto/ed25519"
 	"fmt"
 	"net"
 	"sort"
@@ -300,18 +299,4 @@ func splitSignature(data []byte) (body []byte, sig string, err error) {
 		return nil, "", fmt.Errorf("directory: %d unsigned bytes follow the signature line", len(after))
 	}
 	return body, sig, nil
-}
-
-// VerifyDescriptorAgainst checks that a descriptor was signed by an expected
-// identity, for a client that already knows which relay it is looking for.
-func VerifyDescriptorAgainst(d *Descriptor, expected ed25519.PublicKey) error {
-	got, err := DecodeKey(d.Identity)
-	if err != nil {
-		return err
-	}
-	if !got.Equal(expected) {
-		return fmt.Errorf("directory: descriptor %q is signed by %s, not the expected identity",
-			d.Nickname, d.Identity)
-	}
-	return nil
 }
