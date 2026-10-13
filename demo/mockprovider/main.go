@@ -80,6 +80,10 @@ func main() {
 }
 
 // handle answers a Messages-API-shaped request.
+// wordDelay paces the stream so a client that buffers instead of streaming is
+// obvious to the eye. Tests set it to zero.
+var wordDelay = 120 * time.Millisecond
+
 func handle(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
 		w.Header().Set("Content-Type", "application/json")
@@ -163,7 +167,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		})
 		fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", chunk)
 		flusher.Flush()
-		time.Sleep(120 * time.Millisecond)
+		time.Sleep(wordDelay)
 	}
 
 	fmt.Fprintf(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
