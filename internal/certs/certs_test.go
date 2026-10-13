@@ -297,3 +297,26 @@ func TestLoadOrCreateNeverReplacesADamagedIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestWritePEMLeavesNoKeyBehindWhenItCannotWriteTheCertificate(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := filepath.Join(dir, "ranger.crt"), filepath.Join(dir, "ranger.key")
+	occupant := []byte("someone else's certificate\n")
+	if err := os.WriteFile(certPath, occupant, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cert, _, err := SelfSigned([]string{"localhost"}, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WritePEM(cert, certPath, keyPath); err == nil {
+		t.Fatal("WritePEM overwrote an existing certificate")
+	}
+	if _, err := os.Stat(keyPath); !os.IsNotExist(err) {
+		t.Fatalf("a key was left behind for a certificate that was never written (stat error %v)", err)
+	}
+	if got, err := os.ReadFile(certPath); err != nil || !bytes.Equal(got, occupant) {
+		t.Fatal("the existing certificate was changed")
+	}
+}

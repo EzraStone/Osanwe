@@ -163,19 +163,36 @@ func WritePEM(cert tls.Certificate, certPath, keyPath string) error {
 	if err != nil {
 		return fmt.Errorf("certs: creating key file: %w", err)
 	}
-	defer keyFile.Close()
+	// From here on the key file is ours. If the pair cannot be completed it is
+	// removed again, so a failed write never leaves half an identity behind.
+	written := false
+	defer func() {
+		if !written {
+			_ = os.Remove(keyPath)
+		}
+	}()
 	if err := pem.Encode(keyFile, &pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}); err != nil {
+		keyFile.Close()
 		return fmt.Errorf("certs: writing key: %w", err)
+	}
+	if err := keyFile.Close(); err != nil {
+		return fmt.Errorf("certs: closing key file: %w", err)
 	}
 
 	certFile, err := os.OpenFile(certPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return fmt.Errorf("certs: creating certificate file: %w", err)
 	}
-	defer certFile.Close()
 	if err := pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}); err != nil {
+		certFile.Close()
+		_ = os.Remove(certPath)
 		return fmt.Errorf("certs: writing certificate: %w", err)
 	}
+	if err := certFile.Close(); err != nil {
+		_ = os.Remove(certPath)
+		return fmt.Errorf("certs: closing certificate file: %w", err)
+	}
+	written = true
 	return nil
 }
 
