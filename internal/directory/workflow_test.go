@@ -2,6 +2,7 @@ package directory
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"strings"
 	"testing"
 	"time"
@@ -293,5 +294,36 @@ func TestEpochSettingsMustFitWirePrecision(t *testing.T) {
 		if _, err := BuildConsensusPartial([]*Descriptor{r}, id, time.Now(), tc.epoch, tc.lifetime); err == nil {
 			t.Errorf("accepted epoch=%s lifetime=%s", tc.epoch, tc.lifetime)
 		}
+	}
+}
+
+func TestAuthoritySetValidationRefusesUnsatisfiableOrMislabelledSets(t *testing.T) {
+	ids, set := authorities(t, 3)
+
+	if err := validateAuthoritySet(set, 2); err != nil {
+		t.Fatalf("a valid 2-of-3 set was refused: %v", err)
+	}
+	if err := validateAuthoritySet(set, 3); err != nil {
+		t.Fatalf("a valid 3-of-3 set was refused: %v", err)
+	}
+
+	for name, threshold := range map[string]int{"zero": 0, "negative": -1} {
+		if err := validateAuthoritySet(set, threshold); err == nil || !strings.Contains(err.Error(), "at least 1") {
+			t.Errorf("%s threshold: %v", name, err)
+		}
+	}
+	if err := validateAuthoritySet(set, 4); err == nil || !strings.Contains(err.Error(), "no consensus could ever satisfy it") {
+		t.Errorf("threshold above the set size: %v", err)
+	}
+
+	// An entry filed under one authority's fingerprint but holding another's
+	// key would let that other key's signature count as this authority's vote.
+	mislabelled := map[string]ed25519.PublicKey{}
+	for fp, pub := range set {
+		mislabelled[fp] = pub
+	}
+	mislabelled[ids[0].Fingerprint()] = ids[1].Public
+	if err := validateAuthoritySet(mislabelled, 2); err == nil || !strings.Contains(err.Error(), "does not match its public key") {
+		t.Errorf("mislabelled authority entry: %v", err)
 	}
 }
