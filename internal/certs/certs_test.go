@@ -1,6 +1,7 @@
 package certs
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"os"
@@ -220,5 +221,79 @@ func TestGeneratedCertificateCompletesTLSHandshake(t *testing.T) {
 
 	if seen != pin {
 		t.Errorf("pin observed over the wire = %q, want %q", seen, pin)
+	}
+}
+
+// A damaged or half-present identity must stop the relay, not be replaced.
+// Replacing it would quietly give the relay a new pin and break every client
+// that had the old one, which is the failure WritePEM's O_EXCL exists to stop.
+func TestLoadOrCreateNeverReplacesADamagedIdentity(t *testing.T) {
+	// A complete identity to damage in each case.
+	fresh := func(t *testing.T) (string, string) {
+		t.Helper()
+		dir := t.TempDir()
+		certPath, keyPath := filepath.Join(dir, "ranger.crt"), filepath.Join(dir, "ranger.key")
+		if _, _, _, err := LoadOrCreate(certPath, keyPath, []string{"localhost"}, time.Hour); err != nil {
+			t.Fatal(err)
+		}
+		return certPath, keyPath
+	}
+	tests := map[string]func(t *testing.T, certPath, keyPath string){
+		"certificate is garbage": func(t *testing.T, certPath, _ string) {
+			if err := os.WriteFile(certPath, []byte("not pem\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"key belongs to another identity": func(t *testing.T, _, keyPath string) {
+			_, otherKey := fresh(t)
+			data, err := os.ReadFile(otherKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(keyPath, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"key is missing": func(t *testing.T, _, keyPath string) {
+			if err := os.Remove(keyPath); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"certificate is missing": func(t *testing.T, certPath, _ string) {
+			if err := os.Remove(certPath); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for name, damage := range tests {
+		t.Run(name, func(t *testing.T) {
+			certPath, keyPath := fresh(t)
+			damage(t, certPath, keyPath)
+			before := map[string][]byte{}
+			for _, p := range []string{certPath, keyPath} {
+				if data, err := os.ReadFile(p); err == nil {
+					before[p] = data
+				}
+			}
+
+			_, _, created, err := LoadOrCreate(certPath, keyPath, []string{"localhost"}, time.Hour)
+			if err == nil || created {
+				t.Fatalf("LoadOrCreate = created %v, err %v; want a refusal", created, err)
+			}
+			if missing, ok := map[string]string{"key is missing": keyPath, "certificate is missing": certPath}[name]; ok &&
+				(!strings.Contains(err.Error(), missing) || !strings.Contains(err.Error(), "refusing to generate")) {
+				t.Errorf("refusal %q does not name %s or say why", err, filepath.Base(missing))
+			}
+			for _, p := range []string{certPath, keyPath} {
+				after, readErr := os.ReadFile(p)
+				if prior, existed := before[p]; existed {
+					if readErr != nil || !bytes.Equal(prior, after) {
+						t.Errorf("%s was changed by the refusal", filepath.Base(p))
+					}
+				} else if readErr == nil {
+					t.Errorf("%s was created, half-replacing the identity", filepath.Base(p))
+				}
+			}
+		})
 	}
 }

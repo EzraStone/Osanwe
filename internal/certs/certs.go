@@ -191,6 +191,22 @@ func LoadOrCreate(certPath, keyPath string, hosts []string, validFor time.Durati
 		return tls.Certificate{}, "", false, err
 	}
 
+	// Generate only when neither half exists. With one present this is a
+	// damaged identity, not a new one: generating would write a fresh key
+	// beside the old certificate (or the reverse) and then fail on the file
+	// that is still there, leaving a pair that matches nothing; and if it ever
+	// succeeded it would change the pin every client holds.
+	certExists, keyExists := fileExists(certPath), fileExists(keyPath)
+	if certExists != keyExists {
+		missing := keyPath
+		if !certExists {
+			missing = certPath
+		}
+		return tls.Certificate{}, "", false, fmt.Errorf("certs: %s is missing but the rest of this identity is present; "+
+			"refusing to generate a new one, which would change the pin every client holds. "+
+			"Restore the missing file, or remove both to start a new identity", missing)
+	}
+
 	cert, pin, err = SelfSigned(hosts, validFor)
 	if err != nil {
 		return tls.Certificate{}, "", false, err
@@ -199,6 +215,11 @@ func LoadOrCreate(certPath, keyPath string, hosts []string, validFor time.Durati
 		return tls.Certificate{}, "", false, err
 	}
 	return cert, pin, true, nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
 }
 
 // unwrapPathError digs out an *os.PathError so os.IsNotExist can see it
