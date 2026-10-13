@@ -250,3 +250,48 @@ func TestFileBudgetHonoursCancellationBeforeMutation(t *testing.T) {
 		t.Fatalf("cancelled reservation mutated usage: %+v", usage)
 	}
 }
+
+// A refunded request releases its reservation. With several ceilings, every
+// one of them must get its capacity back, and releasing twice must not give
+// any of them more than was taken.
+func TestMultiBudgetReleaseRestoresEveryCeilingExactlyOnce(t *testing.T) {
+	now := time.Date(2026, 8, 9, 1, 15, 0, 0, time.UTC)
+	daily := openTestBudget(t, &now, 10, 100)
+	burst := openTestBudget(t, &now, 1, 100)
+	combined, err := NewMultiBudget(daily, burst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	request := BudgetRequest{Model: "demo", InputBytes: 3, MaxOutputTokens: 5}
+
+	first, err := combined.Reserve(ctx, request)
+	if err != nil {
+		t.Fatalf("Reserve: %v", err)
+	}
+	if err := first.Release(ctx); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if err := first.Release(ctx); err != nil {
+		t.Fatalf("second Release: %v", err)
+	}
+	for name, b := range map[string]*FileBudget{"daily": daily, "burst": burst} {
+		usage, err := b.Usage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if usage.Requests != 0 || usage.InputBytes != 0 || usage.OutputTokens != 0 {
+			t.Fatalf("%s usage after release = %+v, want nothing reserved", name, usage)
+		}
+	}
+
+	// The burst ceiling allows one request, so this only succeeds if its
+	// capacity really came back; the double release must not have made room
+	// for a second.
+	if _, err := combined.Reserve(ctx, request); err != nil {
+		t.Fatalf("Reserve after release: %v", err)
+	}
+	if _, err := combined.Reserve(ctx, request); !errors.Is(err, ErrBudgetExhausted) {
+		t.Fatalf("second concurrent Reserve = %v, want the burst ceiling to refuse", err)
+	}
+}
