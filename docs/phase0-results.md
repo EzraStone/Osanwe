@@ -131,6 +131,12 @@ distrust the numbers. A measurement whose caveats are hidden is worse than no me
 - 2026-08-10 read-only inventory: the existing VM is running in `us-west1-b` as an `e2-micro`
   with a 20 GB standard persistent disk. HTTP and HTTPS firewall toggles are off. The August 1-10
   billing report showed $0.43 gross usage fully offset by savings, for $0.00 net cost at inspection.
+- 2026-10-12: The harness's percentile function took one rank too high whenever p/100 × n was an
+  odd whole number (commit `efa5c1d` fixes it). Both recorded tables used 30 trials per arm, so
+  their p95 and p99 rows, including the 448 ms p95 the verdict uses, are unaffected. Their p50
+  rows (TTFT, inter-token and total) are each arm's 16th-fastest trial rather than the 15th, so they
+  may read slightly high. They are left as recorded. A run at the default 20 trials before this fix would
+  have reported its slowest trial as p95.
 - 2026-10-12: The relay used for the recorded run never set `TCP_NODELAY` (see the verdict).
   Commit `47111ae` sets it on the client and upstream sockets and adds a test that fails if either
   is missing. The recorded numbers are kept as measured; they are not adjusted or discarded.
