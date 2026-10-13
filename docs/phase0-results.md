@@ -81,6 +81,15 @@ contradict this result or relay placement removes the overhead, position the fir
 async and agentic workloads rather than interactive chat. The final decision remains pending the
 required three-region dataset.
 
+**Re-measure this route before relying on it.** The relay used for it, the documented Phase 0
+instrument `tools/throwaway_relay.py`, left Nagle's algorithm enabled on both legs until commit
+`47111ae`. Python sockets enable it by default; Go's `net` package, and therefore `ranger`, does
+not. With Nagle on, each small streamed frame can wait for the previous segment's ACK, up to the
+peer's delayed-ACK timer. The overhead above is almost identical at every percentile (435 to
+453 ms), which looks more like a fixed per-request stall than like path length. Until the route
+has been measured again with the corrected relay, this verdict may describe the instrument rather
+than the design.
+
 ## Relay blindness evidence
 
 Per §14, capture traffic at the relay during the run and confirm no plaintext prompt fragment is
@@ -122,6 +131,9 @@ distrust the numbers. A measurement whose caveats are hidden is worse than no me
 - 2026-08-10 read-only inventory: the existing VM is running in `us-west1-b` as an `e2-micro`
   with a 20 GB standard persistent disk. HTTP and HTTPS firewall toggles are off. The August 1-10
   billing report showed $0.43 gross usage fully offset by savings, for $0.00 net cost at inspection.
+- 2026-10-12: The relay used for the recorded run never set `TCP_NODELAY` (see the verdict).
+  Commit `47111ae` sets it on the client and upstream sockets and adds a test that fails if either
+  is missing. The recorded numbers are kept as measured; they are not adjusted or discarded.
 - A dedicated Gemini auth key created during setup was revoked before use after its value appeared
   in diagnostic browser output. No live request used it and no copy was stored locally. A manually
   created replacement was not required because the campaign moved to Groq.
