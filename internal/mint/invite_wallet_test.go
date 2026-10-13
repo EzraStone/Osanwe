@@ -5,9 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -169,5 +171,95 @@ func TestInviteWalletRefusesSharedUnixDirectory(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("shared directory accepted for secret wallet")
+	}
+}
+
+// countingHandler counts issuance requests, so a test can tell a wallet that
+// stops at an exhausted day from one that keeps asking the mint.
+type countingHandler struct {
+	next  http.Handler
+	count atomic.Int64
+}
+
+func (c *countingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		c.count.Add(1)
+	}
+	c.next.ServeHTTP(w, r)
+}
+
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestInviteWalletRunKeepsAStockWithinEachDaysAllowance(t *testing.T) {
+	priv := key(t)
+	m, err := New(priv, OpenAuthorizer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	counter := &countingHandler{next: NewServer(m, quietLog()).Handler()}
+	server := httptest.NewServer(counter)
+	defer server.Close()
+
+	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	var now atomic.Value
+	now.Store(start)
+	wallet, err := OpenInviteWallet(InviteWalletConfig{
+		Client: &Client{URL: server.URL, ExpectKeyID: m.KeyID()}, StatePath: testInviteWalletPath(t),
+		Batch: 2, Now: func() time.Time { return now.Load().(time.Time) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wallet.Close()
+	if err := wallet.ActivateInviteBook(testDailyInviteBook(t, m.KeyID(), start)); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { wallet.Run(ctx); close(done) }()
+
+	// Day one allows two vouchers, and the stock target is two.
+	waitFor(t, "the first fill", func() bool { return wallet.Len() == 2 })
+	issued := counter.count.Load()
+	tok, err := wallet.Take(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(&priv.PublicKey, tok); err != nil {
+		t.Fatalf("stocked token does not verify: %v", err)
+	}
+
+	// The refill this triggers finds the day exhausted. It must stop there
+	// rather than keep asking the mint.
+	time.Sleep(100 * time.Millisecond)
+	if got := counter.count.Load(); got != issued {
+		t.Fatalf("an exhausted day caused %d more issuance requests", got-issued)
+	}
+	if wallet.Len() != 1 {
+		t.Fatalf("stock = %d after taking one of two on an exhausted day", wallet.Len())
+	}
+
+	// On day two, taking a token triggers a refill from the new allowance.
+	now.Store(start.Add(24 * time.Hour))
+	if _, err := wallet.Take(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the day-two refill", func() bool { return wallet.Len() == 2 })
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after its context was cancelled")
 	}
 }
