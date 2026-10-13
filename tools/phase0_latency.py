@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import statistics
 import sys
@@ -169,11 +170,19 @@ def run_trial(
 
 
 def pct(values: list[float], p: float) -> float:
-    """Nearest-rank percentile. Stable for the small n this harness produces."""
+    """Nearest-rank percentile: the smallest value with at least p% of the
+    sample at or below it, i.e. the ceil(p/100 * n)-th smallest.
+
+    This once computed round(p/100 * n + 0.5), and Python rounds halves to
+    even, so whenever p/100 * n was an odd whole number it took the next value
+    up. At the default 20 runs that made "p95" the single slowest trial.
+    """
     if not values:
         return float("nan")
     ordered = sorted(values)
-    k = max(0, min(len(ordered) - 1, int(round(p / 100.0 * len(ordered) + 0.5)) - 1))
+    # round() first so 0.95 * 20 landing a hair above 19 cannot become 20.
+    rank = math.ceil(round(p / 100.0 * len(ordered), 9))
+    k = max(0, min(len(ordered) - 1, rank - 1))
     return ordered[k]
 
 

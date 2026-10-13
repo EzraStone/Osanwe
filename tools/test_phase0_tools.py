@@ -100,6 +100,31 @@ class Phase0ProviderTests(unittest.TestCase):
         self.assertNotIn("phase0-secret", redacted)
 
 
+class Phase0PercentileTests(unittest.TestCase):
+    def test_percentiles_are_nearest_rank(self):
+        # (n, p, expected) on the values 1..n, so the answer is the rank.
+        cases = [
+            (20, 95, 19),   # the default run count: not the maximum
+            (20, 50, 10),
+            (30, 50, 15),
+            (30, 95, 29),
+            (30, 99, 30),
+            (10, 50, 5),
+            (10, 90, 9),
+            (100, 95, 95),
+            (1, 95, 1),
+            (7, 0, 1),
+            (7, 100, 7),
+        ]
+        for n, p, want in cases:
+            with self.subTest(n=n, p=p):
+                values = [float(v) for v in range(n, 0, -1)]  # unsorted on purpose
+                self.assertEqual(want, phase0_latency.pct(values, p))
+
+    def test_percentile_of_nothing_is_nan(self):
+        self.assertNotEqual(phase0_latency.pct([], 95), phase0_latency.pct([], 95))
+
+
 class Phase0RelayTests(unittest.TestCase):
     secret = "phase0-test-secret"
 
