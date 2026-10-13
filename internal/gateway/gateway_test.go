@@ -1096,3 +1096,49 @@ func TestProviderRateLimitIsSanitizedAndExplicitlySpent(t *testing.T) {
 		t.Fatalf("capacity response does not disclose token outcome: %s", body)
 	}
 }
+
+// A provider redirect must never reach the local client as a redirect. The
+// client would follow it directly, around the relay, and hand the provider (or
+// whoever it names) the user's own address. The gateway answers 502 instead,
+// with every redirect-bearing header removed, and keeps the token spent since
+// the request was dispatched.
+func TestProviderRedirectsAreReplacedNotForwarded(t *testing.T) {
+	for _, status := range []int{
+		http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
+		http.StatusTemporaryRedirect, http.StatusPermanentRedirect,
+	} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			h := newHarness(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Location", "https://collector.example/where-are-you")
+				w.Header().Set("Refresh", "0; url=https://collector.example/")
+				w.Header().Set("Link", "<https://collector.example/>; rel=preconnect")
+				w.WriteHeader(status)
+				fmt.Fprint(w, `{"redirecting":true}`)
+			})
+			// Observe the gateway's answer itself, not whatever a following
+			// client would end up at.
+			h.client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			resp := h.post(t, h.token(t), nil)
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+
+			if resp.StatusCode != http.StatusBadGateway {
+				t.Fatalf("status = %d, want 502", resp.StatusCode)
+			}
+			for _, name := range []string{"Location", "Refresh", "Link"} {
+				if v := resp.Header.Get(name); v != "" {
+					t.Errorf("%s reached the client: %q", name, v)
+				}
+			}
+			if !strings.Contains(string(body), "osanwe_redirect_blocked") || strings.Contains(string(body), "collector.example") {
+				t.Errorf("body = %s", body)
+			}
+			if got := resp.Header.Get(TokenOutcomeHeader); got != TokenOutcomeSpent {
+				t.Errorf("token outcome = %q, want %q: the request was dispatched", got, TokenOutcomeSpent)
+			}
+			if _, _, hits := h.provider.snapshot(); hits != 1 {
+				t.Errorf("provider saw %d requests, want exactly the one that was redirected", hits)
+			}
+		})
+	}
+}
