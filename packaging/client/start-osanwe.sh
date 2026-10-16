@@ -32,6 +32,23 @@ hide_terminal_input() {
   fi
 }
 
+# trim_paste removes the whitespace a paste can carry around a value, such as
+# a trailing space or the carriage return of text copied from Windows. A relay
+# secret or an entitlement never has any, and bearer refuses a secret that
+# does, so keeping it would only stop the launch. Builtins only, so the value
+# never appears in another process's arguments.
+trim_paste() {
+  value=$1
+  while :; do
+    case $value in
+      [[:space:]]*) value=${value#?} ;;
+      *[[:space:]]) value=${value%?} ;;
+      *) break ;;
+    esac
+  done
+  printf '%s' "$value"
+}
+
 show_terminal_input() {
   if ! stty echo 2>/dev/null; then
     printf '%s\n' "The launcher could not restore terminal echo; stop and reset this terminal before continuing." >&2
@@ -47,6 +64,7 @@ if ! IFS= read -r OSANWE_SECRET; then
 fi
 show_terminal_input
 printf '\n'
+OSANWE_SECRET=$(trim_paste "$OSANWE_SECRET")
 if [ -z "$OSANWE_SECRET" ]; then
   printf '%s\n' "The relay secret cannot be empty." >&2
   exit 2
@@ -63,6 +81,7 @@ if grep -Eq '"mint"[[:space:]]*:[[:space:]]*"[^"[:space:]]' "$config_path" &&
   fi
   show_terminal_input
   printf '\n'
+  OSANWE_RECEIPT=$(trim_paste "$OSANWE_RECEIPT")
   if [ -z "$OSANWE_RECEIPT" ]; then
     printf '%s\n' "The beta entitlement cannot be empty." >&2
     exit 2

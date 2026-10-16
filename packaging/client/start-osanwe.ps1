@@ -173,8 +173,11 @@ function Read-OsanweCredentials {
         if ($form.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
             return $null
         }
-        $secret = $secretBox.Text
-        $receipt = if ($null -ne $receiptBox) { $receiptBox.Text } else { "" }
+        # A pasted value can bring a trailing space or line break with it. A
+        # secret or entitlement never has surrounding whitespace, and bearer
+        # refuses a secret that does, so it is removed here.
+        $secret = $secretBox.Text.Trim()
+        $receipt = if ($null -ne $receiptBox) { $receiptBox.Text.Trim() } else { "" }
         if ([string]::IsNullOrWhiteSpace($secret)) {
             Show-OsanweMessage "The relay secret cannot be empty." ([System.Windows.Forms.MessageBoxIcon]::Warning)
             return $null
