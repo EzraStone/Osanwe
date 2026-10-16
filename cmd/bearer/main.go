@@ -195,6 +195,10 @@ func run() error {
 	if *mintURL == "" && *mintKeyID != "" {
 		return errors.New("bearer: -mint-key-id given without -mint, so no tokens would be bought and your own API key would still be used")
 	}
+	if *mintURL == "" && (*receipt != "" || envReceipt != "") {
+		return errors.New("bearer: a payment receipt was given without -mint, so it would never be presented and your own API key " +
+			"would be used instead. Add -mint and -mint-key-id, or unset -receipt and OSANWE_RECEIPT")
+	}
 
 	usingDirectory := len(dirURLs) > 0
 	if usingDirectory && (*relay != "" || *pin != "") {
