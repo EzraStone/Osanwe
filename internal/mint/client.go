@@ -11,7 +11,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -52,11 +54,47 @@ type Client struct {
 	pub *rsa.PublicKey
 }
 
+// httpClient never follows redirects. A 307 or 308 answer to POST /issue
+// would otherwise send the request body, receipt or invite voucher included,
+// on to wherever the Location header pointed.
 func (c *Client) httpClient() *http.Client {
+	client := http.Client{Timeout: 30 * time.Second}
 	if c.HTTPClient != nil {
-		return c.HTTPClient
+		client = *c.HTTPClient
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &client
+}
+
+// CheckMintURL reports whether raw is a mint URL a client may send receipts
+// to. A receipt or invite voucher is a bearer credential, so it must not
+// cross a network in the clear: plain HTTP is accepted only on loopback, as
+// for a mint on the same machine.
+func CheckMintURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("mint: parsing the mint URL: %w", err)
+	}
+	if u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && loopbackHost(u.Hostname()))) {
+		return fmt.Errorf("mint: the mint URL %q must use HTTPS; plain HTTP is accepted only on loopback, "+
+			"since receipts and invite vouchers sent over it can be read and redeemed by anyone on the path", raw)
+	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return fmt.Errorf("mint: the mint URL %q must not contain user information, a query, or a fragment", raw)
+	}
+	return nil
+}
+
+func loopbackHost(host string) bool {
+	ip := net.ParseIP(host)
+	return strings.EqualFold(host, "localhost") || ip != nil && ip.IsLoopback()
+}
+
+func (c *Client) endpoint(path string) (string, error) {
+	if err := CheckMintURL(c.URL); err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(c.URL, "/") + path, nil
 }
 
 // Key fetches and verifies the mint's public key. A verified key is cached; a
@@ -82,7 +120,11 @@ func (c *Client) fetchKey(ctx context.Context) (*rsa.PublicKey, error) {
 		return nil, errors.New("mint: ExpectKeyID is required; without it a mint could hand you a key nobody else uses and read your redemptions directly")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(c.URL, "/")+"/key", nil)
+	endpoint, err := c.endpoint("/key")
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -149,8 +191,11 @@ func (c *Client) Token(ctx context.Context, receipt string) (*Token, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		strings.TrimSuffix(c.URL, "/")+"/issue", bytes.NewReader(body))
+	endpoint, err := c.endpoint("/issue")
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

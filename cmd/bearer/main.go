@@ -157,6 +157,12 @@ func run() error {
 		return errors.New("bearer: free trial access cannot be combined with a payment receipt")
 	}
 
+	if *mintURL != "" {
+		if err := mint.CheckMintURL(*mintURL); err != nil {
+			return fmt.Errorf("bearer: -mint: %w", err)
+		}
+	}
+
 	// Buying a single token needs no relay, no secret and no listener, so it
 	// is handled before any of those are required. It exists so a token can be
 	// held in a shell variable and inspected, which is the only way to

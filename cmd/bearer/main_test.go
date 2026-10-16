@@ -179,6 +179,9 @@ func TestRunRefusesEveryUnsafeOrContradictoryClientConfiguration(t *testing.T) {
 		{"a negative threshold", secret, join(dir, []string{"-authority", "ed25519:a", "-threshold", "-1"}), "-threshold must be at least 1"},
 		{"a mint key id with no mint", secret, join(relay, []string{"-mint-key-id", "mint-test"}), "your own API key would still be used"},
 		{"an upstream CA with no certificates", secret, join(relay, []string{"-upstream", "https://gateway.example", "-upstream-ca", garbageCA}), "contained no usable certificates"},
+		{"a remote mint over plain HTTP", secret, join(relay, []string{"-mint", "http://mint.example", "-mint-key-id", "mint-test", "-upstream", "https://gateway.example"}), "must use HTTPS"},
+		{"buying a token from a remote mint over plain HTTP", secret, []string{"-buy-token", "-mint", "http://mint.example", "-mint-key-id", "mint-test"}, "must use HTTPS"},
+		{"a mint URL with a query", secret, join(relay, []string{"-mint", "https://mint.example/?k=v", "-mint-key-id", "mint-test", "-upstream", "https://gateway.example"}), "must not contain user information"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

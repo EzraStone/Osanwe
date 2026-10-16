@@ -187,6 +187,11 @@ guess a gateway or fall back to a real provider: a mistaken default would send
 the purchased bearer token to the wrong service and make its outcome
 unknowable.
 
+`-mint` must be HTTPS unless the mint is on loopback, as it is here, and bearer
+never follows a redirect from it. A payment receipt or invite voucher is
+redeemable by whoever holds it, so it is not sent over plain HTTP to another
+machine or on to a host the mint's response names.
+
 This is worth doing before anything else, because it is the first arrangement
 that achieves something the laptop-only setup could not: **the gateway process
 runs on the server, so the provider sees the server's address rather than your

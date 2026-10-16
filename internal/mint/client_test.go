@@ -3,8 +3,10 @@ package mint
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -97,5 +99,71 @@ func TestAKeyFetchFailureDoesNotSpendAnInviteVoucher(t *testing.T) {
 	}
 	if got := wallet.InviteStatus().RemainingEpoch; got != 1 {
 		t.Fatalf("%d vouchers left after one real issuance, want 1", got)
+	}
+}
+
+func TestCheckMintURLKeepsReceiptsOffPlainHTTP(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://mint.example":          "",
+		"https://mint.example/base/":    "",
+		"http://127.0.0.1:8445":         "",
+		"http://[::1]:8445":             "",
+		"http://localhost:8445":         "",
+		"http://mint.example":           "must use HTTPS",
+		"http://10.0.0.5:8445":          "must use HTTPS",
+		"ftp://mint.example":            "must use HTTPS",
+		"mint.example":                  "must use HTTPS",
+		"":                              "must use HTTPS",
+		"https://user:pw@mint.example":  "must not contain user information",
+		"https://mint.example/?key=v":   "must not contain user information",
+		"https://mint.example/#section": "must not contain user information",
+	} {
+		err := CheckMintURL(raw)
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("CheckMintURL(%q) = %v, want it accepted", raw, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("CheckMintURL(%q) = %v, want one containing %q", raw, err, want)
+		}
+	}
+}
+
+// A redirect from /issue must not carry the receipt anywhere else. Go's client
+// re-sends a POST body on 307 and 308, to whatever host Location names.
+func TestTheClientDoesNotFollowAMintRedirect(t *testing.T) {
+	m, err := New(key(t), OpenAuthorizer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var leaked atomic.Value
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		leaked.Store(string(body))
+		http.Error(w, "not a mint", http.StatusTeapot)
+	}))
+	defer elsewhere.Close()
+	handler := NewServer(m, quietLog()).Handler()
+	mintServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/issue" {
+			http.Redirect(w, r, elsewhere.URL+"/collect", http.StatusTemporaryRedirect)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	defer mintServer.Close()
+
+	client := &Client{URL: mintServer.URL, ExpectKeyID: m.KeyID(), HTTPClient: mintServer.Client()}
+	if _, err := client.Token(context.Background(), "invoice_secret"); err == nil {
+		t.Fatal("a redirected issuance produced a token")
+	}
+	if body, _ := leaked.Load().(string); body != "" {
+		t.Fatalf("the redirect was followed and the request body sent on: %s", body)
+	}
+}
+
+func TestTheClientRefusesARemoteMintOverPlainHTTP(t *testing.T) {
+	client := &Client{URL: "http://mint.example", ExpectKeyID: "mint-test"}
+	if _, err := client.Token(context.Background(), "invoice_secret"); err == nil || !strings.Contains(err.Error(), "must use HTTPS") {
+		t.Fatalf("Token = %v, want the plain-HTTP refusal before any request", err)
 	}
 }
