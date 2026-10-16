@@ -93,7 +93,6 @@ fi
 # ── 4. the relay cannot read what it carries ──────────────────────────────
 step "4. The relay carries ciphertext"
 PHRASE="verify-$(date +%s)-swordfish"
-CAP=$(mktemp /tmp/osanwe-verify-XXXX.pcap)
 
 # Whatever this gateway actually carries, rather than a name guessed here.
 MODEL=$(curl -s -m 5 "http://127.0.0.1:$UI_PORT/v1/models" 2>/dev/null | python3 -c "
@@ -104,6 +103,12 @@ except Exception: print('')
 [ -z "$MODEL" ] && MODEL="claude-sonnet-5"
 
 if command -v tcpdump >/dev/null 2>&1 && tcpdump -D >/dev/null 2>&1; then
+  # Created only here, where it is used, and in a directory: macOS mktemp
+  # replaces only trailing X's, so a template ending in .pcap made a file
+  # with that literal name, and the next run could not create it again.
+  CAPDIR=$(mktemp -d "${TMPDIR:-/tmp}/osanwe-verify.XXXXXX")
+  trap 'rm -rf "$CAPDIR"' EXIT
+  CAP="$CAPDIR/relay.pcap"
   tcpdump -i any -w "$CAP" -U "port $RELAY_PORT" >/dev/null 2>&1 &
   TCPDUMP=$!
   sleep 1.5
@@ -121,7 +126,6 @@ if command -v tcpdump >/dev/null 2>&1 && tcpdump -D >/dev/null 2>&1; then
   else
     good "the prompt was not recoverable from the relay's traffic"
   fi
-  rm -f "$CAP"
 else
   warn "tcpdump unavailable or needs root, so the wire was not inspected here"
   say "the same property is proved in CI, over real sockets:"
