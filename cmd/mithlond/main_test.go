@@ -133,6 +133,8 @@ func TestRunRefusesAnUnboundedOrUnauthenticatedGateway(t *testing.T) {
 		{"zero request size", []string{"-mint-key", mintKey, "-max-request-bytes", "0"}, providerKey, "-max-request-bytes cannot be 0"},
 		{"zero output limit", []string{"-mint-key", mintKey, "-max-output-tokens", "0"}, providerKey, "-max-output-tokens cannot be 0"},
 		{"zero burst ceiling", []string{"-mint-key", mintKey, "-burst-budget-db", "burst.db", "-burst-budget-requests", "0"}, providerKey, "-burst-budget-requests cannot be 0"},
+		{"burst limit without a burst database", []string{"-mint-key", mintKey, "-burst-budget-requests", "2"}, providerKey, "-burst-budget-requests has no effect without -burst-budget-db"},
+		{"burst window without a burst database", []string{"-mint-key", mintKey, "-burst-budget-window", "2m", "-burst-budget-output-tokens", "100"}, providerKey, "-burst-budget-output-tokens, -burst-budget-window have no effect"},
 		// The gateway and budget packages refuse these themselves; the gateway
 		// must still do so before it writes a TLS key or opens a database.
 		{"plain-HTTP upstream", []string{"-mint-key", mintKey, "-upstream", "http://provider.example"}, providerKey, "upstream must be https"},

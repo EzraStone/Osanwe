@@ -98,6 +98,25 @@ func run(args []string, getenv func(string) string) error {
 	if strings.TrimSpace(*budgetDB) == "" {
 		return errors.New("mithlond: -budget-db is required; a pooled provider account must have a durable aggregate spending ceiling")
 	}
+	// The burst limits apply only to the burst database. Given without one,
+	// they were accepted and ignored, and an operator who set a provider's
+	// per-minute limit believed it enforced when nothing was.
+	if strings.TrimSpace(*burstBudgetDB) == "" {
+		var orphaned []string
+		fs.Visit(func(f *flag.Flag) {
+			if strings.HasPrefix(f.Name, "burst-budget-") && f.Name != "burst-budget-db" {
+				orphaned = append(orphaned, "-"+f.Name)
+			}
+		})
+		if len(orphaned) > 0 {
+			verb, object := "has", "it"
+			if len(orphaned) > 1 {
+				verb, object = "have", "them"
+			}
+			return fmt.Errorf("mithlond: %s %s no effect without -burst-budget-db, so no burst limit would be enforced; "+
+				"add -burst-budget-db or remove %s", strings.Join(orphaned, ", "), verb, object)
+		}
+	}
 	// The gateway library reads a zero limit as "use the default". On the
 	// command line that is a trap: an operator who types -budget-requests 0 to
 	// stop spending would get the default ceiling instead. Zero is refused.
