@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,5 +200,50 @@ func TestRunPrintsTheKeyIDOfTheKeyItLoads(t *testing.T) {
 func TestRunTreatsHelpAsSuccess(t *testing.T) {
 	if err := run([]string{"-h"}, func(string) string { return "" }, io.Discard); err != nil {
 		t.Fatalf("-h returned %v, want nil", err)
+	}
+}
+
+// The mint must not announce that it is listening on a port it then fails to
+// bind. The log line used to come first and the bind afterwards, inside
+// ListenAndServe's goroutine.
+func TestRunDoesNotClaimToListenOnAPortItCannotBind(t *testing.T) {
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer taken.Close()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr := os.Stderr
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = stderr })
+	logged := make(chan string, 1)
+	go func() {
+		out, _ := io.ReadAll(r)
+		logged <- string(out)
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- run([]string{"-key", filepath.Join(t.TempDir(), "mint.key"), "-addr", taken.Addr().String(), "-open"},
+			func(string) string { return "" }, io.Discard)
+	}()
+	select {
+	case err = <-done:
+	case <-time.After(60 * time.Second):
+		t.Fatal("eregion served on a port that was already taken")
+	}
+	w.Close()
+	os.Stderr = stderr
+	out := <-logged
+
+	if strings.Contains(out, "eregion listening") {
+		t.Fatalf("logged that it was listening, then failed to bind (%v):\n%s", err, out)
+	}
+	if err == nil || !strings.HasPrefix(err.Error(), "eregion: listen ") {
+		t.Fatalf("run error = %v, want the bind failure", err)
 	}
 }

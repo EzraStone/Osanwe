@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -280,11 +281,17 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 		"  and must get it from somewhere other than this server: a mint that\n"+
 		"  handed each buyer a key of their own would put every one of them in an\n"+
 		"  anonymity set of one.\n\n", m.KeyID())
-	log.Info("eregion listening", "addr", *addr, "key", m.KeyID())
+	// Bound here rather than inside ListenAndServe, so the line below is
+	// never logged for a port that turns out to be taken.
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		return fmt.Errorf("eregion: %w", err)
+	}
+	log.Info("eregion listening", "addr", listener.Addr().String(), "key", m.KeyID())
 
 	errCh := make(chan error, 1)
 	go func() {
-		err := srv.ListenAndServe()
+		err := srv.Serve(listener)
 		if errors.Is(err, http.ErrServerClosed) {
 			err = nil
 		}
