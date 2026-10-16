@@ -225,6 +225,9 @@ func GenerateKey(bits int) (*rsa.PrivateKey, error) {
 	if bits < MinKeyBits {
 		return nil, fmt.Errorf("mint: refusing to generate a %d-bit key; the minimum is %d", bits, MinKeyBits)
 	}
+	if bits > MaxKeyBits {
+		return nil, fmt.Errorf("mint: refusing to generate a %d-bit key; the maximum is %d, and generation at that size could run for hours", bits, MaxKeyBits)
+	}
 	return rsa.GenerateKey(rand.Reader, bits)
 }
 

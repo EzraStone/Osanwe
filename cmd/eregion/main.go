@@ -125,7 +125,7 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 	addr := fs.String("addr", "127.0.0.1:8445", "address to listen on")
 	keyPath := fs.String("key", "mint.key", "signing key path, created if absent")
 	publish := fs.String("publish", "", "also write the public key to this path, for gateway operators")
-	bits := fs.Int("bits", mint.MinKeyBits, "key size when generating")
+	bits := fs.Int("bits", mint.MinKeyBits, fmt.Sprintf("key size when generating, from %d to %d", mint.MinKeyBits, mint.MaxKeyBits))
 	open := fs.Bool("open", false, "issue a token to anyone who asks, with no payment. For demos only: an open mint prints money")
 	btcpayEndpoint := fs.String("btcpay", "", "base URL of a self-hosted BTCPay Server Greenfield API")
 	btcpayStore := fs.String("btcpay-store", "", "BTCPay store ID whose settled invoices buy tokens")

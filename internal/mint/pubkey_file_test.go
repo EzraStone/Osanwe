@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestWritePublicKeyReplacesTheFileWhole(t *testing.T) {
@@ -102,5 +103,17 @@ func TestPublicKeyIsNeverSeenHalfWritten(t *testing.T) {
 	wg.Wait()
 	if n := failures.Load(); n > 0 {
 		t.Fatalf("a reader failed %d times while the key was rewritten; first: %v", n, firstErr.Load())
+	}
+}
+
+func TestGenerateKeyRefusesSizesOutsideItsBoundsWithoutWaiting(t *testing.T) {
+	for _, bits := range []int{0, MinKeyBits - 1, MaxKeyBits + 1, 30720, 1 << 20} {
+		start := time.Now()
+		if _, err := GenerateKey(bits); err == nil {
+			t.Fatalf("GenerateKey(%d) succeeded", bits)
+		}
+		if elapsed := time.Since(start); elapsed > time.Second {
+			t.Fatalf("refusing GenerateKey(%d) took %s; it must not start generating", bits, elapsed)
+		}
 	}
 }

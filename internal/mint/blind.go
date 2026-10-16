@@ -30,6 +30,12 @@ import (
 // MinKeyBits is the smallest modulus the mint will work with.
 const MinKeyBits = 2048
 
+// MaxKeyBits bounds key generation. RSA key generation slows sharply with
+// size, and at a mistyped size such as 30720 it would leave the mint busy at
+// startup for hours with nothing on screen. Deployments of RFC 9474 use 2048
+// to 4096 bits; 8192 leaves generous headroom.
+const MaxKeyBits = 8192
+
 const (
 	// protocolSuite is part of both the key ID and the signed token message.
 	// Changing any RSABSSA parameter requires a new value and therefore a new
