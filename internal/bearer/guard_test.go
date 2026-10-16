@@ -1,6 +1,7 @@
 package bearer
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -446,9 +447,13 @@ func (s stubWallet) Spent() uint64   { return s.spent }
 type trialStubWallet struct {
 	stubWallet
 	activated []byte
+	refuse    error
 }
 
 func (s *trialStubWallet) ActivateInviteBook(book []byte) error {
+	if s.refuse != nil {
+		return s.refuse
+	}
 	s.activated = append([]byte(nil), book...)
 	return nil
 }
@@ -487,6 +492,63 @@ func TestTrialWalletStatusAndActivationStayOnLocalReservedRoutes(t *testing.T) {
 	}
 	if string(wallet.activated) != book {
 		t.Fatalf("activation imported %q", wallet.activated)
+	}
+}
+
+func postActivation(t *testing.T, s *Server, contentType string, body []byte) *recorder {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080"+Prefix+"activate", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", contentType)
+	rec := &recorder{header: http.Header{}}
+	s.http.Handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestInviteActivationRefusesWhatItCannotImport(t *testing.T) {
+	const limit = 64 << 10
+	book := []byte(`{"schema_version":2}`)
+
+	t.Run("a client not enrolled for trial access", func(t *testing.T) {
+		s := testServer(t, func(c *Config) { c.Tokens = stubWallet{}; c.UI = true })
+		if rec := postActivation(t, s, "application/json", book); rec.code != http.StatusNotFound ||
+			!strings.Contains(rec.body.String(), "trial_access_unavailable") {
+			t.Fatalf("got %d %s", rec.code, rec.body.String())
+		}
+	})
+
+	cases := []struct {
+		name        string
+		contentType string
+		body        []byte
+		refuse      error
+		wantCode    int
+		wantText    string
+		imported    bool
+	}{
+		{"not JSON", "text/plain", book, nil, http.StatusUnsupportedMediaType, "must be a JSON file", false},
+		{"JSON with a charset", "application/json; charset=utf-8", book, nil, http.StatusNoContent, "", true},
+		{"exactly at the size limit", "application/json", bytes.Repeat([]byte(" "), limit), nil, http.StatusNoContent, "", true},
+		{"one byte over the limit", "application/json", bytes.Repeat([]byte(" "), limit+1), nil, http.StatusRequestEntityTooLarge, "too large", false},
+		{"a book the wallet refuses", "application/json", book, errors.New("mint: invite book does not match this beta mint"), http.StatusBadRequest, "does not match this beta mint", false},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			wallet := &trialStubWallet{refuse: test.refuse}
+			s := testServer(t, func(c *Config) { c.Tokens = wallet; c.UI = true })
+			rec := postActivation(t, s, test.contentType, test.body)
+			if rec.code != test.wantCode || !strings.Contains(rec.body.String(), test.wantText) {
+				t.Fatalf("got %d %s, want %d containing %q", rec.code, rec.body.String(), test.wantCode, test.wantText)
+			}
+			if imported := wallet.activated != nil; imported != test.imported {
+				t.Fatalf("imported = %v, want %v", imported, test.imported)
+			}
+			if got := rec.header.Get("Cache-Control"); got != "no-store" {
+				t.Errorf("Cache-Control = %q, want no-store", got)
+			}
+		})
 	}
 }
 
