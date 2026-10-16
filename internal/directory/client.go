@@ -44,6 +44,18 @@ type Fetcher struct {
 // untrusted mirror is fine, and fetching it over HTTPS from a hostile
 // authority still would not help.
 func (f *Fetcher) Fetch(ctx context.Context) (*Consensus, error) {
+	return f.FetchNewer(ctx, time.Time{})
+}
+
+// FetchNewer is Fetch for a client that already holds a consensus valid from
+// heldFrom. An endpoint serving an older one is passed over, like one serving
+// an invalid document, and the next is tried.
+//
+// A consensus stays valid for several epochs, so an old one still verifies.
+// Accepting it would let a stale mirror, or anyone replaying a captured
+// document over plain HTTP, bring back relays the authorities have since
+// withdrawn.
+func (f *Fetcher) FetchNewer(ctx context.Context, heldFrom time.Time) (*Consensus, error) {
 	if len(f.URLs) == 0 {
 		return nil, fmt.Errorf("directory: no directory URLs configured")
 	}
@@ -71,6 +83,11 @@ func (f *Fetcher) Fetch(ctx context.Context) (*Consensus, error) {
 		c, err := f.fetchOne(ctx, client, url, now())
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", url, err))
+			continue
+		}
+		if c.ValidAfter.Before(heldFrom) {
+			errs = append(errs, fmt.Errorf("%s: served a consensus valid from %s, older than the one already held from %s",
+				url, c.ValidAfter.UTC().Format(time.RFC3339), heldFrom.UTC().Format(time.RFC3339)))
 			continue
 		}
 		return c, nil

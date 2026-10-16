@@ -218,3 +218,57 @@ func TestFetchUsesPlainHTTPSafely(t *testing.T) {
 }
 
 var _ = ed25519.PublicKey(nil)
+
+// consensusFrom signs a consensus valid from validAfter for an hour past now,
+// so an older document still verifies, as it would in practice.
+func consensusFrom(t *testing.T, signer *Identity, validAfter time.Time, relays ...*Descriptor) []byte {
+	t.Helper()
+	c := &Consensus{ValidAfter: validAfter, ValidUntil: time.Now().Add(time.Hour), Relays: relays}
+	if err := c.Sign(signer); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := c.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
+// An older consensus still verifies: each one stays valid for several epochs.
+// A client that already holds a newer one must not go back to it, or a stale
+// mirror could restore relays the authorities have withdrawn.
+func TestFetchNewerPassesOverAnOlderConsensus(t *testing.T) {
+	ids, set := authorities(t, 1)
+	// Consensus times are encoded to the second, and a held time always comes
+	// from a parsed consensus.
+	now := time.Now().Truncate(time.Second)
+	held := now.Add(-10 * time.Minute)
+	stale := serveBytes(t, consensusFrom(t, ids[0], now.Add(-40*time.Minute), relay(t, "withdrawn")), 200)
+	fresh := serveBytes(t, consensusFrom(t, ids[0], now.Add(-time.Minute), relay(t, "current")), 200)
+
+	f := &Fetcher{URLs: []string{stale.URL, fresh.URL}, Authorities: set, Threshold: 1}
+	for i := 0; i < 20; i++ {
+		c, err := f.FetchNewer(context.Background(), held)
+		if err != nil {
+			t.Fatalf("attempt %d: FetchNewer failed despite a fresh endpoint: %v", i, err)
+		}
+		if got := c.Relays[0].Nickname; got != "current" {
+			t.Fatalf("attempt %d: took the older consensus listing %q", i, got)
+		}
+	}
+
+	f.URLs = []string{stale.URL}
+	if _, err := f.FetchNewer(context.Background(), held); err == nil || !strings.Contains(err.Error(), "older than the one already held") {
+		t.Fatalf("FetchNewer with only a stale endpoint = %v, want it refused as older", err)
+	}
+	// With nothing held yet, the same document is acceptable.
+	if _, err := f.Fetch(context.Background()); err != nil {
+		t.Fatalf("Fetch with nothing held refused a valid consensus: %v", err)
+	}
+	// A consensus from the same epoch as the one held is not a rollback.
+	f.URLs = []string{fresh.URL}
+	c, err := f.FetchNewer(context.Background(), now.Add(-time.Minute))
+	if err != nil || c.Relays[0].Nickname != "current" {
+		t.Fatalf("FetchNewer of the epoch already held = %v, %v", c, err)
+	}
+}

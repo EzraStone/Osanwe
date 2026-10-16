@@ -149,6 +149,7 @@ type Pool struct {
 	guard      *relay
 	guardSince time.Time
 	signedBy   int
+	validAfter time.Time // of the newest consensus accepted; older ones are refused
 	validUntil time.Time
 	stats      Stats
 	mismatch   *keyMismatch
@@ -193,7 +194,10 @@ func New(cfg Config) (*Pool, error) {
 // client outage, which is exactly backwards: the whole reason the consensus is
 // signed is that it stays trustworthy while it is held.
 func (p *Pool) Refresh(ctx context.Context) error {
-	c, err := p.cfg.Fetcher.Fetch(ctx)
+	p.mu.Lock()
+	heldFrom := p.validAfter
+	p.mu.Unlock()
+	c, err := p.cfg.Fetcher.FetchNewer(ctx, heldFrom)
 	if err != nil {
 		p.mu.Lock()
 		p.stats.RefreshErrors++
@@ -211,6 +215,7 @@ func (p *Pool) Refresh(ctx context.Context) error {
 	// signature from a key nobody knows; counting those would let the client
 	// report more agreement than it actually checked.
 	p.signedBy = c.VerifiedBy()
+	p.validAfter = c.ValidAfter
 	p.validUntil = c.ValidUntil
 	p.mu.Unlock()
 

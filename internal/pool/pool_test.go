@@ -42,19 +42,23 @@ func pinFor(seed string) string {
 
 func descriptor(t *testing.T, nickname, addr string) *directory.Descriptor {
 	t.Helper()
+	return descriptorPublished(t, nickname, addr, time.Now().Add(-time.Minute))
+}
+
+func descriptorPublished(t *testing.T, nickname, addr string, published time.Time) *directory.Descriptor {
+	t.Helper()
 	id, err := directory.GenerateIdentity()
 	if err != nil {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
-	now := time.Now()
 	d := &directory.Descriptor{
 		Nickname:     nickname,
 		Address:      addr,
 		TLSPin:       pinFor(string(nickname[0])),
 		Identity:     id.Fingerprint(),
 		Destinations: []string{dest},
-		Published:    now.Add(-time.Minute),
-		Expires:      now.Add(24 * time.Hour),
+		Published:    published,
+		Expires:      time.Now().Add(24 * time.Hour),
 	}
 	encoded, err := d.Sign(id)
 	if err != nil {
@@ -765,5 +769,75 @@ func TestPinMismatchGoesByTypeNotWording(t *testing.T) {
 	}
 	if _, ok := asPinMismatch(&tunnel.Error{Status: 407}); ok {
 		t.Error("a credential refusal was treated as a pin mismatch")
+	}
+}
+
+// A refresh that is answered with an older consensus, still validly signed,
+// must not replace the newer one. The older document can list a relay the
+// authorities have since withdrawn, and a stale mirror or a replay of captured
+// traffic is all it takes to serve it.
+func TestAnOlderConsensusDoesNotRollTheRelaySetBack(t *testing.T) {
+	auth, err := directory.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := descriptor(t, "current", "10.0.0.1:8443")
+	withdrawn := descriptorPublished(t, "withdrawn", "10.0.0.9:8443", time.Now().Add(-2*time.Hour))
+	now := time.Now().Truncate(time.Second)
+	sign := func(validAfter time.Time, relays ...*directory.Descriptor) []byte {
+		c := &directory.Consensus{ValidAfter: validAfter, ValidUntil: now.Add(time.Hour), Relays: relays}
+		if err := c.Sign(auth); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := c.Encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded
+	}
+	var mu sync.Mutex
+	body := sign(now.Add(-time.Minute), current)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Write(body)
+	}))
+	defer srv.Close()
+
+	var calls []string
+	var callsMu sync.Mutex
+	p, err := New(Config{
+		Fetcher: &directory.Fetcher{
+			URLs: []string{srv.URL}, Threshold: 1,
+			Authorities: map[string]ed25519.PublicKey{auth.Fingerprint(): auth.Public},
+		},
+		Destination: dest, Secret: "s3cret", Logger: quiet(),
+		newDialer: func(addr, pin, secret string, timeout time.Duration) (Dialer, error) {
+			return &fakeDialer{addr: addr, mu: &callsMu, errs: map[string]error{}, calls: &calls}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Refresh(context.Background()); err != nil {
+		t.Fatalf("first Refresh: %v", err)
+	}
+
+	mu.Lock()
+	body = sign(now.Add(-30*time.Minute), withdrawn)
+	mu.Unlock()
+	if err := p.Refresh(context.Background()); err == nil || !strings.Contains(err.Error(), "older than the one already held") {
+		t.Fatalf("Refresh with an older consensus = %v, want it refused", err)
+	}
+
+	for i := 0; i < 10; i++ {
+		mustDial(t, p).Close()
+	}
+	callsMu.Lock()
+	defer callsMu.Unlock()
+	for _, addr := range calls {
+		if addr == withdrawn.Address {
+			t.Fatalf("dialled %s, a relay listed only in the older consensus; calls %v", addr, calls)
+		}
 	}
 }
