@@ -169,3 +169,24 @@ func b64(s string) string {
 	}
 	return string(out)
 }
+
+// A secret no header can carry intact would start a relay that refuses every
+// client. The usual source is a secret file with a trailing newline or a
+// Windows carriage return.
+func TestNewRefusesASecretNoClientCouldSend(t *testing.T) {
+	const good = "a-relay-secret-long-enough-0001"
+	for _, bad := range []string{good + "\n", good + "\r", good + "\r\n", " " + good, good + " ", good[:10] + "\x00" + good[10:]} {
+		if _, err := New(bad); err == nil || !strings.Contains(err.Error(), "no client could ever send it") {
+			t.Errorf("New(%q) = %v, want a refusal that explains why", bad, err)
+		}
+	}
+	generated, err := GenerateSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ok := range []string{good, generated} {
+		if _, err := New(ok); err != nil {
+			t.Errorf("New(%q) = %v", ok, err)
+		}
+	}
+}
