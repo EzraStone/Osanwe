@@ -176,3 +176,49 @@ func TestBTCPayAuthorizerRejectsUnsafeConfiguration(t *testing.T) {
 		})
 	}
 }
+
+// Near misses are where a price check fails in practice: a cent short, a
+// decimal point in the wrong place, or a status that only looks settled. None
+// may authorize a token, and none may consume the receipt.
+func TestBTCPayAuthorizerRefusesNearMisses(t *testing.T) {
+	tests := []struct {
+		name, status, amount, currency string
+	}{
+		{"one cent short", "Settled", "12.49", "USD"},
+		{"a fraction of a cent short", "Settled", "12.4999999", "USD"},
+		{"a fraction of a cent over", "Settled", "12.5000001", "USD"},
+		{"decimal point one place left", "Settled", "1.250", "USD"},
+		{"decimal point one place right", "Settled", "125.0", "USD"},
+		{"new", "New", "12.50", "USD"},
+		{"expired", "Expired", "12.50", "USD"},
+		{"invalid", "Invalid", "12.50", "USD"},
+		{"lower-case settled", "settled", "12.50", "USD"},
+		{"settled with trailing space", "Settled ", "12.50", "USD"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			receipts := NewMemoryReceiptStore()
+			a, _ := btcpayTestAuthorizer(t, func(w http.ResponseWriter, r *http.Request) {
+				settledInvoice(w, "invoice_abc", tc.status, tc.amount, tc.currency)
+			}, receipts)
+			if err := a.Authorize(context.Background(), []byte("invoice_abc")); err == nil {
+				t.Fatal("authorized a near-miss invoice")
+			}
+			// The refusal must not have used the receipt up.
+			if err := receipts.Claim(context.Background(), "btcpay:store_123", []byte("invoice_abc")); err != nil {
+				t.Fatalf("the receipt was consumed by a refusal: %v", err)
+			}
+		})
+	}
+}
+
+// Currency codes are case-insensitive, and the BTCPay client normalizes them
+// when it decodes an invoice, so "usd" is the token's currency, not a miss.
+func TestBTCPayAuthorizerTreatsCurrencyCaseAsTheSameCurrency(t *testing.T) {
+	a, _ := btcpayTestAuthorizer(t, func(w http.ResponseWriter, r *http.Request) {
+		settledInvoice(w, "invoice_abc", "Settled", "12.50", "usd")
+	}, NewMemoryReceiptStore())
+	if err := a.Authorize(context.Background(), []byte("invoice_abc")); err != nil {
+		t.Fatalf("a settled invoice in lower-case usd was refused: %v", err)
+	}
+}
