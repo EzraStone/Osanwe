@@ -153,6 +153,11 @@ func run() error {
 	if *inviteBook != "" && !*trialAccess {
 		return errors.New("bearer: -invite-book requires -trial-access")
 	}
+	if *walletState != "" && !*trialAccess {
+		// Only the trial wallet keeps state on disk; a paid wallet holds its
+		// tokens in memory. The path was otherwise ignored without a word.
+		return errors.New("bearer: -wallet-state requires -trial-access; only the free trial wallet keeps state on disk")
+	}
 	if *trialAccess && (envReceipt != "" || *receipt != "") {
 		return errors.New("bearer: free trial access cannot be combined with a payment receipt")
 	}

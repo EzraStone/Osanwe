@@ -166,6 +166,7 @@ func TestRunRefusesEveryUnsafeOrContradictoryClientConfiguration(t *testing.T) {
 		{"window flags contradict", secret, join(relay, []string{"-open-ui"}), "-open-ui cannot be combined with -no-ui"},
 		{"trial access without a mint", secret, join(relay, []string{"-trial-access"}), "-trial-access needs -mint and -mint-key-id"},
 		{"invitation without trial access", secret, join(relay, []string{"-invite-book", "book.json"}), "-invite-book requires -trial-access"},
+		{"a wallet state path without trial access", secret, join(relay, mint, []string{"-wallet-state", "wallet.db"}), "-wallet-state requires -trial-access"},
 		{"trial access and a receipt", secret, join(relay, mint, []string{"-trial-access", "-receipt", "invoice_1"}), "cannot be combined with a payment receipt"},
 		{"buying a token without a mint", secret, []string{"-buy-token"}, "-buy-token needs -mint and -mint-key-id"},
 		{"relay and directory together", secret, join(relay, dir), "use either -relay/-pin or -directory, not both"},
