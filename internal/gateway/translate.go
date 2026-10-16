@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -157,11 +158,15 @@ func fromOpenAI(body []byte) ([]byte, error) {
 	if err := json.Unmarshal(body, &in); err != nil {
 		return nil, err
 	}
-	text, stop := "", "end_turn"
-	if len(in.Choices) > 0 {
-		text = in.Choices[0].Message.Content
-		stop = stopReason(in.Choices[0].FinishReason)
+	if len(in.Choices) == 0 {
+		// No answer at all. A provider that reports a failure under a 200,
+		// as {"error": ...}, lands here; translating it would hand the client
+		// an empty end_turn message, a failure dressed as a successful reply.
+		// Refusing makes translateBack pass the provider's own body on.
+		return nil, errors.New("gateway: provider response has no choices")
 	}
+	text := in.Choices[0].Message.Content
+	stop := stopReason(in.Choices[0].FinishReason)
 	return json.Marshal(map[string]any{
 		"id":          orDefault(in.ID, "msg_osanwe"),
 		"type":        "message",

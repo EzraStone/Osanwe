@@ -548,3 +548,31 @@ func TestStreamCarriesAMidStreamProviderError(t *testing.T) {
 		})
 	}
 }
+
+// A 200 with no choices is not an answer. Some providers report failures that
+// way, and translating one produced an empty end_turn message: a client saw a
+// successful, silent reply. The provider's own body is passed on instead.
+func TestAResponseWithNoChoicesIsNotTranslatedIntoAnEmptyAnswer(t *testing.T) {
+	for _, body := range []string{
+		`{"error":{"message":"model overloaded, retry later","type":"server_error"}}`,
+		`{"id":"chatcmpl-1","choices":[]}`,
+		`{}`,
+	} {
+		if out, err := fromOpenAI([]byte(body)); err == nil {
+			t.Fatalf("fromOpenAI(%s) = %s, want a refusal", body, out)
+		}
+
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}
+		if err := translateBack(resp); err != nil {
+			t.Fatalf("translateBack: %v", err)
+		}
+		got, _ := io.ReadAll(resp.Body)
+		if string(got) != body {
+			t.Fatalf("client received %s, want the provider's body %s unchanged", got, body)
+		}
+	}
+}
