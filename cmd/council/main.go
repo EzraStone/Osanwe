@@ -122,6 +122,11 @@ func runAuthority(args []string) error {
 		if *unhealthyAfter < 1 {
 			return errors.New("council: -unhealthy-after must be at least 1; dropping a relay on zero failures would drop every relay")
 		}
+		// Zero or less used to fall back to the checker's default without a
+		// word, and anything past the round limit was silently cut short.
+		if *probe && (*probeTimeout <= 0 || *probeTimeout > probeRoundLimit) {
+			return fmt.Errorf("council: -probe-timeout must be more than zero and at most %s, the limit on a whole probing round", probeRoundLimit)
+		}
 	}
 
 	var store *directory.Store
@@ -464,6 +469,10 @@ func submitHandler(store *directory.Store, pub *publisher, log *slog.Logger) htt
 	}
 }
 
+// probeRoundLimit bounds one round of relay probes. A single probe's timeout
+// longer than this would be cut short by it, so -probe-timeout may not exceed it.
+const probeRoundLimit = 2 * time.Minute
+
 // healthy drops relays that have failed enough consecutive probes.
 //
 // A single failed probe is not enough. Networks are unreliable, and a
@@ -483,7 +492,7 @@ func (p *publisher) healthy(in []*directory.Descriptor) []*directory.Descriptor 
 	}
 	p.tracker.Forget(keep)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), probeRoundLimit)
 	defer cancel()
 	results := p.checker.ProbeAll(ctx, targets)
 
