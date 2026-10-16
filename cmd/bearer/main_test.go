@@ -113,3 +113,71 @@ func TestStringListTrimsAndDropsEmptyItems(t *testing.T) {
 		t.Fatalf("String() = %q", got)
 	}
 }
+
+// runBearer runs the client with args and the given environment, failing the
+// test if it starts serving: every case that uses it must refuse first.
+func runBearer(t *testing.T, env map[string]string, args ...string) error {
+	t.Helper()
+	originalArgs := os.Args
+	t.Cleanup(func() { os.Args = originalArgs })
+	for _, name := range []string{"OSANWE_SECRET", "OSANWE_RECEIPT"} {
+		t.Setenv(name, env[name])
+	}
+	os.Args = append([]string{"bearer", "-addr", "127.0.0.1:0", "-no-ui"}, args...)
+	done := make(chan error, 1)
+	go func() { done <- run() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(30 * time.Second):
+		t.Fatalf("bearer %q started serving instead of refusing", args)
+		return nil
+	}
+}
+
+func TestRunRefusesEveryUnsafeOrContradictoryClientConfiguration(t *testing.T) {
+	garbageCA := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(garbageCA, []byte("not a certificate\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secret := map[string]string{"OSANWE_SECRET": "a-relay-secret-long-enough"}
+	relay := []string{"-relay", "relay.example:8443", "-pin", "sha256/" + strings.Repeat("A", 43) + "="}
+	mint := []string{"-mint", "https://mint.example", "-mint-key-id", "mint-test", "-upstream", "https://gateway.example"}
+	dir := []string{"-directory", "https://directory.invalid/consensus"}
+	join := func(parts ...[]string) []string {
+		var out []string
+		for _, p := range parts {
+			out = append(out, p...)
+		}
+		return out
+	}
+
+	tests := []struct {
+		name string
+		env  map[string]string
+		args []string
+		want string
+	}{
+		{"window flags contradict", secret, join(relay, []string{"-open-ui"}), "-open-ui cannot be combined with -no-ui"},
+		{"trial access without a mint", secret, join(relay, []string{"-trial-access"}), "-trial-access needs -mint and -mint-key-id"},
+		{"invitation without trial access", secret, join(relay, []string{"-invite-book", "book.json"}), "-invite-book requires -trial-access"},
+		{"trial access and a receipt", secret, join(relay, mint, []string{"-trial-access", "-receipt", "invoice_1"}), "cannot be combined with a payment receipt"},
+		{"buying a token without a mint", secret, []string{"-buy-token"}, "-buy-token needs -mint and -mint-key-id"},
+		{"relay and directory together", secret, join(relay, dir), "use either -relay/-pin or -directory, not both"},
+		{"no relay at all", secret, nil, "no -relay given"},
+		{"a relay without its pin", secret, []string{"-relay", "relay.example:8443"}, "no -pin given"},
+		{"no relay secret", nil, relay, "no secret set"},
+		{"a directory without authority keys", secret, dir, "-directory needs at least one -authority key"},
+		{"a threshold no consensus can meet", secret, join(dir, []string{"-authority", "ed25519:a", "-authority", "ed25519:b", "-threshold", "3"}), "exceeds the 2 authority keys"},
+		{"a mint key id with no mint", secret, join(relay, []string{"-mint-key-id", "mint-test"}), "your own API key would still be used"},
+		{"an upstream CA with no certificates", secret, join(relay, []string{"-upstream", "https://gateway.example", "-upstream-ca", garbageCA}), "contained no usable certificates"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := runBearer(t, test.env, test.args...)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("run error = %v, want one containing %q", err, test.want)
+			}
+		})
+	}
+}
