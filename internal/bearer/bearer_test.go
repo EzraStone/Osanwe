@@ -257,6 +257,8 @@ func TestDoesNotLeakForwardedHeaders(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Anthropic-Version", "2023-06-01")
 	req.Header.Set("Anthropic-Beta", "context-management-2025-06-27")
+	req.Header.Set("OpenAI-Organization", "org-caller")
+	req.Header.Set("OpenAI-Project", "proj_caller")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request: %v", err)
@@ -282,6 +284,8 @@ func TestDoesNotLeakForwardedHeaders(t *testing.T) {
 		// A beta flag changes what the body means; without it the provider
 		// refuses any beta-gated field the tool sent.
 		"Anthropic-Beta": "context-management-2025-06-27",
+		// Which organization and project an OpenAI-compatible key bills.
+		"OpenAI-Organization": "org-caller", "OpenAI-Project": "proj_caller",
 	} {
 		if got := h.Get(name); got != want {
 			t.Errorf("allowed API header %s = %q, want %q", name, got, want)
@@ -537,6 +541,7 @@ func TestTokenModeNormalizesSemanticHeaderValues(t *testing.T) {
 	req.Header.Add("Anthropic-Version", "caller-specific-version")
 	req.Header.Add("Anthropic-Version", "another-caller-version")
 	req.Header.Set("Anthropic-Beta", "caller-specific-beta")
+	req.Header.Set("OpenAI-Organization", "org-caller")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("Post: %v", err)
@@ -546,8 +551,10 @@ func TestTokenModeNormalizesSemanticHeaderValues(t *testing.T) {
 	headers := <-seen
 	// The gateway accepts one request shape and no beta fields, and a beta
 	// list chosen by the caller would be a fingerprint on the anonymous path.
-	if got := headers.Values("Anthropic-Beta"); len(got) != 0 {
-		t.Fatalf("Anthropic-Beta reached the gateway in token mode as %q", got)
+	for _, name := range []string{"Anthropic-Beta", "OpenAI-Organization"} {
+		if got := headers.Values(name); len(got) != 0 {
+			t.Fatalf("%s reached the gateway in token mode as %q", name, got)
+		}
 	}
 	for name, want := range map[string]string{
 		"Accept": canonicalAccept, "Content-Type": canonicalContentType, "Anthropic-Version": canonicalAnthropicVersion,

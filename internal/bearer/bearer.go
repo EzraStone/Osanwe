@@ -393,11 +393,13 @@ func (s *Server) rewrite(pr *httputil.ProxyRequest) {
 	allowed := []string{"Accept", "Content-Type", "Anthropic-Version"}
 	if s.cfg.Tokens == nil {
 		// BYOK has to preserve whichever standard credential shape the tool
-		// uses, and the beta flags that change what the request body means:
-		// a tool that sends a beta-gated field without its flag is refused by
-		// the provider. The provider already knows the account in this mode.
-		// These are the only additional caller headers allowed out.
-		allowed = append(allowed, "Authorization", "X-Api-Key", "Api-Key", "Anthropic-Beta")
+		// uses, and the headers that change what the request means: beta flags,
+		// without which the provider refuses a beta-gated field, and the
+		// organization and project an OpenAI-compatible key is billed under.
+		// The provider already knows the account in this mode. These are the
+		// only additional caller headers allowed out.
+		allowed = append(allowed, "Authorization", "X-Api-Key", "Api-Key", "Anthropic-Beta",
+			"OpenAI-Organization", "OpenAI-Project")
 	}
 	pr.Out.Header = allowedHeaders(pr.Out.Header, allowed...)
 	// Trailer fields are carried outside Header and would otherwise bypass the
