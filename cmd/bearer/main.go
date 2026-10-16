@@ -225,6 +225,10 @@ func run() error {
 			return errors.New("bearer: -directory needs at least one -authority key. " +
 				"Without one, any server answering the URL could hand you a relay it controls")
 		}
+		if *threshold < 1 {
+			return errors.New("bearer: -threshold must be at least 1. It is how many trusted authorities " +
+				"must have signed the relay list; zero would accept a list nobody signed")
+		}
 		if *threshold > len(authKeys) {
 			return fmt.Errorf("bearer: -threshold %d exceeds the %d authority keys given, so no consensus could satisfy it",
 				*threshold, len(authKeys))

@@ -169,6 +169,8 @@ func TestRunRefusesEveryUnsafeOrContradictoryClientConfiguration(t *testing.T) {
 		{"no relay secret", nil, relay, "no secret set"},
 		{"a directory without authority keys", secret, dir, "-directory needs at least one -authority key"},
 		{"a threshold no consensus can meet", secret, join(dir, []string{"-authority", "ed25519:a", "-authority", "ed25519:b", "-threshold", "3"}), "exceeds the 2 authority keys"},
+		{"a zero threshold", secret, join(dir, []string{"-authority", "ed25519:a", "-threshold", "0"}), "-threshold must be at least 1"},
+		{"a negative threshold", secret, join(dir, []string{"-authority", "ed25519:a", "-threshold", "-1"}), "-threshold must be at least 1"},
 		{"a mint key id with no mint", secret, join(relay, []string{"-mint-key-id", "mint-test"}), "your own API key would still be used"},
 		{"an upstream CA with no certificates", secret, join(relay, []string{"-upstream", "https://gateway.example", "-upstream-ca", garbageCA}), "contained no usable certificates"},
 	}
