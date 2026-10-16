@@ -48,9 +48,8 @@ type Client struct {
 
 	HTTPClient *http.Client
 
-	once sync.Once
-	pub  *rsa.PublicKey
-	err  error
+	mu  sync.Mutex
+	pub *rsa.PublicKey
 }
 
 func (c *Client) httpClient() *http.Client {
@@ -60,10 +59,22 @@ func (c *Client) httpClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Second}
 }
 
-// Key fetches and verifies the mint's public key, caching it.
+// Key fetches and verifies the mint's public key. A verified key is cached; a
+// failure is not. Caching the first result, error and all, meant a mint that
+// was unreachable for the few seconds when a client started stayed unusable
+// until the client was restarted.
 func (c *Client) Key(ctx context.Context) (*rsa.PublicKey, error) {
-	c.once.Do(func() { c.pub, c.err = c.fetchKey(ctx) })
-	return c.pub, c.err
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.pub != nil {
+		return c.pub, nil
+	}
+	pub, err := c.fetchKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.pub = pub
+	return pub, nil
 }
 
 func (c *Client) fetchKey(ctx context.Context) (*rsa.PublicKey, error) {
