@@ -612,3 +612,15 @@ func TestTheBodySurvivesRouting(t *testing.T) {
 		t.Fatalf("provider received %#v, want semantic body %#v", gotJSON, sentJSON)
 	}
 }
+
+// A route's key comes from an environment variable, which on a gateway host is
+// often filled from a file. A trailing carriage return there must be named as
+// such, with the route and the variable, rather than reported as missing.
+func TestRouteCredentialWithTrailingWhitespaceIsNamed(t *testing.T) {
+	env := map[string]string{"GROQ_API_KEY": "gsk-pooled-key\r"}
+	_, err := ParseRoutes(strings.NewReader(
+		"openai/gpt-oss-20b openai https://api.groq.com/openai GROQ_API_KEY\n"), func(name string) string { return env[name] })
+	if err == nil || !strings.Contains(err.Error(), `route "openai/gpt-oss-20b"`) || !strings.Contains(err.Error(), "surrounding whitespace") {
+		t.Fatalf("ParseRoutes error = %v, want the route named and the whitespace explained", err)
+	}
+}

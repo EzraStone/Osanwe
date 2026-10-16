@@ -1018,6 +1018,8 @@ func TestNewRefusesAnUnsafeConfig(t *testing.T) {
 		{"no redemption store", func(c *Config) { c.Spent = nil }, "RedemptionStore is required"},
 		{"no aggregate budget", func(c *Config) { c.Budget = nil }, "Budget is required"},
 		{"no credential", func(c *Config) { c.Credential.Value = "" }, "Credential.Value is required"},
+		{"credential with a trailing newline", func(c *Config) { c.Credential.Value = "sk-pooled\n" }, "has surrounding whitespace"},
+		{"credential with a carriage return", func(c *Config) { c.Credential.Value = "sk-pooled\r" }, "has surrounding whitespace"},
 		{"unsupported credential header", func(c *Config) { c.Credential.Header = "Cookie" }, "Credential.Header must be"},
 		{"credential value newline", func(c *Config) { c.Credential.Value = "k\r\nX-Leak: yes" }, "control characters"},
 		{"credential prefix newline", func(c *Config) { c.Credential.Prefix = "Bearer\n" }, "control characters"},

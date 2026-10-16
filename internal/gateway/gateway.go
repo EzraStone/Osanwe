@@ -113,8 +113,15 @@ func (c Credential) valid() error {
 	default:
 		return errors.New("gateway: Credential.Header must be Authorization, X-Api-Key, or Api-Key")
 	}
-	if c.Value == "" || strings.TrimSpace(c.Value) != c.Value {
+	if c.Value == "" {
 		return errors.New("gateway: Credential.Value is required; a gateway with no provider credential cannot answer anything")
+	}
+	// Reported separately from "missing": the operator did set a key, and the
+	// usual cause is a trailing newline or carriage return from where it was
+	// stored, which would make the provider refuse every request.
+	if strings.TrimSpace(c.Value) != c.Value {
+		return errors.New("gateway: the provider credential has surrounding whitespace, usually a trailing newline " +
+			"or carriage return from where it was stored; every request would be refused by the provider")
 	}
 	if !safeHeaderFragment(c.Prefix) || !safeHeaderFragment(c.Value) {
 		return errors.New("gateway: credential prefix and value must not contain control characters")
