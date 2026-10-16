@@ -122,7 +122,7 @@ leaves your machine.
 | `-gen-secret` | ranger | Print a fresh secret and exit |
 | `-pin` | ranger | Print this relay's pin and exit |
 | `-log-destinations` | ranger | **Off by default.** See below |
-| `-metrics ADDR` | ranger | Loopback by default; empty disables |
+| `-metrics ADDR` | ranger | Loopback by default; empty disables. If the port cannot be bound, the relay does not start |
 | `-upstream URL` | bearer | Another provider in BYOK mode; required and must name the gateway in token (`-mint`) mode |
 | `-allow-exposed` | bearer | Binds a routable address. Puts prompts on the network in plaintext |
 

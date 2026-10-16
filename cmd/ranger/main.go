@@ -275,7 +275,20 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// The metrics port is bound first, and a failure is fatal. Bound later in
+	// a goroutine, a taken port was only a warning after "metrics listening"
+	// had been logged, and the relay ran on with no /metrics and no /healthz
+	// for whatever was monitoring it.
+	var metricsListener net.Listener
+	if *metricsAddr != "" {
+		if metricsListener, err = net.Listen("tcp", *metricsAddr); err != nil {
+			return fmt.Errorf("ranger: metrics endpoint: %w", err)
+		}
+	}
 	if err := srv.Listen(); err != nil {
+		if metricsListener != nil {
+			_ = metricsListener.Close()
+		}
 		return err
 	}
 
@@ -290,8 +303,8 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 	}
 
 	var metricsSrv *http.Server
-	if *metricsAddr != "" {
-		metricsSrv = startMetrics(*metricsAddr, srv, log)
+	if metricsListener != nil {
+		metricsSrv = startMetrics(metricsListener, srv, log)
 	}
 
 	errCh := make(chan error, 1)
@@ -317,14 +330,14 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 
 // startMetrics serves cumulative counters. It binds loopback by default: these
 // numbers describe a relay's traffic and there is no reason to publish them.
-func startMetrics(addr string, srv *ranger.Server, log *slog.Logger) *http.Server {
-	s := &http.Server{Addr: addr, Handler: metricsHandler(srv), ReadHeaderTimeout: 5 * time.Second}
+func startMetrics(listener net.Listener, srv *ranger.Server, log *slog.Logger) *http.Server {
+	s := &http.Server{Handler: metricsHandler(srv), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
-		if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := s.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Warn("metrics endpoint stopped", "error", err)
 		}
 	}()
-	log.Info("metrics listening", "addr", addr)
+	log.Info("metrics listening", "addr", listener.Addr().String())
 	return s
 }
 

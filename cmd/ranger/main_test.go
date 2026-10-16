@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -416,5 +417,28 @@ func TestPublishFallsBackToAcceptedForAnEmptyReply(t *testing.T) {
 	defer authority.Close()
 	if outcome, err := publish(authority.URL, []byte("descriptor")); err != nil || outcome != "accepted" {
 		t.Fatalf("publish = %q, %v; want \"accepted\"", outcome, err)
+	}
+}
+
+// Asking for a metrics endpoint and not getting one is a startup failure, not
+// a warning. Before, the relay logged "metrics listening", failed to bind in
+// the background, and ran on with nothing answering /healthz.
+func TestRunRefusesToStartWithoutTheMetricsEndpointItWasAskedFor(t *testing.T) {
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer taken.Close()
+	secret := strings.Repeat("s", auth.MinSecretLen)
+
+	_, err = runRanger(t, t.TempDir(), []string{"-allow", "api.anthropic.com", "-metrics", taken.Addr().String()},
+		func(name string) string {
+			if name == "OSANWE_RANGER_SECRET" {
+				return secret
+			}
+			return ""
+		})
+	if err == nil || !strings.Contains(err.Error(), "ranger: metrics endpoint:") {
+		t.Fatalf("run error = %v, want the metrics bind failure", err)
 	}
 }
