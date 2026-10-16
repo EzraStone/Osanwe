@@ -130,6 +130,8 @@ func TestRunRefusesUnsafeAuthorizationConfigurations(t *testing.T) {
 		{"invite without receipts database", []string{"-invite-manifest", "invite-manifest.json", "-invite-capacity", "10"}, noEnv, "-receipts-db is required in invite mode"},
 		{"open and invite together", []string{"-open", "-invite-manifest", "invite-manifest.json"}, noEnv, "mutually exclusive"},
 		{"capacity outside invite mode", []string{"-open", "-invite-capacity", "5"}, noEnv, "valid only with -invite-manifest"},
+		{"a price on an open mint", []string{"-open", "-btcpay-amount", "1.00", "-btcpay-currency", "USD"}, noEnv, "-btcpay-amount, -btcpay-currency are valid only with -btcpay"},
+		{"a store in invite mode", []string{"-invite-manifest", "invite-manifest.json", "-invite-capacity", "10", "-receipts-db", "/nonexistent/receipts.db", "-btcpay-store", "s1"}, noEnv, "-btcpay-store is valid only with -btcpay"},
 		{"unknown flag", []string{"-pay-anyone"}, noEnv, "flag provided but not defined"},
 	}
 	for _, test := range tests {

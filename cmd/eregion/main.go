@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -172,6 +173,26 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 		}
 		if err := checkAuthorizationFlags(mode, *inviteCapacity, btcpayAPIKey, *receiptsDB); err != nil {
 			return err
+		}
+		// The price and store only mean something to the BTCPay authorizer.
+		// Elsewhere they were ignored, so -open with a price beside it ran a
+		// mint that issued free tokens while its command line said it charged.
+		if mode != authorizationModeBTCPay {
+			var priced []string
+			fs.Visit(func(f *flag.Flag) {
+				switch f.Name {
+				case "btcpay-store", "btcpay-amount", "btcpay-currency":
+					priced = append(priced, "-"+f.Name)
+				}
+			})
+			if len(priced) > 0 {
+				verb := "is"
+				if len(priced) > 1 {
+					verb = "are"
+				}
+				return fmt.Errorf("eregion: %s %s valid only with -btcpay; this mint would not charge anything",
+					strings.Join(priced, ", "), verb)
+			}
 		}
 		if mode == authorizationModeBTCPay {
 			if err := mint.CheckBTCPaySettings(mint.BTCPayConfig{
