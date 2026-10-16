@@ -2,10 +2,31 @@ package bearer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"strings"
 )
+
+// errorJSON is the Messages API error body every local refusal uses. It is
+// encoded with encoding/json rather than spliced in with %q: Go quoting is not
+// JSON quoting, and a byte such as 0x80 in a request header, which the
+// cross-origin and not-a-website refusals repeat back, came out as \x80,
+// making the whole body unparseable for the client reading it.
+func errorJSON(kind, message, detail string) []byte {
+	var body struct {
+		Type  string `json:"type"`
+		Error struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+			Detail  string `json:"detail,omitempty"`
+		} `json:"error"`
+	}
+	body.Type = "error"
+	body.Error.Type, body.Error.Message, body.Error.Detail = kind, message, detail
+	encoded, _ := json.Marshal(body)
+	return append(encoded, '\n')
+}
 
 // Failures reach a person, so they are written for one.
 //

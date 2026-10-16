@@ -130,6 +130,6 @@ func (s *Server) refuseOrigin(w http.ResponseWriter, err error) {
 	// cross-origin read is the thing being prevented, and a permissive header
 	// added later "to make the UI work" would undo all of it.
 	w.WriteHeader(http.StatusForbidden)
-	fmt.Fprintf(w, `{"type":"error","error":{"type":"osanwe_cross_origin","message":%q}}`+"\n",
-		"Refused: "+err.Error()+". Osanwë listens on loopback, which any page in your browser can also reach, so it only answers its own interface and non-browser clients.")
+	_, _ = w.Write(errorJSON("osanwe_cross_origin",
+		"Refused: "+err.Error()+". Osanwë listens on loopback, which any page in your browser can also reach, so it only answers its own interface and non-browser clients.", ""))
 }

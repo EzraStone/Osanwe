@@ -699,3 +699,24 @@ func TestTheOriginalErrorIsStillReturned(t *testing.T) {
 		t.Fatalf("message and detail are identical (%q); nothing was translated", out.Error.Message)
 	}
 }
+
+// Refusals repeat part of the request back, and request headers may carry any
+// byte from 0x80 up. The bodies were built with %q, which writes such a byte
+// as \x80: valid Go, not valid JSON, so the client could not read why it was
+// refused.
+func TestRefusalsStayValidJSONWhateverTheRequestCarried(t *testing.T) {
+	s := testServer(t, nil)
+	for name, headers := range map[string]map[string]string{
+		"cross-origin refusal":  {"Origin": "http://evil\x80.example"},
+		"not-a-website refusal": {"Sec-Fetch-Dest": "image\x80"},
+	} {
+		resp := ask(t, s, "/v1/messages", headers)
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode < 400 {
+			t.Fatalf("%s: status %d, want a refusal", name, resp.StatusCode)
+		}
+		if !json.Valid(body) {
+			t.Fatalf("%s: body is not JSON: %s", name, body)
+		}
+	}
+}

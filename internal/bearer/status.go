@@ -2,7 +2,6 @@ package bearer
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -338,9 +337,9 @@ func notAWebsite(proxy http.Handler) http.Handler {
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprintf(w, `{"type":"error","error":{"type":"osanwe_not_a_website","message":%q}}`+"\n",
+			_, _ = w.Write(errorJSON("osanwe_not_a_website",
 				"This is an API endpoint, not a web server. A browser asked for a "+dest+
-					", which was answered here rather than bought and forwarded.")
+					", which was answered here rather than bought and forwarded.", ""))
 		}
 	})
 }

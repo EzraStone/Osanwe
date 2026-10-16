@@ -303,8 +303,7 @@ func (s *Server) withToken(next http.Handler) http.Handler {
 			s.log.Error("could not get a token", "error", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusPaymentRequired)
-			fmt.Fprintf(w, `{"type":"error","error":{"type":"osanwe_no_token","message":%q}}`+"\n",
-				"Could not buy a token: "+err.Error())
+			_, _ = w.Write(errorJSON("osanwe_no_token", "Could not buy a token: "+err.Error(), ""))
 			return
 		}
 
@@ -530,7 +529,7 @@ func replaceRedirectResponse(resp *http.Response, message string) {
 	if resp.Body != nil {
 		_ = resp.Body.Close()
 	}
-	body := []byte(fmt.Sprintf(`{"type":"error","error":{"type":"osanwe_redirect_blocked","message":%q}}`+"\n", message))
+	body := errorJSON("osanwe_redirect_blocked", message, "")
 	resp.StatusCode = http.StatusBadGateway
 	resp.Status = fmt.Sprintf("%d %s", http.StatusBadGateway, http.StatusText(http.StatusBadGateway))
 	resp.Header = make(http.Header)
@@ -558,8 +557,7 @@ func (s *Server) refusePaidSurface(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	setPrivateResponseHeaders(w.Header())
 	w.WriteHeader(status)
-	fmt.Fprintf(w, `{"type":"error","error":{"type":%q,"message":%q}}`+"\n",
-		"osanwe_"+kind, message)
+	_, _ = w.Write(errorJSON("osanwe_"+kind, message, ""))
 }
 
 // handleError reports a failure without leaking request content into logs.
@@ -576,8 +574,7 @@ func (s *Server) handleError(w http.ResponseWriter, r *http.Request, err error) 
 	w.WriteHeader(http.StatusBadGateway)
 	// Both, deliberately: the sentence is for whoever is looking at a screen,
 	// and detail is the original for whoever is debugging a relay.
-	fmt.Fprintf(w, `{"type":"error","error":{"type":"osanwe_tunnel_error","message":%q,"detail":%q}}`+"\n",
-		message, err.Error())
+	_, _ = w.Write(errorJSON("osanwe_tunnel_error", message, err.Error()))
 }
 
 // Metrics returns the server's counters.

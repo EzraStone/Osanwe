@@ -1021,7 +1021,7 @@ func replaceRedirectResponse(resp *http.Response, message string) {
 	if resp.Body != nil {
 		_ = resp.Body.Close()
 	}
-	body := []byte(fmt.Sprintf(`{"type":"error","error":{"type":"osanwe_redirect_blocked","message":%q}}`+"\n", message))
+	body := errorJSON("osanwe_redirect_blocked", message)
 	resp.StatusCode = http.StatusBadGateway
 	resp.Status = fmt.Sprintf("%d %s", http.StatusBadGateway, http.StatusText(http.StatusBadGateway))
 	resp.Header = make(http.Header)
@@ -1193,7 +1193,23 @@ func (s *Server) refuse(w http.ResponseWriter, status int, kind, message string)
 	w.Header().Set("Content-Type", "application/json")
 	setPrivateResponseHeaders(w.Header())
 	w.WriteHeader(status)
-	fmt.Fprintf(w, `{"type":"error","error":{"type":%q,"message":%q}}`+"\n", "osanwe_"+kind, message)
+	_, _ = w.Write(errorJSON("osanwe_"+kind, message))
+}
+
+// errorJSON encodes the Messages API error shape with encoding/json. Building
+// it with %q produced Go escapes such as \x80, which are not JSON.
+func errorJSON(kind, message string) []byte {
+	var body struct {
+		Type  string `json:"type"`
+		Error struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	body.Type = "error"
+	body.Error.Type, body.Error.Message = kind, message
+	encoded, _ := json.Marshal(body)
+	return append(encoded, '\n')
 }
 
 func (s *Server) refuseToken(w http.ResponseWriter, status int, kind, outcome, message string) {
