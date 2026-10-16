@@ -28,6 +28,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/EzraStone/osanwe/internal/auth"
 	"github.com/EzraStone/osanwe/internal/bearer"
 	"github.com/EzraStone/osanwe/internal/directory"
 	"github.com/EzraStone/osanwe/internal/mint"
@@ -203,6 +204,12 @@ func run() error {
 	}
 	if sec == "" {
 		return errors.New("bearer: no secret set. Put the relay's secret in OSANWE_SECRET")
+	}
+	// Checked here as well as in the tunnel: in directory mode a dialer that
+	// cannot be built only drops that relay, so a bad secret would surface as
+	// "no relays" rather than as the secret.
+	if err := auth.Sendable(sec); err != nil {
+		return fmt.Errorf("bearer: relay secret: %w", err)
 	}
 
 	level := slog.LevelInfo

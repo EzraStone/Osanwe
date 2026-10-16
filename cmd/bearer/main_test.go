@@ -167,6 +167,7 @@ func TestRunRefusesEveryUnsafeOrContradictoryClientConfiguration(t *testing.T) {
 		{"no relay at all", secret, nil, "no -relay given"},
 		{"a relay without its pin", secret, []string{"-relay", "relay.example:8443"}, "no -pin given"},
 		{"no relay secret", nil, relay, "no secret set"},
+		{"a relay secret with a carriage return", map[string]string{"OSANWE_SECRET": "a-relay-secret-long-enough\r"}, relay, "no client could ever send it"},
 		{"a directory without authority keys", secret, dir, "-directory needs at least one -authority key"},
 		{"a threshold no consensus can meet", secret, join(dir, []string{"-authority", "ed25519:a", "-authority", "ed25519:b", "-threshold", "3"}), "exceeds the 2 authority keys"},
 		{"a zero threshold", secret, join(dir, []string{"-authority", "ed25519:a", "-threshold", "0"}), "-threshold must be at least 1"},

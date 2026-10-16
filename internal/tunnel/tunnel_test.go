@@ -92,6 +92,10 @@ func TestNewValidatesConfig(t *testing.T) {
 		"no pin":        func(c *Config) { c.Pin = "" },
 		"bad pin":       func(c *Config) { c.Pin = "not-a-pin" },
 		"short pin":     func(c *Config) { c.Pin = "sha256/AAAA" },
+		// From a secret file with a Windows line ending, say. Sent as is, it
+		// could never match, and the relay's 407 would look like a typo.
+		"secret with a carriage return": func(c *Config) { c.Secret = secret + "\r" },
+		"secret with a trailing space":  func(c *Config) { c.Secret = secret + " " },
 	}
 	for name, mutate := range cases {
 		cfg := base

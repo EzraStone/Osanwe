@@ -69,6 +69,9 @@ func New(cfg Config) (*Dialer, error) {
 	if cfg.Secret == "" {
 		return nil, errors.New("tunnel: Secret is required")
 	}
+	if err := auth.Sendable(cfg.Secret); err != nil {
+		return nil, fmt.Errorf("tunnel: %w", err)
+	}
 	if cfg.Pin == "" {
 		return nil, errors.New("tunnel: Pin is required; without it the relay is unauthenticated and could be substituted")
 	}

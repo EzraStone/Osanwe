@@ -47,17 +47,25 @@ func New(secret string) (*Authenticator, error) {
 		return nil, fmt.Errorf("auth: secret is %d bytes, need at least %d; generate one with `openssl rand -hex 24`",
 			len(secret), MinSecretLen)
 	}
-	// A secret that a header cannot carry intact can never be presented: the
-	// header parser trims surrounding whitespace, and control characters do
-	// not survive HTTP at all. Accepting one would start a relay that refuses
-	// every client, which looks exactly like every client having the wrong
-	// secret. The usual cause is a secret file saved with a trailing newline
-	// or a Windows carriage return.
-	if strings.TrimSpace(secret) != secret || strings.ContainsFunc(secret, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
-		return nil, errors.New("auth: the secret has surrounding whitespace or a control character, so no client could ever send it; " +
-			"check for a trailing newline or carriage return where it was stored")
+	if err := Sendable(secret); err != nil {
+		return nil, fmt.Errorf("auth: %w", err)
 	}
 	return &Authenticator{digest: sha256.Sum256([]byte(secret))}, nil
+}
+
+// Sendable reports whether a secret can be carried intact in a credential
+// header. The parser trims surrounding whitespace and control characters do
+// not survive HTTP at all, so such a secret could never be presented: a relay
+// started with one refuses every client, and a client configured with one is
+// refused by every relay, in both cases looking exactly like a wrong secret.
+// The usual cause is a secret file saved with a trailing newline or a Windows
+// carriage return.
+func Sendable(secret string) error {
+	if strings.TrimSpace(secret) != secret || strings.ContainsFunc(secret, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return errors.New("the secret has surrounding whitespace or a control character, so no client could ever send it; " +
+			"check for a trailing newline or carriage return where it was stored")
+	}
+	return nil
 }
 
 // GenerateSecret returns a fresh random secret suitable for New.
