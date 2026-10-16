@@ -103,6 +103,44 @@ func runAuthority(args []string) error {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
+	// Every check that needs only the flags runs before the identity is
+	// loaded. That identity is the key clients trust as an authority, and a
+	// command line about to be refused has no business creating one.
+	if !*showKey {
+		if *lifetime <= 0 {
+			return errors.New("council: -lifetime must be positive; a consensus with no validity window could be replayed forever")
+		}
+		if *rebuild >= *lifetime {
+			return fmt.Errorf("council: -rebuild (%s) must be shorter than -lifetime (%s), or the consensus expires before it is replaced",
+				*rebuild, *lifetime)
+		}
+		// The directory package owns the epoch rules; asking it now, with no
+		// relays, refuses a bad -rebuild before anything is written.
+		if _, err := directory.NewEpochConsensus(nil, time.Now(), *rebuild, *lifetime); err != nil {
+			return err
+		}
+		if *unhealthyAfter < 1 {
+			return errors.New("council: -unhealthy-after must be at least 1; dropping a relay on zero failures would drop every relay")
+		}
+	}
+
+	var store *directory.Store
+	if !*showKey {
+		if *acceptPath != "" {
+			list, err := directory.NewAcceptList(*acceptPath)
+			if err != nil {
+				return err
+			}
+			store = &directory.Store{Dir: *descDir, Accept: list}
+			log.Info("descriptor submission enabled", "accept_list", *acceptPath, "identities", list.Len())
+			if list.Len() == 0 {
+				log.Warn("the accept list is empty, so every submission will be refused until an identity is added")
+			}
+		} else {
+			log.Info("descriptor submission disabled; pass -accept to enable POST /publish")
+		}
+	}
+
 	id, created, err := directory.LoadOrCreateIdentity(*identityPath)
 	if err != nil {
 		return err
@@ -113,33 +151,6 @@ func runAuthority(args []string) error {
 	}
 	if created {
 		log.Info("generated a new authority identity", "path", *identityPath)
-	}
-
-	if *lifetime <= 0 {
-		return errors.New("council: -lifetime must be positive; a consensus with no validity window could be replayed forever")
-	}
-	if *rebuild >= *lifetime {
-		return fmt.Errorf("council: -rebuild (%s) must be shorter than -lifetime (%s), or the consensus expires before it is replaced",
-			*rebuild, *lifetime)
-	}
-
-	if *unhealthyAfter < 1 {
-		return errors.New("council: -unhealthy-after must be at least 1; dropping a relay on zero failures would drop every relay")
-	}
-
-	var store *directory.Store
-	if *acceptPath != "" {
-		list, err := directory.NewAcceptList(*acceptPath)
-		if err != nil {
-			return err
-		}
-		store = &directory.Store{Dir: *descDir, Accept: list}
-		log.Info("descriptor submission enabled", "accept_list", *acceptPath, "identities", list.Len())
-		if list.Len() == 0 {
-			log.Warn("the accept list is empty, so every submission will be refused until an identity is added")
-		}
-	} else {
-		log.Info("descriptor submission disabled; pass -accept to enable POST /publish")
 	}
 
 	pub := &publisher{
