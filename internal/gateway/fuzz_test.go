@@ -101,3 +101,65 @@ func FuzzPrepareRequest(f *testing.F) {
 		}
 	})
 }
+
+// A provider's reply is outside the gateway's control. Whatever an
+// OpenAI-compatible provider returns, translating it must not panic, and what
+// reaches the client must be well-formed Messages output.
+func FuzzTranslateOpenAIResponse(f *testing.F) {
+	f.Add([]byte(`{"id":"c1","model":"m","choices":[{"message":{"content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1}}`))
+	f.Add([]byte(`{"choices":[]}`))
+	f.Add([]byte(`{"choices":[{"message":{"content":null},"finish_reason":"content_filter"}]}`))
+	f.Add([]byte(`[]`))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		out, err := fromOpenAI(data)
+		if err != nil {
+			return
+		}
+		var message struct {
+			Type    string `json:"type"`
+			Role    string `json:"role"`
+			Content []struct {
+				Type string `json:"type"`
+			} `json:"content"`
+			StopReason string `json:"stop_reason"`
+		}
+		if err := json.Unmarshal(out, &message); err != nil {
+			t.Fatalf("translation is not JSON: %v\n%q", err, out)
+		}
+		if message.Type != "message" || message.Role != "assistant" || len(message.Content) != 1 || message.Content[0].Type != "text" || message.StopReason == "" {
+			t.Fatalf("translation is not a Messages response: %s", out)
+		}
+	})
+}
+
+func FuzzTranslateOpenAIStream(f *testing.F) {
+	f.Add([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
+	f.Add([]byte("data: {\"choices\":[]}\n\n"))
+	f.Add([]byte(": keep-alive\n\ndata:\n\ndata: not json\n\n"))
+	f.Add([]byte(""))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		out, err := io.ReadAll(streamFromOpenAI(io.NopCloser(bytes.NewReader(data))))
+		var types []string
+		for _, line := range bytes.Split(out, []byte("\n")) {
+			payload, ok := bytes.CutPrefix(line, []byte("data: "))
+			if !ok {
+				continue
+			}
+			var event struct {
+				Type string `json:"type"`
+			}
+			if err := json.Unmarshal(payload, &event); err != nil {
+				t.Fatalf("emitted an event that is not JSON: %q", payload)
+			}
+			types = append(types, event.Type)
+		}
+		if len(types) < 2 || types[0] != "message_start" || types[1] != "content_block_start" {
+			t.Fatalf("stream did not open properly: %q", types)
+		}
+		if err == nil && types[len(types)-1] != "message_stop" {
+			t.Fatalf("a stream that ended cleanly did not end with message_stop: %q", types)
+		}
+	})
+}
