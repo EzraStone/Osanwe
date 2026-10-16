@@ -98,6 +98,37 @@ func run(args []string, getenv func(string) string) error {
 	if strings.TrimSpace(*budgetDB) == "" {
 		return errors.New("mithlond: -budget-db is required; a pooled provider account must have a durable aggregate spending ceiling")
 	}
+	// The gateway library reads a zero limit as "use the default". On the
+	// command line that is a trap: an operator who types -budget-requests 0 to
+	// stop spending would get the default ceiling instead. Zero is refused.
+	zeroLimits := []struct {
+		flag string
+		zero bool
+	}{
+		{"-max-request-bytes", *maxRequestBytes == 0},
+		{"-max-output-tokens", *maxOutputTokens == 0},
+		{"-budget-window", *budgetWindow == 0},
+		{"-budget-requests", *budgetRequests == 0},
+		{"-budget-input-bytes", *budgetInputBytes == 0},
+		{"-budget-output-tokens", *budgetOutputTokens == 0},
+	}
+	if strings.TrimSpace(*burstBudgetDB) != "" {
+		zeroLimits = append(zeroLimits, []struct {
+			flag string
+			zero bool
+		}{
+			{"-burst-budget-window", *burstBudgetWindow == 0},
+			{"-burst-budget-requests", *burstBudgetRequests == 0},
+			{"-burst-budget-input-bytes", *burstBudgetInputBytes == 0},
+			{"-burst-budget-output-tokens", *burstBudgetOutputTokens == 0},
+		}...)
+	}
+	for _, limit := range zeroLimits {
+		if limit.zero {
+			return fmt.Errorf("mithlond: %s cannot be 0; zero would silently select the default rather than allow nothing. "+
+				"To stop serving, stop the gateway", limit.flag)
+		}
+	}
 	var maxCostMicros uint64
 	if *budgetCostUSD != "" {
 		var err error

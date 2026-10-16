@@ -120,6 +120,13 @@ func TestRunRefusesAnUnboundedOrUnauthenticatedGateway(t *testing.T) {
 		{"no mint key", nil, providerKey, "no -mint-key given"},
 		{"the same mint key twice", []string{"-mint-key", mintKey, "-mint-key", mintKey}, providerKey, "holds a key already loaded"},
 		{"upstream CA with no certificates", []string{"-mint-key", mintKey, "-upstream-ca", emptyCA}, providerKey, "contained no usable certificates"},
+		{"zero request ceiling", []string{"-mint-key", mintKey, "-budget-requests", "0"}, providerKey, "-budget-requests cannot be 0"},
+		{"zero input ceiling", []string{"-mint-key", mintKey, "-budget-input-bytes", "0"}, providerKey, "-budget-input-bytes cannot be 0"},
+		{"zero output ceiling", []string{"-mint-key", mintKey, "-budget-output-tokens", "0"}, providerKey, "-budget-output-tokens cannot be 0"},
+		{"zero budget window", []string{"-mint-key", mintKey, "-budget-window", "0"}, providerKey, "-budget-window cannot be 0"},
+		{"zero request size", []string{"-mint-key", mintKey, "-max-request-bytes", "0"}, providerKey, "-max-request-bytes cannot be 0"},
+		{"zero output limit", []string{"-mint-key", mintKey, "-max-output-tokens", "0"}, providerKey, "-max-output-tokens cannot be 0"},
+		{"zero burst ceiling", []string{"-mint-key", mintKey, "-burst-budget-db", "burst.db", "-burst-budget-requests", "0"}, providerKey, "-burst-budget-requests cannot be 0"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
