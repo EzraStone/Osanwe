@@ -258,7 +258,10 @@ func streamFromOpenAI(src io.ReadCloser) io.ReadCloser {
 
 		sc := bufio.NewScanner(src)
 		sc.Buffer(make([]byte, 0, 64<<10), 4<<20)
-		stop, produced := "end_turn", 0
+		// produced counts content chunks. It stands in for output_tokens only
+		// when the provider reports no usage of its own; reported holds the
+		// provider's count when the stream carries one.
+		stop, produced, reported := "end_turn", 0, 0
 
 		for sc.Scan() {
 			line := strings.TrimSpace(sc.Text())
@@ -270,6 +273,9 @@ func streamFromOpenAI(src io.ReadCloser) io.ReadCloser {
 				continue
 			}
 
+			type usage struct {
+				CompletionTokens int `json:"completion_tokens"`
+			}
 			var chunk struct {
 				Choices []struct {
 					Delta struct {
@@ -277,8 +283,22 @@ func streamFromOpenAI(src io.ReadCloser) io.ReadCloser {
 					} `json:"delta"`
 					FinishReason string `json:"finish_reason"`
 				} `json:"choices"`
+				// OpenAI sends usage in a final chunk with no choices; Groq
+				// sends it under x_groq in its last chunk.
+				Usage *usage `json:"usage"`
+				XGroq struct {
+					Usage *usage `json:"usage"`
+				} `json:"x_groq"`
 			}
-			if json.Unmarshal([]byte(payload), &chunk) != nil || len(chunk.Choices) == 0 {
+			if json.Unmarshal([]byte(payload), &chunk) != nil {
+				continue
+			}
+			for _, u := range []*usage{chunk.Usage, chunk.XGroq.Usage} {
+				if u != nil && u.CompletionTokens > 0 {
+					reported = u.CompletionTokens
+				}
+			}
+			if len(chunk.Choices) == 0 {
 				continue
 			}
 			if r := chunk.Choices[0].FinishReason; r != "" {
@@ -304,10 +324,14 @@ func streamFromOpenAI(src io.ReadCloser) io.ReadCloser {
 		if !emit("content_block_stop", map[string]any{"type": "content_block_stop", "index": 0}) {
 			return
 		}
+		outputTokens := produced
+		if reported > 0 {
+			outputTokens = reported
+		}
 		if !emit("message_delta", map[string]any{
 			"type":  "message_delta",
 			"delta": map[string]any{"stop_reason": stop},
-			"usage": map[string]int{"output_tokens": produced},
+			"usage": map[string]int{"output_tokens": outputTokens},
 		}) {
 			return
 		}

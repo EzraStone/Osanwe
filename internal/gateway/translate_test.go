@@ -425,3 +425,64 @@ func TestAFilteredAnswerArrivesAsARefusal(t *testing.T) {
 		t.Fatalf("streamed stop_reason = %q, want refusal", streamed)
 	}
 }
+
+// output_tokens on the closing message_delta should be the provider's count
+// when the stream carries one. Counting content chunks is only an estimate:
+// one chunk can hold several tokens, and OpenAI puts its own count in a final
+// chunk with no choices, which an earlier loop skipped outright.
+func TestStreamReportsTheProvidersOwnTokenCount(t *testing.T) {
+	const chunks = "data: {\"choices\":[{\"delta\":{\"content\":\"one two\"}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\" three\"},\"finish_reason\":\"stop\"}]}\n\n"
+
+	for _, tc := range []struct {
+		name, tail string
+		want       int
+	}{
+		{"openai usage chunk", "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":17}}\n\ndata: [DONE]\n\n", 17},
+		{"groq x_groq usage", "data: {\"choices\":[],\"x_groq\":{\"usage\":{\"completion_tokens\":17}}}\n\ndata: [DONE]\n\n", 17},
+		{"no usage at all", "data: [DONE]\n\n", 2},
+		{"zero usage is no report", "data: {\"choices\":[],\"usage\":{\"completion_tokens\":0}}\n\ndata: [DONE]\n\n", 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := streamFromOpenAI(io.NopCloser(strings.NewReader(chunks + tc.tail)))
+			defer out.Close()
+			body, err := io.ReadAll(out)
+			if err != nil {
+				t.Fatalf("ReadAll: %v", err)
+			}
+
+			got, text := -1, ""
+			sc := bufio.NewScanner(strings.NewReader(string(body)))
+			for sc.Scan() {
+				line := strings.TrimSpace(sc.Text())
+				if !strings.HasPrefix(line, "data:") {
+					continue
+				}
+				var ev struct {
+					Type  string `json:"type"`
+					Delta struct {
+						Text string `json:"text"`
+					} `json:"delta"`
+					Usage struct {
+						OutputTokens int `json:"output_tokens"`
+					} `json:"usage"`
+				}
+				if json.Unmarshal([]byte(strings.TrimPrefix(line, "data:")), &ev) != nil {
+					continue
+				}
+				switch ev.Type {
+				case "content_block_delta":
+					text += ev.Delta.Text
+				case "message_delta":
+					got = ev.Usage.OutputTokens
+				}
+			}
+			if text != "one two three" {
+				t.Fatalf("text = %q; the usage chunk disturbed the content", text)
+			}
+			if got != tc.want {
+				t.Fatalf("output_tokens = %d, want %d\n%s", got, tc.want, body)
+			}
+		})
+	}
+}
