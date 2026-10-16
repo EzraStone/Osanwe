@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -90,13 +91,20 @@ func run(args []string, getenv func(string) string) error {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    16 << 10,
 	}
-	log.Info("checkout listening", "addr", *addr, "btcpay", *btcpayEndpoint,
+	// Bind before announcing anything. ListenAndServe binds inside its own
+	// goroutine, so the line below used to be logged even when the port was
+	// taken and the storefront was about to exit.
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		return fmt.Errorf("checkout: %w", err)
+	}
+	log.Info("checkout listening", "addr", listener.Addr().String(), "btcpay", *btcpayEndpoint,
 		"store", *btcpayStore, "amount", *amount, "currency", *currency,
 		"invoice_limit_per_minute", *maximum)
 
 	errCh := make(chan error, 1)
 	go func() {
-		err := server.ListenAndServe()
+		err := server.Serve(listener)
 		if errors.Is(err, http.ErrServerClosed) {
 			err = nil
 		}
