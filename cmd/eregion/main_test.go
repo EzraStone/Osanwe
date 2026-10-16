@@ -141,6 +141,43 @@ func TestRunRefusesUnsafeAuthorizationConfigurations(t *testing.T) {
 	}
 }
 
+// The BTCPay client checks these itself, but only once it is built, which
+// used to be after the signing key and the receipts database were created.
+func TestRunRefusesBadBTCPaySettingsBeforeCreatingFiles(t *testing.T) {
+	btcpayKey := func(name string) string {
+		if name == "OSANWE_BTCPAY_API_KEY" {
+			return "test-api-key"
+		}
+		return ""
+	}
+	for _, test := range []struct {
+		name, endpoint, store, amount, currency string
+		want                                    string
+	}{
+		{"plain HTTP", "http://pay.example", "store1", "1.00", "USD", "endpoint must use HTTPS"},
+		{"endpoint with a query", "https://pay.example/?k=v", "store1", "1.00", "USD", "must not contain user information, a query"},
+		{"no store", "https://pay.example", "", "1.00", "USD", "store ID is required"},
+		{"no price", "https://pay.example", "store1", "", "USD", "amount must be a positive exact decimal"},
+		{"zero price", "https://pay.example", "store1", "0.00", "USD", "amount must be a positive exact decimal"},
+		{"no currency", "https://pay.example", "store1", "1.00", "", "currency must contain 2-12"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			receipts := filepath.Join(t.TempDir(), "receipts.db")
+			err := runRefusal(t, []string{
+				"-btcpay", test.endpoint, "-btcpay-store", test.store,
+				"-btcpay-amount", test.amount, "-btcpay-currency", test.currency,
+				"-receipts-db", receipts,
+			}, btcpayKey)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("run error = %v, want one containing %q", err, test.want)
+			}
+			if _, err := os.Stat(receipts); !errors.Is(err, fs.ErrNotExist) {
+				t.Fatalf("the refusal left a receipts database behind (stat error %v)", err)
+			}
+		})
+	}
+}
+
 func TestRunPrintsTheKeyIDOfTheKeyItLoads(t *testing.T) {
 	keyPath := filepath.Join(t.TempDir(), "mint.key")
 	var out bytes.Buffer

@@ -172,6 +172,14 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 		if err := checkAuthorizationFlags(mode, *inviteCapacity, btcpayAPIKey, *receiptsDB); err != nil {
 			return err
 		}
+		if mode == authorizationModeBTCPay {
+			if err := mint.CheckBTCPaySettings(mint.BTCPayConfig{
+				Endpoint: *btcpayEndpoint, StoreID: *btcpayStore, APIKey: btcpayAPIKey,
+				Amount: *btcpayAmount, Currency: *btcpayCurrency,
+			}); err != nil {
+				return err
+			}
+		}
 	}
 
 	priv, created, err := mint.LoadOrCreateKey(*keyPath, *bits)

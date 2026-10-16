@@ -40,25 +40,41 @@ func NewBTCPayAuthorizer(cfg BTCPayConfig) (*BTCPayAuthorizer, error) {
 	if cfg.Receipts == nil {
 		return nil, errors.New("mint: a durable ReceiptStore is required for BTCPay; otherwise one invoice could issue unlimited tokens")
 	}
-	currency, ok := btcpay.NormalizeCurrency(cfg.Currency)
-	if !ok {
-		return nil, errors.New("mint: BTCPay token currency must contain 2-12 ASCII letters or digits")
-	}
-	if _, ok := btcpay.ExactPositiveDecimal(cfg.Amount); !ok {
-		return nil, errors.New("mint: BTCPay token amount must be a positive exact decimal")
-	}
-	client, err := btcpay.New(btcpay.Config{
-		Endpoint: cfg.Endpoint, StoreID: cfg.StoreID, APIKey: cfg.APIKey,
-		HTTPClient: cfg.HTTPClient,
-	})
+	client, currency, err := btcpaySettings(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("mint: configuring BTCPay: %w", err)
+		return nil, err
 	}
 
 	return &BTCPayAuthorizer{
 		client: client, storeID: cfg.StoreID, amount: cfg.Amount,
 		currency: currency, receipts: cfg.Receipts,
 	}, nil
+}
+
+// CheckBTCPaySettings validates everything in cfg except Receipts, so a
+// command can refuse a bad endpoint or price before it creates a signing key
+// or a receipt database it would then leave behind.
+func CheckBTCPaySettings(cfg BTCPayConfig) error {
+	_, _, err := btcpaySettings(cfg)
+	return err
+}
+
+func btcpaySettings(cfg BTCPayConfig) (*btcpay.Client, string, error) {
+	currency, ok := btcpay.NormalizeCurrency(cfg.Currency)
+	if !ok {
+		return nil, "", errors.New("mint: BTCPay token currency must contain 2-12 ASCII letters or digits")
+	}
+	if _, ok := btcpay.ExactPositiveDecimal(cfg.Amount); !ok {
+		return nil, "", errors.New("mint: BTCPay token amount must be a positive exact decimal")
+	}
+	client, err := btcpay.New(btcpay.Config{
+		Endpoint: cfg.Endpoint, StoreID: cfg.StoreID, APIKey: cfg.APIKey,
+		HTTPClient: cfg.HTTPClient,
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("mint: configuring BTCPay: %w", err)
+	}
+	return client, currency, nil
 }
 
 func (a *BTCPayAuthorizer) Authorize(ctx context.Context, receipt []byte) error {
