@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -429,5 +430,61 @@ func TestCouncilBuildRefusesBeforeCreatingAnIdentity(t *testing.T) {
 				t.Fatalf("the refusal created an authority identity (stat error %v)", statErr)
 			}
 		})
+	}
+}
+
+// council serve must not log that it is serving a consensus on a port it then
+// fails to bind.
+func TestCouncilServeDoesNotClaimAPortItCannotBind(t *testing.T) {
+	tmp := t.TempDir()
+	descDir := filepath.Join(tmp, "descriptors")
+	if err := os.Mkdir(descDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a := councilTestIdentity(t, filepath.Join(tmp, "a.key"))
+	final := filepath.Join(tmp, "consensus")
+	if err := runArgsAt([]string{"build", "-identity", filepath.Join(tmp, "a.key"), "-descriptors", descDir,
+		"-out", final, "-epoch", "30m", "-lifetime", "3h"}, time.Now); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer taken.Close()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr := os.Stderr
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = stderr })
+	logged := make(chan string, 1)
+	go func() {
+		out, _ := io.ReadAll(r)
+		logged <- string(out)
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runArgs([]string{"serve", "-addr", taken.Addr().String(), "-consensus", final,
+			"-serve-state", filepath.Join(tmp, "serve-state"), "-authority", a.Fingerprint(), "-threshold", "1"})
+	}()
+	select {
+	case err = <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("council serve ran on a port that was already taken")
+	}
+	w.Close()
+	os.Stderr = stderr
+	out := <-logged
+
+	if strings.Contains(out, "serving finalized consensus") {
+		t.Fatalf("logged that it was serving, then failed to bind (%v):\n%s", err, out)
+	}
+	if err == nil || !strings.HasPrefix(err.Error(), "council serve: listen ") {
+		t.Fatalf("serve error = %v, want the bind failure", err)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -261,6 +262,13 @@ func runConsensusServer(args []string) error {
 	if err := pub.reload(); err != nil {
 		return fmt.Errorf("council serve: %w", err)
 	}
+	// Bound here, before anything is logged; ListenAndServe would bind inside
+	// its goroutine, after the line below already said the consensus was
+	// being served.
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		return fmt.Errorf("council serve: %w", err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/consensus", pub.serve)
@@ -280,11 +288,11 @@ func runConsensusServer(args []string) error {
 	go pub.loop(ctx, *reload)
 	errCh := make(chan error, 1)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
 	}()
-	log.Info("serving finalized consensus", "addr", *addr, "path", *consensusPath, "threshold", *threshold)
+	log.Info("serving finalized consensus", "addr", listener.Addr().String(), "path", *consensusPath, "threshold", *threshold)
 
 	select {
 	case err := <-errCh:
