@@ -98,6 +98,23 @@ func run(args []string, getenv func(string) string) error {
 	if strings.TrimSpace(*budgetDB) == "" {
 		return errors.New("mithlond: -budget-db is required; a pooled provider account must have a durable aggregate spending ceiling")
 	}
+	// A certificate named alongside -insecure-plaintext says the operator
+	// expected TLS. Plaintext used to win without a word, and every prompt
+	// then crossed the network in the clear.
+	if *plaintext {
+		var tlsFlags []string
+		fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "cert", "key", "hosts":
+				tlsFlags = append(tlsFlags, "-"+f.Name)
+			}
+		})
+		if len(tlsFlags) > 0 {
+			return fmt.Errorf("mithlond: -insecure-plaintext serves without TLS, so %s would be ignored; "+
+				"remove -insecure-plaintext to serve TLS, or the TLS flags if a terminator in front of this gateway handles it",
+				strings.Join(tlsFlags, ", "))
+		}
+	}
 	// The burst limits apply only to the burst database. Given without one,
 	// they were accepted and ignored, and an operator who set a provider's
 	// per-minute limit believed it enforced when nothing was.

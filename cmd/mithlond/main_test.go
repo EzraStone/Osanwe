@@ -133,6 +133,9 @@ func TestRunRefusesAnUnboundedOrUnauthenticatedGateway(t *testing.T) {
 		{"zero request size", []string{"-mint-key", mintKey, "-max-request-bytes", "0"}, providerKey, "-max-request-bytes cannot be 0"},
 		{"zero output limit", []string{"-mint-key", mintKey, "-max-output-tokens", "0"}, providerKey, "-max-output-tokens cannot be 0"},
 		{"zero burst ceiling", []string{"-mint-key", mintKey, "-burst-budget-db", "burst.db", "-burst-budget-requests", "0"}, providerKey, "-burst-budget-requests cannot be 0"},
+		// The table passes -cert and -key on every run, which is exactly the
+		// contradiction: a certificate was named, and plaintext would ignore it.
+		{"plaintext beside a certificate", []string{"-mint-key", mintKey, "-insecure-plaintext"}, providerKey, "-insecure-plaintext serves without TLS, so -cert, -key would be ignored"},
 		{"burst limit without a burst database", []string{"-mint-key", mintKey, "-burst-budget-requests", "2"}, providerKey, "-burst-budget-requests has no effect without -burst-budget-db"},
 		{"burst window without a burst database", []string{"-mint-key", mintKey, "-burst-budget-window", "2m", "-burst-budget-output-tokens", "100"}, providerKey, "-burst-budget-output-tokens, -burst-budget-window have no effect"},
 		// The gateway and budget packages refuse these themselves; the gateway
