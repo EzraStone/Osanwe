@@ -50,13 +50,10 @@ func runBuild(args []string, clock func() time.Time) error {
 		return fmt.Errorf("council build: unexpected arguments: %v", fs.Args())
 	}
 
-	id, created, err := directory.LoadOrCreateIdentity(*identityPath)
-	if err != nil {
-		return fmt.Errorf("council build: loading identity: %w", err)
-	}
-	if created {
-		fmt.Fprintf(os.Stderr, "generated new authority identity at %s (%s)\n", *identityPath, id.Fingerprint())
-	}
+	// The window and the descriptors are checked before the identity is
+	// loaded, because loading creates one when the path holds nothing. A bad
+	// -epoch or a missing descriptor directory used to leave a fresh authority
+	// key behind, at whatever path -identity happened to name.
 	now := clock()
 	window, err := directory.NewEpochConsensus(nil, now, *epoch, *lifetime)
 	if err != nil {
@@ -65,6 +62,13 @@ func runBuild(args []string, clock func() time.Time) error {
 	relays, err := loadDescriptorsStrict(*descDir, workflowLogger(), window.ValidAfter, window.ValidUntil)
 	if err != nil {
 		return err
+	}
+	id, created, err := directory.LoadOrCreateIdentity(*identityPath)
+	if err != nil {
+		return fmt.Errorf("council build: loading identity: %w", err)
+	}
+	if created {
+		fmt.Fprintf(os.Stderr, "generated new authority identity at %s (%s)\n", *identityPath, id.Fingerprint())
 	}
 	c, err := directory.NewEpochConsensus(relays, now, *epoch, *lifetime)
 	if err != nil {

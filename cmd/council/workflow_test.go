@@ -393,3 +393,41 @@ func councilTestRelay(t *testing.T, nickname string, now time.Time) *directory.D
 	}
 	return d
 }
+
+// build creates an authority identity when -identity names nothing, which is
+// how a first run gets one. A run that is going to fail must not, or a typo in
+// -epoch leaves a stray authority key behind.
+func TestCouncilBuildRefusesBeforeCreatingAnIdentity(t *testing.T) {
+	now := time.Now().UTC().Truncate(30 * time.Minute).Add(5 * time.Minute)
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"zero epoch", []string{"-epoch", "0s"}, "epoch"},
+		{"lifetime shorter than the epoch", []string{"-epoch", "30m", "-lifetime", "10m"}, "lifetime"},
+		{"no descriptor directory", []string{"-descriptors", "does-not-exist"}, "does-not-exist"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			descDir := filepath.Join(tmp, "descriptors")
+			if err := os.Mkdir(descDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			identity := filepath.Join(tmp, "authority.key")
+			args := []string{"build", "-identity", identity, "-descriptors", descDir, "-out", filepath.Join(tmp, "partial")}
+			for i := 0; i+1 < len(test.args); i += 2 {
+				if test.args[i] == "-descriptors" {
+					test.args[i+1] = filepath.Join(tmp, test.args[i+1])
+				}
+			}
+			err := runArgsAt(append(args, test.args...), func() time.Time { return now })
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("build error = %v, want one mentioning %q", err, test.want)
+			}
+			if _, statErr := os.Stat(identity); !os.IsNotExist(statErr) {
+				t.Fatalf("the refusal created an authority identity (stat error %v)", statErr)
+			}
+		})
+	}
+}
