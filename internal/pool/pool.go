@@ -152,7 +152,10 @@ type Pool struct {
 	validAfter time.Time // of the newest consensus accepted; older ones are refused
 	validUntil time.Time
 	stats      Stats
-	mismatch   *keyMismatch
+	// refreshFailing is set while the most recent refresh did not install a
+	// relay set, and cleared by the next one that does.
+	refreshFailing bool
+	mismatch       *keyMismatch
 }
 
 // New validates a Config and returns a Pool. It does not fetch; call Refresh.
@@ -201,6 +204,7 @@ func (p *Pool) Refresh(ctx context.Context) error {
 	if err != nil {
 		p.mu.Lock()
 		p.stats.RefreshErrors++
+		p.refreshFailing = true
 		held := len(p.relays)
 		p.mu.Unlock()
 		if held > 0 {
@@ -223,6 +227,7 @@ func (p *Pool) Refresh(ctx context.Context) error {
 	if len(usable) == 0 {
 		p.mu.Lock()
 		p.stats.RefreshErrors++
+		p.refreshFailing = true
 		held := len(p.relays)
 		p.mu.Unlock()
 		if held > 0 {
@@ -273,6 +278,7 @@ func (p *Pool) install(descs []*directory.Descriptor) error {
 
 	if len(next) == 0 {
 		p.stats.RefreshErrors++
+		p.refreshFailing = true
 		return fmt.Errorf("pool: no relay in the consensus was usable: %s", strings.Join(errs, "; "))
 	}
 	for _, e := range errs {
@@ -291,6 +297,7 @@ func (p *Pool) install(descs []*directory.Descriptor) error {
 
 	p.relays = next
 	p.stats.Refreshes++
+	p.refreshFailing = false
 
 	// Keep the guard if it is still listed. Dropping it on every refresh would
 	// reintroduce rotation through the back door, one refresh at a time.
@@ -571,6 +578,15 @@ func (p *Pool) Len() int {
 }
 
 // Stats returns a snapshot of the counters.
+// DirectoryHealth reports how often a dial has had to move to another relay,
+// and whether the most recent directory refresh failed. The relays already
+// held stay in use while it does, so this is the only sign of it a user sees.
+func (p *Pool) DirectoryHealth() (failovers int64, refreshFailing bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stats.Failovers, p.refreshFailing
+}
+
 func (p *Pool) Stats() Stats {
 	p.mu.Lock()
 	defer p.mu.Unlock()

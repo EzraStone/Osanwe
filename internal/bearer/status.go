@@ -41,6 +41,12 @@ type KeyMismatchStatus interface {
 	LastKeyMismatch() (nickname, address, expected, presented string, at time.Time, ok bool)
 }
 
+// DirectoryHealthStatus is the optional part of a RelayStatus that reports
+// failovers and a failing directory refresh. internal/pool implements it.
+type DirectoryHealthStatus interface {
+	DirectoryHealth() (failovers int64, refreshFailing bool)
+}
+
 // WalletStatus is the part of a TokenSource that can be shown. Not every
 // TokenSource has to offer it.
 type WalletStatus interface {
@@ -110,10 +116,14 @@ const (
 )
 
 type DirectoryInfo struct {
-	RelaysKnown  int `json:"relays_known"`
-	SignedBy     int `json:"signed_by"`
-	Failovers    int64
-	RefreshError bool `json:"refresh_error,omitempty"`
+	RelaysKnown int `json:"relays_known"`
+	SignedBy    int `json:"signed_by"`
+
+	// Failovers and RefreshError come from a source implementing
+	// DirectoryHealthStatus. RefreshError means the latest refresh failed and
+	// the relays shown are the ones held from before it.
+	Failovers    int64 `json:"failovers"`
+	RefreshError bool  `json:"refresh_error,omitempty"`
 
 	// KeyMismatch is set once a listed relay has answered with a key other
 	// than the one the directory published for it. The client refused that
@@ -230,6 +240,9 @@ func (s *Server) Status() Status {
 		st.Directory = &DirectoryInfo{
 			RelaysKnown: s.cfg.Relays.Len(),
 			SignedBy:    s.cfg.Relays.SignedBy(),
+		}
+		if health, ok := s.cfg.Relays.(DirectoryHealthStatus); ok {
+			st.Directory.Failovers, st.Directory.RefreshError = health.DirectoryHealth()
 		}
 		if reporter, ok := s.cfg.Relays.(KeyMismatchStatus); ok {
 			if nick, addr, _, _, at, ok := reporter.LastKeyMismatch(); ok {

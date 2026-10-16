@@ -257,12 +257,16 @@ type stubRelays struct {
 
 	mismatchNick, mismatchAddr string
 	mismatchAt                 time.Time
+
+	failovers      int64
+	refreshFailing bool
 }
 
 func (s stubRelays) Current() (string, string, bool) { return s.nick, s.addr, s.ok }
 func (s stubRelays) Len() int                        { return s.n }
 func (s stubRelays) SignedBy() int                   { return s.signed }
 func (s stubRelays) GuardSince() (time.Time, bool)   { return s.since, !s.since.IsZero() }
+func (s stubRelays) DirectoryHealth() (int64, bool)  { return s.failovers, s.refreshFailing }
 func (s stubRelays) LastKeyMismatch() (string, string, string, string, time.Time, bool) {
 	return s.mismatchNick, s.mismatchAddr, "sha256/expected-pin", "sha256/presented-pin", s.mismatchAt, !s.mismatchAt.IsZero()
 }
@@ -318,6 +322,30 @@ func TestStatusReportsWhatTheInterfaceNeeds(t *testing.T) {
 	}
 	if st.Privacy.ConversationHistory != "not_stored_by_osanwe_services" {
 		t.Fatalf("conversation history = %q", st.Privacy.ConversationHistory)
+	}
+}
+
+// A directory that cannot be refreshed leaves the client on the relays it
+// already holds, which works until the held consensus expires. The status is
+// where a user can see that coming; it used to declare failovers and
+// refresh_error fields that nothing ever set.
+func TestStatusReportsFailoversAndAFailingRefresh(t *testing.T) {
+	s := testServer(t, func(c *Config) {
+		c.Relays = stubRelays{nick: "ranger-two", addr: "203.0.113.10:8443", ok: true, n: 2, signed: 2,
+			failovers: 3, refreshFailing: true}
+	})
+	body, _ := io.ReadAll(ask(t, s, Prefix+"status", nil).Body)
+	var st struct {
+		Directory map[string]any `json:"directory"`
+	}
+	if err := json.Unmarshal(body, &st); err != nil {
+		t.Fatalf("status is not valid JSON: %v\n%s", err, body)
+	}
+	if st.Directory["failovers"] != float64(3) || st.Directory["refresh_error"] != true {
+		t.Fatalf("directory = %v, want failovers 3 and refresh_error true", st.Directory)
+	}
+	if _, ok := st.Directory["Failovers"]; ok {
+		t.Fatalf("directory still carries an untagged Failovers field: %v", st.Directory)
 	}
 }
 

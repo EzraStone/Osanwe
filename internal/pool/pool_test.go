@@ -841,3 +841,38 @@ func TestAnOlderConsensusDoesNotRollTheRelaySetBack(t *testing.T) {
 		}
 	}
 }
+
+// DirectoryHealth is what bearer's status reports. A failed refresh keeps the
+// relays held, so without it a user would see nothing until they expired.
+func TestDirectoryHealthTracksTheLatestRefresh(t *testing.T) {
+	alpha := descriptor(t, "alpha", "10.0.0.1:8443")
+	bravo := descriptor(t, "bravo", "10.0.0.2:8443")
+	h := newHarness(t, alpha, bravo)
+	if _, failing := h.pool.DirectoryHealth(); failing {
+		t.Fatal("reports a failing refresh after a successful one")
+	}
+
+	h.set(nil)
+	if err := h.pool.Refresh(context.Background()); err == nil {
+		t.Fatal("Refresh succeeded against a directory that is down")
+	}
+	if _, failing := h.pool.DirectoryHealth(); !failing {
+		t.Fatal("a failed refresh is not reported")
+	}
+
+	h.set([]*directory.Descriptor{alpha, bravo})
+	if err := h.pool.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if _, failing := h.pool.DirectoryHealth(); failing {
+		t.Fatal("still reports a failing refresh after the directory recovered")
+	}
+
+	mustDial(t, h.pool).Close()
+	_, guard, _ := h.pool.Current()
+	h.fail(guard, errors.New("connection refused"))
+	mustDial(t, h.pool).Close()
+	if failovers, _ := h.pool.DirectoryHealth(); failovers != 1 {
+		t.Fatalf("failovers = %d after moving off a dead relay, want 1", failovers)
+	}
+}

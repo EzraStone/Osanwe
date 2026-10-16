@@ -130,6 +130,7 @@ function render(){
   if(status.directory){
     rows.push(["Directory",plural(status.directory.signed_by,"authority")+" signed the list in force"]);
     rows.push(["Relays known",String(status.directory.relays_known)]);
+    if(status.directory.refresh_error)rows.push(["Directory refresh","failing; still using the relays already held"]);
   }
   rows.push(["Client build",buildIdentityLabel(status.build)]);
   rows.push(["Paying with",status.paying]);
