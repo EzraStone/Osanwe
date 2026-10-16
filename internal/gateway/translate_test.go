@@ -486,3 +486,65 @@ func TestStreamReportsTheProvidersOwnTokenCount(t *testing.T) {
 		})
 	}
 }
+
+// A provider that fails partway through a stream says so in a chunk of its
+// own. The translation must not then close the message as if it had ended
+// normally: a client would show half an answer as the whole of one.
+func TestStreamCarriesAMidStreamProviderError(t *testing.T) {
+	for _, tc := range []struct {
+		name, chunk, want string
+	}{
+		{"with a message", `{"error":{"message":"upstream overloaded","type":"server_error"}}`, "upstream overloaded"},
+		{"without one", `{"error":{"code":500}}`, "partway through the response"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stream := "data: {\"choices\":[{\"delta\":{\"content\":\"half an\"}}]}\n\n" +
+				"data: " + tc.chunk + "\n\n" +
+				"data: {\"choices\":[{\"delta\":{\"content\":\" answer\"},\"finish_reason\":\"stop\"}]}\n\n" +
+				"data: [DONE]\n\n"
+			out := streamFromOpenAI(io.NopCloser(strings.NewReader(stream)))
+			defer out.Close()
+			body, err := io.ReadAll(out)
+			if err != nil {
+				t.Fatalf("ReadAll: %v", err)
+			}
+			got := string(body)
+
+			if !strings.Contains(got, "half an") {
+				t.Fatalf("the text before the error was lost:\n%s", got)
+			}
+			var sawError bool
+			for _, line := range strings.Split(got, "\n") {
+				payload, ok := strings.CutPrefix(line, "data: ")
+				if !ok {
+					continue
+				}
+				var ev struct {
+					Type  string `json:"type"`
+					Error struct {
+						Type    string `json:"type"`
+						Message string `json:"message"`
+					} `json:"error"`
+				}
+				if json.Unmarshal([]byte(payload), &ev) != nil {
+					t.Fatalf("emitted invalid JSON %q", payload)
+				}
+				switch ev.Type {
+				case "error":
+					sawError = true
+					if ev.Error.Type != "api_error" || !strings.Contains(ev.Error.Message, tc.want) {
+						t.Fatalf("error event = %+v, want an api_error mentioning %q", ev.Error, tc.want)
+					}
+				case "message_delta", "message_stop":
+					t.Fatalf("a failed stream was closed as complete with %s:\n%s", ev.Type, got)
+				}
+			}
+			if !sawError {
+				t.Fatalf("no error event:\n%s", got)
+			}
+			if strings.Contains(got, " answer") {
+				t.Fatalf("text after the error was still forwarded:\n%s", got)
+			}
+		})
+	}
+}

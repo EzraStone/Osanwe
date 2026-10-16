@@ -289,9 +289,28 @@ func streamFromOpenAI(src io.ReadCloser) io.ReadCloser {
 				XGroq struct {
 					Usage *usage `json:"usage"`
 				} `json:"x_groq"`
+				// Some providers report a failure inside a stream that has
+				// already started, as a chunk carrying an error object.
+				Error *struct {
+					Message string `json:"message"`
+				} `json:"error"`
 			}
 			if json.Unmarshal([]byte(payload), &chunk) != nil {
 				continue
+			}
+			if chunk.Error != nil {
+				// The answer so far is incomplete. Ending it with message_stop
+				// and an end_turn stop reason would pass it off as whole, so
+				// send the Messages API's own error event and stop there.
+				message := chunk.Error.Message
+				if message == "" {
+					message = "the provider reported an error partway through the response"
+				}
+				emit("error", map[string]any{
+					"type":  "error",
+					"error": map[string]string{"type": "api_error", "message": message},
+				})
+				return
 			}
 			for _, u := range []*usage{chunk.Usage, chunk.XGroq.Usage} {
 				if u != nil && u.CompletionTokens > 0 {

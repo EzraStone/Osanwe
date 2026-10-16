@@ -138,6 +138,7 @@ func FuzzTranslateOpenAIStream(f *testing.F) {
 	f.Add([]byte("data: {\"choices\":[]}\n\n"))
 	f.Add([]byte(": keep-alive\n\ndata:\n\ndata: not json\n\n"))
 	f.Add([]byte(""))
+	f.Add([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\ndata: {\"error\":{\"message\":\"overloaded\"}}\n\n"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		out, err := io.ReadAll(streamFromOpenAI(io.NopCloser(bytes.NewReader(data))))
@@ -158,8 +159,16 @@ func FuzzTranslateOpenAIStream(f *testing.F) {
 		if len(types) < 2 || types[0] != "message_start" || types[1] != "content_block_start" {
 			t.Fatalf("stream did not open properly: %q", types)
 		}
-		if err == nil && types[len(types)-1] != "message_stop" {
-			t.Fatalf("a stream that ended cleanly did not end with message_stop: %q", types)
+		// A stream ends with message_stop, or with an error event when the
+		// provider reported a failure partway through; never with neither,
+		// and an error is never followed by anything.
+		if last := types[len(types)-1]; err == nil && last != "message_stop" && last != "error" {
+			t.Fatalf("a stream that ended cleanly ended with %s: %q", last, types)
+		}
+		for i, typ := range types {
+			if typ == "error" && i != len(types)-1 {
+				t.Fatalf("events followed an error: %q", types)
+			}
 		}
 	})
 }
