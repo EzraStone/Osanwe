@@ -122,6 +122,65 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 	}
 	identityPath := filepath.Join(*dir, "ranger.identity")
 
+	// Every refusal comes before LoadOrCreate below, which writes a TLS key and
+	// a directory identity on first run. A mistyped command should not leave
+	// either behind, least of all in a directory the operator did not intend.
+	descriptorMode := *descOut != "" || *publishTo != ""
+	var (
+		allowlist     *policy.Allowlist
+		authenticator *auth.Authenticator
+		advertised    string
+	)
+	switch {
+	case *showPin || *showIdentity:
+		// Print-and-exit modes need only the identity.
+	case descriptorMode:
+		if len(allow) == 0 {
+			return errors.New("ranger: -descriptor needs -allow, since a descriptor must say what the relay will carry")
+		}
+		if *nickname == "" {
+			return errors.New("ranger: -descriptor needs -nickname")
+		}
+		if *descValid <= 0 {
+			return fmt.Errorf("ranger: -descriptor-validity must be positive, not %s", *descValid)
+		}
+		var err error
+		if allowlist, err = policy.Parse(allow); err != nil {
+			return err
+		}
+		advertised = *advertise
+		if advertised == "" {
+			advertised = displayAddr(*addr)
+		}
+		if strings.Contains(advertised, "<this-host>") {
+			return errors.New("ranger: -advertise is required when the relay binds a wildcard address, " +
+				"since the descriptor must carry an address clients can actually dial")
+		}
+	default:
+		// Secret from the environment by preference: a command line is
+		// visible in the process table to every user on the machine.
+		sec := getenv("OSANWE_RANGER_SECRET")
+		if *secret != "" {
+			sec = *secret
+		}
+		if sec == "" {
+			return errors.New("ranger: no secret set. Generate one with `ranger -gen-secret` and pass it in OSANWE_RANGER_SECRET")
+		}
+		var err error
+		if authenticator, err = auth.New(sec); err != nil {
+			return err
+		}
+		if len(allow) == 0 {
+			return errors.New("ranger: no -allow destinations given. A relay must be told what it may carry traffic to; it will not forward to arbitrary hosts")
+		}
+		if *maxTunnels < 1 {
+			return errors.New("ranger: -max-tunnels must be at least 1")
+		}
+		if allowlist, err = policy.Parse(allow); err != nil {
+			return err
+		}
+	}
+
 	level := slog.LevelInfo
 	if *verbose {
 		level = slog.LevelDebug
@@ -152,21 +211,7 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 		log.Info("generated a new directory identity", "path", identityPath)
 	}
 
-	if *descOut != "" || *publishTo != "" {
-		if len(allow) == 0 {
-			return errors.New("ranger: -descriptor needs -allow, since a descriptor must say what the relay will carry")
-		}
-		if *nickname == "" {
-			return errors.New("ranger: -descriptor needs -nickname")
-		}
-		allowlist, err := policy.Parse(allow)
-		if err != nil {
-			return err
-		}
-		advertised := *advertise
-		if advertised == "" {
-			advertised = displayAddr(*addr)
-		}
+	if descriptorMode {
 		now := time.Now()
 		d := &directory.Descriptor{
 			Nickname:     *nickname,
@@ -181,10 +226,6 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 		encoded, err := d.Sign(identity)
 		if err != nil {
 			return err
-		}
-		if strings.Contains(advertised, "<this-host>") {
-			return errors.New("ranger: -advertise is required when the relay binds a wildcard address, " +
-				"since the descriptor must carry an address clients can actually dial")
 		}
 
 		if *descOut != "" {
@@ -217,31 +258,6 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 			}
 		}
 		return nil
-	}
-
-	// Secret from the environment by preference: a command line is visible in
-	// the process table to every user on the machine.
-	sec := getenv("OSANWE_RANGER_SECRET")
-	if *secret != "" {
-		sec = *secret
-	}
-	if sec == "" {
-		return errors.New("ranger: no secret set. Generate one with `ranger -gen-secret` and pass it in OSANWE_RANGER_SECRET")
-	}
-	authenticator, err := auth.New(sec)
-	if err != nil {
-		return err
-	}
-
-	if len(allow) == 0 {
-		return errors.New("ranger: no -allow destinations given. A relay must be told what it may carry traffic to; it will not forward to arbitrary hosts")
-	}
-	if *maxTunnels < 1 {
-		return errors.New("ranger: -max-tunnels must be at least 1")
-	}
-	allowlist, err := policy.Parse(allow)
-	if err != nil {
-		return err
 	}
 
 	srv, err := ranger.New(ranger.Config{

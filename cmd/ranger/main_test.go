@@ -282,12 +282,25 @@ func TestRunRefusesAnOpenOrUnboundedRelay(t *testing.T) {
 		{"no tunnel capacity", []string{"-allow", "api.anthropic.com", "-max-tunnels", "0"}, secret(goodSecret), "-max-tunnels must be at least 1"},
 		{"descriptor without destinations", []string{"-descriptor", "relay.desc", "-nickname", "r1"}, noEnv, "-descriptor needs -allow"},
 		{"descriptor without nickname", []string{"-descriptor", "relay.desc", "-allow", "api.anthropic.com"}, noEnv, "-descriptor needs -nickname"},
+		{"descriptor with no validity", []string{"-descriptor", "relay.desc", "-nickname", "r1", "-allow", "api.anthropic.com", "-descriptor-validity", "0s"}, noEnv, "-descriptor-validity must be positive"},
+		{"descriptor with negative validity", []string{"-publish", "http://127.0.0.1:1/publish", "-nickname", "r1", "-allow", "api.anthropic.com", "-descriptor-validity", "-1h"}, noEnv, "-descriptor-validity must be positive"},
+		{"descriptor with an unusable destination", []string{"-descriptor", "relay.desc", "-nickname", "r1", "-allow", "https://api.anthropic.com/v1"}, noEnv, "is a URL; give only the host"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := runRanger(t, t.TempDir(), test.args, test.getenv)
+			dir := t.TempDir()
+			_, err := runRanger(t, dir, test.args, test.getenv)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("run error = %v, want one containing %q", err, test.want)
+			}
+			// A refused command must not have minted a TLS key or a
+			// directory identity on its way to refusing.
+			if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+				var names []string
+				for _, e := range entries {
+					names = append(names, e.Name())
+				}
+				t.Fatalf("refusal left %v behind (ReadDir error %v)", names, err)
 			}
 		})
 	}
@@ -365,6 +378,9 @@ func TestRunWillNotAdvertiseAWildcardAddress(t *testing.T) {
 	}
 	if _, err := os.Stat(out); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("an undialable descriptor was written anyway (stat error %v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "ranger.key")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the refusal still generated a TLS key (stat error %v)", err)
 	}
 }
 
