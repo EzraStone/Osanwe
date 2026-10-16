@@ -78,7 +78,7 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 	keyPath := fs.String("key", "", "TLS key path (default <dir>/ranger.key)")
 	logDest := fs.Bool("log-destinations", false, "log which destination each connection requested. Off by default: a relay that records who talked to which provider builds the correlation log this network exists to prevent")
 	verbose := fs.Bool("v", false, "verbose logging")
-	nickname := fs.String("nickname", "", "short name for this relay in the directory. Enables descriptor publication")
+	nickname := fs.String("nickname", "", "short name for this relay in the directory; required with -descriptor or -publish")
 	contact := fs.String("contact", "", "operator contact published in the descriptor (optional)")
 	descOut := fs.String("descriptor", "", "write a signed descriptor to this path and exit")
 	publishTo := fs.String("publish", "", "POST a signed descriptor to this authority's /publish endpoint and exit (repeatable, comma-separated)")
@@ -157,6 +157,26 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 				"since the descriptor must carry an address clients can actually dial")
 		}
 	default:
+		// A serving relay never publishes itself; -descriptor and -publish
+		// do that and exit. The descriptor flags used to be accepted here
+		// and ignored, so a relay started with -nickname, which was
+		// documented as enabling publication, was never listed.
+		var descriptorOnly []string
+		fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "nickname", "contact", "advertise", "descriptor-validity":
+				descriptorOnly = append(descriptorOnly, "-"+f.Name)
+			}
+		})
+		if len(descriptorOnly) > 0 {
+			verb := "applies"
+			if len(descriptorOnly) > 1 {
+				verb = "apply"
+			}
+			return fmt.Errorf("ranger: %s only %s with -descriptor or -publish, which sign a descriptor and exit; "+
+				"a serving relay does not publish itself. Publish with a separate ranger -publish run",
+				strings.Join(descriptorOnly, ", "), verb)
+		}
 		// Secret from the environment by preference: a command line is
 		// visible in the process table to every user on the machine.
 		sec := getenv("OSANWE_RANGER_SECRET")

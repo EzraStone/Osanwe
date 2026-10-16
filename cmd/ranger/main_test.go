@@ -285,6 +285,8 @@ func TestRunRefusesAnOpenOrUnboundedRelay(t *testing.T) {
 		{"descriptor without nickname", []string{"-descriptor", "relay.desc", "-allow", "api.anthropic.com"}, noEnv, "-descriptor needs -nickname"},
 		{"descriptor with no validity", []string{"-descriptor", "relay.desc", "-nickname", "r1", "-allow", "api.anthropic.com", "-descriptor-validity", "0s"}, noEnv, "-descriptor-validity must be positive"},
 		{"descriptor with negative validity", []string{"-publish", "http://127.0.0.1:1/publish", "-nickname", "r1", "-allow", "api.anthropic.com", "-descriptor-validity", "-1h"}, noEnv, "-descriptor-validity must be positive"},
+		{"a serving relay given a nickname", []string{"-allow", "api.anthropic.com", "-nickname", "r1"}, secret(goodSecret), "-nickname only applies with -descriptor or -publish"},
+		{"a serving relay given descriptor details", []string{"-allow", "api.anthropic.com", "-advertise", "relay.example:8443", "-contact", "ops@relay.example"}, secret(goodSecret), "-advertise, -contact only apply"},
 		{"descriptor with an unusable destination", []string{"-descriptor", "relay.desc", "-nickname", "r1", "-allow", "https://api.anthropic.com/v1"}, noEnv, "is a URL; give only the host"},
 	}
 	for _, test := range tests {
