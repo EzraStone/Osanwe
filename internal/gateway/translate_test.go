@@ -435,13 +435,13 @@ func TestStreamReportsTheProvidersOwnTokenCount(t *testing.T) {
 		"data: {\"choices\":[{\"delta\":{\"content\":\" three\"},\"finish_reason\":\"stop\"}]}\n\n"
 
 	for _, tc := range []struct {
-		name, tail string
-		want       int
+		name, tail  string
+		want, input int // input -1: no input_tokens field at all
 	}{
-		{"openai usage chunk", "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":17}}\n\ndata: [DONE]\n\n", 17},
-		{"groq x_groq usage", "data: {\"choices\":[],\"x_groq\":{\"usage\":{\"completion_tokens\":17}}}\n\ndata: [DONE]\n\n", 17},
-		{"no usage at all", "data: [DONE]\n\n", 2},
-		{"zero usage is no report", "data: {\"choices\":[],\"usage\":{\"completion_tokens\":0}}\n\ndata: [DONE]\n\n", 2},
+		{"openai usage chunk", "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":17}}\n\ndata: [DONE]\n\n", 17, 9},
+		{"groq x_groq usage", "data: {\"choices\":[],\"x_groq\":{\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":17}}}\n\ndata: [DONE]\n\n", 17, 9},
+		{"no usage at all", "data: [DONE]\n\n", 2, -1},
+		{"zero usage is no report", "data: {\"choices\":[],\"usage\":{\"completion_tokens\":0}}\n\ndata: [DONE]\n\n", 2, -1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out := streamFromOpenAI(io.NopCloser(strings.NewReader(chunks + tc.tail)))
@@ -451,7 +451,7 @@ func TestStreamReportsTheProvidersOwnTokenCount(t *testing.T) {
 				t.Fatalf("ReadAll: %v", err)
 			}
 
-			got, text := -1, ""
+			got, input, text := -1, -1, ""
 			sc := bufio.NewScanner(strings.NewReader(string(body)))
 			for sc.Scan() {
 				line := strings.TrimSpace(sc.Text())
@@ -464,7 +464,8 @@ func TestStreamReportsTheProvidersOwnTokenCount(t *testing.T) {
 						Text string `json:"text"`
 					} `json:"delta"`
 					Usage struct {
-						OutputTokens int `json:"output_tokens"`
+						OutputTokens int  `json:"output_tokens"`
+						InputTokens  *int `json:"input_tokens"`
 					} `json:"usage"`
 				}
 				if json.Unmarshal([]byte(strings.TrimPrefix(line, "data:")), &ev) != nil {
@@ -475,6 +476,9 @@ func TestStreamReportsTheProvidersOwnTokenCount(t *testing.T) {
 					text += ev.Delta.Text
 				case "message_delta":
 					got = ev.Usage.OutputTokens
+					if ev.Usage.InputTokens != nil {
+						input = *ev.Usage.InputTokens
+					}
 				}
 			}
 			if text != "one two three" {
@@ -482,6 +486,10 @@ func TestStreamReportsTheProvidersOwnTokenCount(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Fatalf("output_tokens = %d, want %d\n%s", got, tc.want, body)
+			}
+			// Unreported is absent, never a claimed zero.
+			if input != tc.input {
+				t.Fatalf("input_tokens = %d, want %d (-1 meaning absent)\n%s", input, tc.input, body)
 			}
 		})
 	}

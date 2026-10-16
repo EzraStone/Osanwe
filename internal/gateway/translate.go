@@ -264,9 +264,9 @@ func streamFromOpenAI(src io.ReadCloser) io.ReadCloser {
 		sc := bufio.NewScanner(src)
 		sc.Buffer(make([]byte, 0, 64<<10), 4<<20)
 		// produced counts content chunks. It stands in for output_tokens only
-		// when the provider reports no usage of its own; reported holds the
-		// provider's count when the stream carries one.
-		stop, produced, reported := "end_turn", 0, 0
+		// when the provider reports no usage of its own; reported and prompt
+		// hold the provider's counts when the stream carries them.
+		stop, produced, reported, prompt := "end_turn", 0, 0, 0
 
 		for sc.Scan() {
 			line := strings.TrimSpace(sc.Text())
@@ -279,6 +279,7 @@ func streamFromOpenAI(src io.ReadCloser) io.ReadCloser {
 			}
 
 			type usage struct {
+				PromptTokens     int `json:"prompt_tokens"`
 				CompletionTokens int `json:"completion_tokens"`
 			}
 			var chunk struct {
@@ -321,6 +322,9 @@ func streamFromOpenAI(src io.ReadCloser) io.ReadCloser {
 				if u != nil && u.CompletionTokens > 0 {
 					reported = u.CompletionTokens
 				}
+				if u != nil && u.PromptTokens > 0 {
+					prompt = u.PromptTokens
+				}
 			}
 			if len(chunk.Choices) == 0 {
 				continue
@@ -348,14 +352,20 @@ func streamFromOpenAI(src io.ReadCloser) io.ReadCloser {
 		if !emit("content_block_stop", map[string]any{"type": "content_block_stop", "index": 0}) {
 			return
 		}
-		outputTokens := produced
+		usage := map[string]int{"output_tokens": produced}
 		if reported > 0 {
-			outputTokens = reported
+			usage["output_tokens"] = reported
+		}
+		// message_start had to go out before the provider said how long the
+		// prompt was, so it carries zero. The Messages API lets message_delta
+		// report the final count, and clients take it from there.
+		if prompt > 0 {
+			usage["input_tokens"] = prompt
 		}
 		if !emit("message_delta", map[string]any{
 			"type":  "message_delta",
 			"delta": map[string]any{"stop_reason": stop},
-			"usage": map[string]int{"output_tokens": outputTokens},
+			"usage": usage,
 		}) {
 			return
 		}
