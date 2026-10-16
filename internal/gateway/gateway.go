@@ -761,7 +761,7 @@ func (s *Server) prepareRequest(r *http.Request) (chosen, *body, *policyError) {
 func rejectDuplicateJSONNames(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
-	if err := walkJSONValue(dec); err != nil {
+	if err := walkJSONValue(dec, 0); err != nil {
 		return err
 	}
 	if _, err := dec.Token(); err != io.EOF {
@@ -775,7 +775,14 @@ func rejectDuplicateJSONNames(data []byte) error {
 
 var errDuplicateJSONField = errors.New("gateway: duplicate JSON field")
 
-func walkJSONValue(dec *json.Decoder) error {
+// maxJSONDepth bounds how deeply walkJSONValue recurses. A valid request nests
+// three levels (request, messages, message). Without a bound, one request
+// body of nothing but "[" recursed once per byte: a megabyte held about half a
+// gigabyte of goroutine stack, and a body a little over two megabytes, within
+// the configurable size limit, would overflow the stack and crash the gateway.
+const maxJSONDepth = 32
+
+func walkJSONValue(dec *json.Decoder, depth int) error {
 	tok, err := dec.Token()
 	if err != nil {
 		return err
@@ -783,6 +790,9 @@ func walkJSONValue(dec *json.Decoder) error {
 	delim, composite := tok.(json.Delim)
 	if !composite {
 		return nil
+	}
+	if depth >= maxJSONDepth {
+		return errors.New("gateway: JSON is nested too deeply")
 	}
 	switch delim {
 	case '{':
@@ -800,7 +810,7 @@ func walkJSONValue(dec *json.Decoder) error {
 				return fmt.Errorf("%w %q", errDuplicateJSONField, key)
 			}
 			seen[key] = struct{}{}
-			if err := walkJSONValue(dec); err != nil {
+			if err := walkJSONValue(dec, depth+1); err != nil {
 				return err
 			}
 		}
@@ -810,7 +820,7 @@ func walkJSONValue(dec *json.Decoder) error {
 		}
 	case '[':
 		for dec.More() {
-			if err := walkJSONValue(dec); err != nil {
+			if err := walkJSONValue(dec, depth+1); err != nil {
 				return err
 			}
 		}

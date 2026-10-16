@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
@@ -12,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -1142,5 +1144,43 @@ func TestProviderRedirectsAreReplacedNotForwarded(t *testing.T) {
 				t.Errorf("provider saw %d requests, want exactly the one that was redirected", hits)
 			}
 		})
+	}
+}
+
+// One request body of nothing but "[" used to recurse once per byte: a
+// megabyte held about 512 MiB of goroutine stack for over a second, and a body
+// a little over two megabytes, within the configurable size limit, would have
+// overflowed the stack and crashed the gateway outright.
+func TestDeeplyNestedJSONIsRefusedCheaply(t *testing.T) {
+	for _, data := range [][]byte{
+		bytes.Repeat([]byte("["), 1<<20),
+		bytes.Repeat([]byte(`{"a":`), 1<<18),
+	} {
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		start := time.Now()
+		err := rejectDuplicateJSONNames(data)
+		elapsed := time.Since(start)
+		runtime.ReadMemStats(&after)
+		if err == nil || !strings.Contains(err.Error(), "nested too deeply") {
+			t.Fatalf("%q...: error = %v, want a nesting refusal", data[:8], err)
+		}
+		if elapsed > 100*time.Millisecond {
+			t.Errorf("%q...: refusing took %s", data[:8], elapsed)
+		}
+		if after.StackInuse > 64<<20 {
+			t.Errorf("%q...: %d MiB of stack in use after refusing", data[:8], after.StackInuse>>20)
+		}
+	}
+
+	nested := func(depth int) []byte {
+		return append(bytes.Repeat([]byte("["), depth), bytes.Repeat([]byte("]"), depth)...)
+	}
+	if err := rejectDuplicateJSONNames(nested(maxJSONDepth)); err != nil {
+		t.Fatalf("nesting at the limit was refused: %v", err)
+	}
+	if err := rejectDuplicateJSONNames(nested(maxJSONDepth + 1)); err == nil {
+		t.Fatal("nesting one level past the limit was accepted")
 	}
 }
