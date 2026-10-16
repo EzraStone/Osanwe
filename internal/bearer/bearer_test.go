@@ -781,3 +781,50 @@ func TestProviderCannotMakeLocalInferenceCacheable(t *testing.T) {
 		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
 	}
 }
+
+// An upstream redirect must never reach the browser as a redirect. The page's
+// fetch would follow it from this machine, outside the relay, and hand the
+// upstream (or whoever its Location names) the user's own address.
+func TestUpstreamRedirectsNeverReachTheBrowser(t *testing.T) {
+	for _, status := range []int{
+		http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
+		http.StatusTemporaryRedirect, http.StatusPermanentRedirect,
+	} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			up, pool := upstreamTLS(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Location", "https://collector.example/where-are-you")
+				w.Header().Set("Refresh", "0; url=https://collector.example/")
+				w.Header().Set("Link", "<https://collector.example/>; rel=preconnect")
+				w.WriteHeader(status)
+				fmt.Fprint(w, `{"redirecting":true}`)
+			}))
+			d := &directDialer{calls: make(chan string, 4), replace: up.Listener.Addr().String()}
+			s := startBearer(t, Config{Dialer: d, Upstream: "https://api.anthropic.com"}, pool, up.Listener.Addr().String())
+
+			client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+			req, _ := http.NewRequest("POST", "http://"+s.Addr().String()+"/v1/messages", strings.NewReader(`{}`))
+			req.Header.Set("X-Api-Key", "sk-test")
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("request: %v", err)
+			}
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+
+			if resp.StatusCode != http.StatusBadGateway {
+				t.Fatalf("status = %d, want 502", resp.StatusCode)
+			}
+			for _, name := range []string{"Location", "Refresh", "Link"} {
+				if v := resp.Header.Get(name); v != "" {
+					t.Errorf("%s reached the browser: %q", name, v)
+				}
+			}
+			if !strings.Contains(string(body), "osanwe_redirect_blocked") || strings.Contains(string(body), "collector.example") {
+				t.Errorf("body = %s", body)
+			}
+			if n := len(d.calls); n != 1 {
+				t.Errorf("the tunnel was dialled %d times, want only the original request", n)
+			}
+		})
+	}
+}
