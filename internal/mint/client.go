@@ -307,6 +307,11 @@ func (w *Wallet) triggerRefill() {
 var ErrReceiptAlreadyPresented = errors.New("mint: this payment receipt has already been presented; import a new entitlement")
 
 func (w *Wallet) buy(ctx context.Context) (*Token, error) {
+	// The key comes first. Until it is in hand nothing is sent to /issue, so
+	// a failure here has not shown the mint the receipt and must not use it.
+	if _, err := w.client.Key(ctx); err != nil {
+		return nil, err
+	}
 	w.mu.Lock()
 	if w.receipt != "" {
 		if w.receiptPresented {

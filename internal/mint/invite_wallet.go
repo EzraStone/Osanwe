@@ -316,6 +316,13 @@ func (w *InviteWallet) fill(ctx context.Context) {
 }
 
 func (w *InviteWallet) buy(ctx context.Context) (*Token, error) {
+	// Reserving a voucher is durable and final, so it waits until the mint's
+	// key is in hand. A key fetch that fails has sent no voucher anywhere;
+	// reserving first spent one on every request made while the mint was
+	// unreachable.
+	if _, err := w.client.Key(ctx); err != nil {
+		return nil, err
+	}
 	voucher, err := w.reserveVoucher(w.now().UTC())
 	if err != nil {
 		return nil, err
