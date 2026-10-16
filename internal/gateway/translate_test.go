@@ -576,3 +576,26 @@ func TestAResponseWithNoChoicesIsNotTranslatedIntoAnEmptyAnswer(t *testing.T) {
 		}
 	}
 }
+
+// A response too large to hold for translation is an error, not a shorter
+// response. Cut at the limit, it failed to parse and was then handed to the
+// client whole-looking, as a 200 carrying truncated JSON.
+func TestAnOversizedTranslatedResponseIsAnErrorNotATruncation(t *testing.T) {
+	answer := `{"choices":[{"message":{"content":"` + strings.Repeat("a", MaxRoutedBody) + `"},"finish_reason":"stop"}]}`
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(answer)),
+	}
+	if err := translateBack(resp); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		got, _ := io.ReadAll(resp.Body)
+		t.Fatalf("translateBack = %v, passing on %d of %d bytes; want a size error", err, len(got), len(answer))
+	}
+
+	// At the limit exactly it still translates.
+	fits := `{"choices":[{"message":{"content":"` + strings.Repeat("a", MaxRoutedBody-64) + `"}}]}`
+	resp.Body = io.NopCloser(strings.NewReader(fits))
+	if err := translateBack(resp); err != nil {
+		t.Fatalf("a response within the limit was refused: %v", err)
+	}
+}

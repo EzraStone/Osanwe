@@ -1095,10 +1095,15 @@ func translateBack(resp *http.Response) error {
 		return nil
 	}
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxRoutedBody))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxRoutedBody+1))
 	resp.Body.Close()
 	if err != nil {
 		return err
+	}
+	if len(raw) > MaxRoutedBody {
+		// Truncated JSON fails to translate, and would then have been passed
+		// on as if it were the provider's whole answer.
+		return fmt.Errorf("gateway: translated provider response exceeds %d bytes", MaxRoutedBody)
 	}
 	converted, err := fromOpenAI(raw)
 	if err != nil {
