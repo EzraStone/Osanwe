@@ -5,12 +5,17 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/EzraStone/osanwe/internal/directory"
 )
 
 func TestTokenModeCLIRequiresExplicitGatewayUpstream(t *testing.T) {
@@ -183,4 +188,80 @@ func TestRunRefusesEveryUnsafeOrContradictoryClientConfiguration(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A configuration that will be refused must be refused before the client
+// does anything observable: fetching a consensus tells the directory this
+// address is starting a client, and opening the trial wallet creates its
+// state file. These were all refused only after one or the other.
+func TestRunRefusesBeforeContactingTheDirectoryOrOpeningTheWallet(t *testing.T) {
+	var fetches atomic.Int64
+	directoryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
+		http.NotFound(w, r)
+	}))
+	defer directoryServer.Close()
+	authority, err := directory.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	garbageCA := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(garbageCA, []byte("not a certificate\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secret := map[string]string{"OSANWE_SECRET": "a-relay-secret-long-enough"}
+	dir := []string{"-directory", directoryServer.URL, "-authority", authority.Fingerprint(), "-threshold", "1"}
+	gateway := []string{"-upstream", "https://gateway.example"}
+
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"a mint with no key id", append([]string{"-mint", "https://mint.example"}, gateway...), "-mint needs -mint-key-id"},
+		{"a mint key id with no mint", []string{"-mint-key-id", "mint-test"}, "your own API key would still be used"},
+		{"an upstream CA with no certificates", append([]string{"-upstream-ca", garbageCA}, gateway...), "contained no usable certificates"},
+		{"an API style the client cannot speak", []string{"-api-style", "smoke-signals"}, "APIStyle must be"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before := fetches.Load()
+			err := runBearer(t, secret, append(append([]string(nil), dir...), test.args...)...)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("run error = %v, want one containing %q", err, test.want)
+			}
+			if n := fetches.Load() - before; n != 0 {
+				t.Fatalf("the directory was fetched %d time(s) for a configuration that was then refused", n)
+			}
+		})
+	}
+
+	// The control: with nothing wrong, the same flags do reach the directory,
+	// so the zero counts above mean the refusals came first.
+	t.Run("a good configuration does fetch", func(t *testing.T) {
+		before := fetches.Load()
+		err := runBearer(t, secret, dir...)
+		if err == nil {
+			t.Fatal("run succeeded against a directory that serves nothing")
+		}
+		if fetches.Load() == before {
+			t.Fatalf("the directory was never fetched (run error %v); the cases above prove nothing", err)
+		}
+	})
+
+	t.Run("a trial wallet beside a bad API style", func(t *testing.T) {
+		walletDir := t.TempDir()
+		if err := os.Chmod(walletDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		state := filepath.Join(walletDir, "trial-wallet.db")
+		err := runBearer(t, secret, "-relay", "relay.example:8443", "-pin", "sha256/"+strings.Repeat("A", 43)+"=",
+			"-trial-access", "-mint", "https://mint.example", "-mint-key-id", "mint-test",
+			"-upstream", "https://gateway.example", "-wallet-state", state, "-api-style", "smoke-signals")
+		if err == nil || !strings.Contains(err.Error(), "APIStyle must be") {
+			t.Fatalf("run error = %v, want the API style refusal", err)
+		}
+		if _, err := os.Stat(state); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("the refusal still created the wallet state file (stat error %v)", err)
+		}
+	})
 }

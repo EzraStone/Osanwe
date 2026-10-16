@@ -181,6 +181,14 @@ func run() error {
 	if *mintURL != "" && strings.TrimSpace(*upstream) == "" {
 		return errors.New("bearer: -mint requires an explicit gateway -upstream; the default Anthropic provider does not accept Osanwe tokens")
 	}
+	if *mintURL != "" && *mintKeyID == "" {
+		return errors.New("bearer: -mint needs -mint-key-id. " +
+			"Take the id from somewhere other than the mint: a mint that handed every buyer a key of their own " +
+			"would put each of them in an anonymity set of one while appearing to work perfectly")
+	}
+	if *mintURL == "" && *mintKeyID != "" {
+		return errors.New("bearer: -mint-key-id given without -mint, so no tokens would be bought and your own API key would still be used")
+	}
 
 	usingDirectory := len(dirURLs) > 0
 	if usingDirectory && (*relay != "" || *pin != "") {
@@ -218,6 +226,41 @@ func run() error {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
+	var roots *x509.CertPool
+	if *upstreamCA != "" {
+		pem, err := os.ReadFile(*upstreamCA)
+		if err != nil {
+			return fmt.Errorf("bearer: reading -upstream-ca: %w", err)
+		}
+		roots = x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(pem) {
+			return fmt.Errorf("bearer: -upstream-ca %s contained no usable certificates", *upstreamCA)
+		}
+		log.Info("using extra roots to verify the provider", "file", *upstreamCA)
+	}
+
+	// The local server's own settings are checked before anything is fetched
+	// or opened: a directory refresh contacts the network, and the trial
+	// wallet creates its state file, so neither should happen for a
+	// configuration that was always going to be refused. The real server is
+	// built below, once the dialer and wallet exist.
+	cfg := bearer.Config{
+		Addr:             *addr,
+		Upstream:         *upstream,
+		APIStyle:         *apiStyle,
+		Models:           append([]string(nil), chatModels...),
+		UpstreamRootCAs:  roots,
+		AllowNonLoopback: *allowExposed,
+		UI:               !*noUI,
+		Logger:           log,
+	}
+	probeConfig := cfg
+	probeConfig.Dialer = noopDialer{}
+	probe, err := bearer.New(probeConfig)
+	if err != nil {
+		return err
+	}
+
 	// runCtx bounds the directory refresh loop, which lives as long as the
 	// process does.
 	runCtx, stopRefresh := context.WithCancel(context.Background())
@@ -248,10 +291,6 @@ func run() error {
 			return err
 		}
 
-		probe, err := bearer.New(bearer.Config{Addr: *addr, Upstream: *upstream, Dialer: noopDialer{}, AllowNonLoopback: *allowExposed})
-		if err != nil {
-			return err
-		}
 		want := probe.UpstreamAddr()
 
 		relays, err = pool.New(pool.Config{
@@ -286,19 +325,6 @@ func run() error {
 		dialer = d
 	}
 
-	var roots *x509.CertPool
-	if *upstreamCA != "" {
-		pem, err := os.ReadFile(*upstreamCA)
-		if err != nil {
-			return fmt.Errorf("bearer: reading -upstream-ca: %w", err)
-		}
-		roots = x509.NewCertPool()
-		if !roots.AppendCertsFromPEM(pem) {
-			return fmt.Errorf("bearer: -upstream-ca %s contained no usable certificates", *upstreamCA)
-		}
-		log.Info("using extra roots to verify the provider", "file", *upstreamCA)
-	}
-
 	// Paying with tokens is opt-in and, once on, changes what the upstream
 	// must be: a provider would reject a token and has no idea what one is.
 	var wallet interface {
@@ -308,11 +334,6 @@ func run() error {
 		Run(context.Context)
 	}
 	if *mintURL != "" {
-		if *mintKeyID == "" {
-			return errors.New("bearer: -mint needs -mint-key-id. " +
-				"Take the id from somewhere other than the mint: a mint that handed every buyer a key of their own " +
-				"would put each of them in an anonymity set of one while appearing to work perfectly")
-		}
 		client := &mint.Client{URL: *mintURL, ExpectKeyID: *mintKeyID}
 		if *trialAccess {
 			statePath := *walletState
@@ -350,21 +371,9 @@ func run() error {
 			log.Info("paying with tokens", "mint", *mintURL, "key", *mintKeyID)
 		}
 		go wallet.Run(runCtx)
-	} else if *mintKeyID != "" {
-		return errors.New("bearer: -mint-key-id given without -mint, so no tokens would be bought and your own API key would still be used")
 	}
 
-	cfg := bearer.Config{
-		Addr:             *addr,
-		Upstream:         *upstream,
-		APIStyle:         *apiStyle,
-		Models:           append([]string(nil), chatModels...),
-		Dialer:           dialer,
-		UpstreamRootCAs:  roots,
-		AllowNonLoopback: *allowExposed,
-		UI:               !*noUI,
-		Logger:           log,
-	}
+	cfg.Dialer = dialer
 	if wallet != nil {
 		cfg.Tokens = wallet
 	}
