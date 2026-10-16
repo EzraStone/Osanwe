@@ -101,6 +101,12 @@ func TestRunRefusesAnUnboundedOrUnauthenticatedGateway(t *testing.T) {
 		return ""
 	}
 	noKey := func(string) string { return "" }
+	paddedKey := func(name string) string {
+		if name == "OSANWE_PROVIDER_KEY" {
+			return "sk-test\n"
+		}
+		return ""
+	}
 
 	tests := []struct {
 		name   string
@@ -127,10 +133,21 @@ func TestRunRefusesAnUnboundedOrUnauthenticatedGateway(t *testing.T) {
 		{"zero request size", []string{"-mint-key", mintKey, "-max-request-bytes", "0"}, providerKey, "-max-request-bytes cannot be 0"},
 		{"zero output limit", []string{"-mint-key", mintKey, "-max-output-tokens", "0"}, providerKey, "-max-output-tokens cannot be 0"},
 		{"zero burst ceiling", []string{"-mint-key", mintKey, "-burst-budget-db", "burst.db", "-burst-budget-requests", "0"}, providerKey, "-burst-budget-requests cannot be 0"},
+		// The gateway and budget packages refuse these themselves; the gateway
+		// must still do so before it writes a TLS key or opens a database.
+		{"plain-HTTP upstream", []string{"-mint-key", mintKey, "-upstream", "http://provider.example"}, providerKey, "upstream must be https"},
+		{"no models", []string{"-mint-key", mintKey, "-models", " , "}, providerKey, "Models is required without Routes"},
+		{"request ceiling over the maximum", []string{"-mint-key", mintKey, "-max-request-bytes", "999999999999"}, providerKey, "MaxRequestBody must be between"},
+		{"output limit over the maximum", []string{"-mint-key", mintKey, "-max-output-tokens", "1000000"}, providerKey, "MaxOutputTokens must be between"},
+		{"provider key with a trailing newline", []string{"-mint-key", mintKey}, paddedKey, "surrounding whitespace"},
+		{"sub-minute budget window", []string{"-mint-key", mintKey, "-budget-window", "30s"}, providerKey, "budget window must be a whole number of seconds"},
+		{"sub-minute burst window", []string{"-mint-key", mintKey, "-burst-budget-db", "burst.db", "-burst-budget-window", "30s"}, providerKey, "burst budget: gateway: budget window"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
+			// Relative paths in a case, such as burst.db, land here too.
+			t.Chdir(dir)
 			args := []string{
 				"-addr", "127.0.0.1:0",
 				"-cert", filepath.Join(dir, "gw.crt"), "-key", filepath.Join(dir, "gw.key"),
@@ -147,6 +164,13 @@ func TestRunRefusesAnUnboundedOrUnauthenticatedGateway(t *testing.T) {
 				}
 			case <-time.After(30 * time.Second):
 				t.Fatal("mithlond started serving instead of refusing")
+			}
+			if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+				var names []string
+				for _, e := range entries {
+					names = append(names, e.Name())
+				}
+				t.Fatalf("refusal left %v behind (ReadDir error %v)", names, err)
 			}
 		})
 	}

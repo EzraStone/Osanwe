@@ -1043,11 +1043,29 @@ func TestNewRefusesAnUnsafeConfig(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("New() error = %v, want one mentioning %q", err, tc.want)
 			}
+
+			// Check is what mithlond calls before it creates any files. It
+			// must refuse everything New does, except a missing store: the
+			// stores are opened after Check, and supplying them is New's job.
+			checkErr := Check(cfg)
+			if cfg.Spent == nil || cfg.Budget == nil {
+				if checkErr != nil {
+					t.Fatalf("Check() = %v; the stores are not its to require", checkErr)
+				}
+				return
+			}
+			if checkErr == nil || checkErr.Error() != err.Error() {
+				t.Fatalf("Check() = %v, but New() refused with %v", checkErr, err)
+			}
 		})
 	}
 
 	if _, err := New(good); err != nil {
 		t.Fatalf("New() on a good config: %v", err)
+	}
+	good.Spent, good.Budget = nil, nil
+	if err := Check(good); err != nil {
+		t.Fatalf("Check() on a good config without stores: %v", err)
 	}
 }
 

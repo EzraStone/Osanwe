@@ -171,17 +171,31 @@ type BudgetUsage struct {
 	MaxCostMicros   uint64
 }
 
+// Check reports whether OpenFileBudget would refuse cfg's settings, without
+// touching the database, so a command can refuse them before it creates any
+// files.
+func (cfg FileBudgetConfig) Check() error {
+	if strings.TrimSpace(cfg.Path) == "" {
+		return errors.New("gateway: budget database path is required")
+	}
+	window := cfg.Window
+	if window == 0 {
+		window = DefaultBudgetWindow
+	}
+	if window < time.Minute || window > 24*time.Hour || window%time.Second != 0 {
+		return errors.New("gateway: budget window must be a whole number of seconds between one minute and 24 hours")
+	}
+	return nil
+}
+
 // OpenFileBudget opens a durable single-node budget database. The database
 // must not be placed on NFS and cannot be shared by multiple gateway hosts.
 func OpenFileBudget(cfg FileBudgetConfig) (*FileBudget, error) {
-	if strings.TrimSpace(cfg.Path) == "" {
-		return nil, errors.New("gateway: budget database path is required")
+	if err := cfg.Check(); err != nil {
+		return nil, err
 	}
 	if cfg.Window == 0 {
 		cfg.Window = DefaultBudgetWindow
-	}
-	if cfg.Window < time.Minute || cfg.Window > 24*time.Hour || cfg.Window%time.Second != 0 {
-		return nil, errors.New("gateway: budget window must be a whole number of seconds between one minute and 24 hours")
 	}
 	if cfg.MaxRequests == 0 {
 		cfg.MaxRequests = DefaultBudgetRequests

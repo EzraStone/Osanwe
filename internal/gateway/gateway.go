@@ -260,6 +260,24 @@ type chosen struct {
 	translated bool
 }
 
+// Check reports whether New would refuse cfg for any reason other than its
+// Spent and Budget stores. A command opens those last, since opening them
+// creates files, and can call Check first so that a bad flag is refused
+// before anything is written.
+func Check(cfg Config) error {
+	cfg.Spent, cfg.Budget = mint.NewSpentSet(), checkOnlyBudget{}
+	_, err := New(cfg)
+	return err
+}
+
+// checkOnlyBudget stands in for a real Budget while Check validates the rest
+// of a Config. It is never asked to reserve anything.
+type checkOnlyBudget struct{}
+
+func (checkOnlyBudget) Reserve(context.Context, BudgetRequest) (BudgetReservation, error) {
+	return nil, errors.New("gateway: Check's placeholder budget cannot reserve")
+}
+
 // New validates a Config and returns a Server.
 func New(cfg Config) (*Server, error) {
 	if cfg.Addr == "" {

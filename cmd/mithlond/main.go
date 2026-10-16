@@ -217,6 +217,46 @@ func run(args []string, getenv func(string) string) error {
 		log.Info("using extra roots to verify the provider", "file", *upstreamCA)
 	}
 
+	// Everything below creates files: a TLS identity, the spent-token journal
+	// and the budget databases. Check the rest of the configuration first, so
+	// a gateway that will not start leaves nothing behind on its way to
+	// saying so.
+	gatewayConfig := gateway.Config{
+		Addr:             *addr,
+		Upstream:         *upstream,
+		MintKeys:         keys,
+		Models:           commaList(*modelsCSV),
+		MaxRequestBody:   *maxRequestBytes,
+		MaxOutputTokens:  *maxOutputTokens,
+		Routes:           routes,
+		Cost:             cost,
+		RequireCostRates: maxCostMicros > 0,
+		Credential:       gateway.Credential{Header: *credHeader, Prefix: *credPrefix, Value: providerKey},
+		UpstreamRootCAs:  roots,
+		Logger:           log,
+	}
+	if err := gateway.Check(gatewayConfig); err != nil {
+		return err
+	}
+	budgetConfig := gateway.FileBudgetConfig{
+		Path: *budgetDB, Window: *budgetWindow,
+		MaxRequests: *budgetRequests, MaxInputBytes: *budgetInputBytes, MaxOutputTokens: *budgetOutputTokens,
+		MaxCostMicros: maxCostMicros,
+	}
+	if err := budgetConfig.Check(); err != nil {
+		return err
+	}
+	burstConfig := gateway.FileBudgetConfig{
+		Path: *burstBudgetDB, Window: *burstBudgetWindow,
+		MaxRequests: *burstBudgetRequests, MaxInputBytes: *burstBudgetInputBytes,
+		MaxOutputTokens: *burstBudgetOutputTokens,
+	}
+	if strings.TrimSpace(*burstBudgetDB) != "" {
+		if err := burstConfig.Check(); err != nil {
+			return fmt.Errorf("mithlond: burst budget: %w", err)
+		}
+	}
+
 	var tlsConf *tls.Config
 	if *plaintext {
 		log.Warn("serving without TLS; whatever sits in front of this reads every prompt that passes through it")
@@ -241,11 +281,7 @@ func run(args []string, getenv func(string) string) error {
 			log.Error("closing spent-token database", "error", err)
 		}
 	}()
-	budget, err := gateway.OpenFileBudget(gateway.FileBudgetConfig{
-		Path: *budgetDB, Window: *budgetWindow,
-		MaxRequests: *budgetRequests, MaxInputBytes: *budgetInputBytes, MaxOutputTokens: *budgetOutputTokens,
-		MaxCostMicros: maxCostMicros,
-	})
+	budget, err := gateway.OpenFileBudget(budgetConfig)
 	if err != nil {
 		return err
 	}
@@ -257,11 +293,7 @@ func run(args []string, getenv func(string) string) error {
 	var providerBudget gateway.Budget = budget
 	var burstBudget *gateway.FileBudget
 	if strings.TrimSpace(*burstBudgetDB) != "" {
-		burstBudget, err = gateway.OpenFileBudget(gateway.FileBudgetConfig{
-			Path: *burstBudgetDB, Window: *burstBudgetWindow,
-			MaxRequests: *burstBudgetRequests, MaxInputBytes: *burstBudgetInputBytes,
-			MaxOutputTokens: *burstBudgetOutputTokens,
-		})
+		burstBudget, err = gateway.OpenFileBudget(burstConfig)
 		if err != nil {
 			return err
 		}
@@ -276,22 +308,8 @@ func run(args []string, getenv func(string) string) error {
 		}
 	}
 
-	srv, err := gateway.New(gateway.Config{
-		Addr:             *addr,
-		Upstream:         *upstream,
-		MintKeys:         keys,
-		Spent:            spent,
-		Budget:           providerBudget,
-		Models:           commaList(*modelsCSV),
-		MaxRequestBody:   *maxRequestBytes,
-		MaxOutputTokens:  *maxOutputTokens,
-		Routes:           routes,
-		Cost:             cost,
-		RequireCostRates: maxCostMicros > 0,
-		Credential:       gateway.Credential{Header: *credHeader, Prefix: *credPrefix, Value: providerKey},
-		UpstreamRootCAs:  roots,
-		Logger:           log,
-	})
+	gatewayConfig.Spent, gatewayConfig.Budget = spent, providerBudget
+	srv, err := gateway.New(gatewayConfig)
 	if err != nil {
 		return err
 	}
